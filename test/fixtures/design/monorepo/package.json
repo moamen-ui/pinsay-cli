@@ -1,0 +1,7 @@
+{
+  "name": "monorepo-root",
+  "dependencies": {
+    "tailwindcss": "^3.4.0",
+    "@radix-ui/react-progress": "^1.0.3"
+  }
+}

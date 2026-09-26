@@ -1,0 +1,6 @@
+{
+  "name": "tailwind-v4-fixture",
+  "dependencies": {
+    "tailwindcss": "^4.0.0"
+  }
+}

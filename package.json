@@ -1,0 +1,79 @@
+{
+  "name": "pinsay-cli",
+  "version": "0.6.3",
+  "description": "Click-to-comment feedback for your web app: install the widget, then turn pending comments into AI apply prompts.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Moamen",
+  "homepage": "https://pinsay.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moamen-ui/pinsay-cli.git",
+    "directory": "."
+  },
+  "bugs": {
+    "url": "https://github.com/moamen-ui/pinsay-api/issues"
+  },
+  "keywords": [
+    "feedback",
+    "widget",
+    "comments",
+    "bug-report",
+    "ai",
+    "claude",
+    "mcp",
+    "cli"
+  ],
+  "bin": {
+    "pinsay": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts test/**/*.test.ts",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@babel/generator": "^7.29.8",
+    "@babel/parser": "^7.29.8",
+    "@babel/traverse": "^7.29.8",
+    "@types/babel__generator": "^7.27.0",
+    "@types/babel__traverse": "^7.28.0",
+    "@types/node": "^18.19.130",
+    "esbuild": "^0.20.2",
+    "tsx": "^4.23.13",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.6.0"
+  },
+  "exports": {
+    ".": "./dist/cli.js",
+    "./vite": "./dist/vite.js",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@babel/generator": ">=7 <8",
+    "@babel/parser": ">=7 <8",
+    "@babel/traverse": ">=7 <8"
+  },
+  "peerDependenciesMeta": {
+    "@babel/parser": {
+      "optional": true
+    },
+    "@babel/traverse": {
+      "optional": true
+    },
+    "@babel/generator": {
+      "optional": true
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "mui-fixture",
+  "dependencies": {
+    "@mui/material": "^5.15.0"
+  }
+}

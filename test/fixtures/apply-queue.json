@@ -1,0 +1,96 @@
+{
+  "items": [
+    {
+      "id": 12,
+      "status": 2,
+      "environment": 2,
+      "body": "Make the CTA button primary",
+      "authorName": "Jamie",
+      "createdAt": "2026-06-23T10:00:00Z",
+      "isBugReport": true,
+      "pageContextId": 5,
+      "pickedActions": [
+        {
+          "text": "Make primary",
+          "prompt": "Swap the outline button classes for the filled/primary variant."
+        }
+      ],
+      "aiRules": [
+        {
+          "title": "Use Tailwind",
+          "prompt": "Prefer Tailwind utility classes over inline CSS.",
+          "scope": "Workspace",
+          "priority": 1,
+          "isPersonal": false
+        },
+        {
+          "title": "Button Conventions",
+          "prompt": "Use rounded-md for all action buttons.",
+          "scope": "Project",
+          "priority": 2,
+          "isPersonal": false
+        }
+      ],
+      "element": {
+        "pageRef": "p1",
+        "selector": "section > div:nth-of-type(2) > button",
+        "snapshot": "<button type=\"submit\" data-testid=\"join\">Join</button>",
+        "classes": ["border", "border-primary-500", "text-primary-500"],
+        "computedStyles": { "color": "rgb(37, 99, 235)" },
+        "appliedCssRules": [{ "selector": "button", "styles": "border-width: 1px" }],
+        "sourcePath": "src/components/Header.tsx:42",
+        "parent": { "tag": "div", "id": null }
+      },
+      "replies": [
+        {
+          "id": 1,
+          "authorId": "a1b2c3d4-e5f6-7a8b-9c0d-1e2f3a4b5c6d",
+          "authorName": "Sam",
+          "body": "Agreed, looks too subdued right now",
+          "createdAt": "2026-06-23T10:05:00Z",
+          "isAi": false
+        }
+      ]
+    }
+  ],
+  "pages": {
+    "p1": {
+      "url": "https://app.example.com/checkout?step=2",
+      "route": "/checkout",
+      "title": "Checkout — Example",
+      "viewport": "390x844",
+      "device": "mobile",
+      "dpr": 3,
+      "uaRef": "u1"
+    }
+  },
+  "userAgents": {
+    "u1": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X)"
+  },
+  "pageContexts": {
+    "5": {
+      "id": 5,
+      "route": "/checkout",
+      "environment": 2,
+      "lastEventAt": "2026-08-25T10:03:11Z",
+      "consoleEntries": [
+        {
+          "level": "error",
+          "message": "TypeError: cannot read 'total' of undefined",
+          "stack": "at Cart.tsx:42",
+          "count": 3,
+          "occurredAt": "2026-08-25T10:02:58Z"
+        }
+      ],
+      "networkEntries": [
+        {
+          "method": "POST",
+          "url": "https://api.example.com/checkout/quote",
+          "statusCode": 500,
+          "durationMs": 812,
+          "occurredAt": "2026-08-25T10:02:59Z"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "scss-fixture",
+  "devDependencies": {
+    "sass": "^1.70.0"
+  }
+}
