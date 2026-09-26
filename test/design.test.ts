@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { promises as fs } from 'node:fs';
+import { existsSync, promises as fs } from 'node:fs';
 import * as os from 'node:os';
 import {
   detectDesignTokens,
@@ -95,7 +95,7 @@ test('design tokens: none fixture', async () => {
   );
 });
 
-test('design tokens: e2e/fixture-app/vite-react detection completes in < 2 s', async () => {
+test('design tokens: e2e/fixture-app/vite-react detection completes in < 2 s', { skip: !existsSync(viteReactFixtureDir) && 'needs the pinsay-api monorepo checkout (e2e/fixture-app)' }, async () => {
   const start = Date.now();
   const result = await detectDesignTokens(viteReactFixtureDir);
   const elapsed = Date.now() - start;

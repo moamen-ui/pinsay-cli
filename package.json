@@ -1,6 +1,6 @@
 {
   "name": "pinsay-cli",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "Click-to-comment feedback for your web app: install the widget, then turn pending comments into AI apply prompts.",
   "type": "module",
   "license": "MIT",

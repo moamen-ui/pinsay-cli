@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { SECURITY_TEXT } from '../src/apply/security-text.js';
@@ -24,7 +24,7 @@ function extractSecuritySection(content: string): string {
     .replace(/`;\s*$/, '');
 }
 
-test('heading-scoped security text drift test between skill.md and security-text.ts', () => {
+test('heading-scoped security text drift test between skill.md and security-text.ts', { skip: !existsSync(skillPath) && 'needs the pinsay-api monorepo checkout (API/wwwroot/skill.md)' }, () => {
   const skillContent = readFileSync(skillPath, 'utf8');
   const secTextFile = readFileSync(secTextModulePath, 'utf8');
 

@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import * as assert from 'node:assert';
 import { execFile, execFileSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import { existsSync } from 'node:fs';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
@@ -11,6 +12,7 @@ const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const shPath = path.resolve(__dirname, '../../API/wwwroot/pinsay.sh');
+const shAvailable = existsSync(shPath);
 
 async function withTempDir(fn: (dir: string) => Promise<void>) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pinsay-sh-test-'));
@@ -43,13 +45,13 @@ async function withGlobalDir(fn: (globalDir: string) => Promise<void>) {
   }
 }
 
-test('pinsay.sh is valid bash syntax (bash -n)', () => {
+test('pinsay.sh is valid bash syntax (bash -n)', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () => {
   // Never skip this — it is the one check that catches a shell syntax error before it reaches a
   // consumer repo, since nothing else in the CLI's own test suite parses the served shell script.
   execFileSync('bash', ['-n', shPath]);
 });
 
-test('pinsay.sh: a multi-project config with no -p prints the configured keys and exits 2', () =>
+test('pinsay.sh: a multi-project config with no -p prints the configured keys and exits 2', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -67,7 +69,7 @@ test('pinsay.sh: a multi-project config with no -p prints the configured keys an
     );
   }));
 
-test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-project check', () =>
+test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-project check', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -85,7 +87,7 @@ test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-proje
     );
   }));
 
-test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', () =>
+test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -104,7 +106,7 @@ test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', () =>
     );
   }));
 
-test('pinsay.sh: a single-project config never hits the multi-project check', () =>
+test('pinsay.sh: a single-project config never hits the multi-project check', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, { server: 'http://127.0.0.1:1', project: 'solo' });
 
@@ -121,7 +123,7 @@ test('pinsay.sh: a single-project config never hits the multi-project check', ()
 // Global credential store fallback (API key only — server/project resolution is unchanged)
 // -----------------------------------------------------------------------------------------------
 
-test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KEY line exists locally', () =>
+test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KEY line exists locally', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       // credentials.env carries SERVER/PROJECT (as `resolve_config` needs) but deliberately no
@@ -153,7 +155,7 @@ test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KE
     }),
   ));
 
-test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, repo, or global store)', () =>
+test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, repo, or global store)', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       await installShTo(
@@ -177,7 +179,7 @@ test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, rep
     }),
   ));
 
-test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', () =>
+test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       await installShTo(
