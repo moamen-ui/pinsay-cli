@@ -10,7 +10,8 @@ npx pinsay-cli init
 
 `init` walks you through everything: server, project, AI tool, and the widget/script snippet to paste into your app. It takes about a minute.
 
-Prefer a global install? `npm i -g pinsay-cli` — the command is `pinsay` either way.
+- `npx pinsay-cli <command>` runs it without installing — but you type the full name every time.
+- `npm i -g pinsay-cli` installs a real `pinsay` command on your PATH (recommended).
 
 ## Commands
 
