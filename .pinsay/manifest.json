@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "entries": {
-    "f65afa86": {
-      "path": "src/Card.tsx",
-      "component": "Card"
-    }
-  }
-}
