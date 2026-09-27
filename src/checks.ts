@@ -417,6 +417,18 @@ async function widgetCheck(cwd: string, config: PinSayConfig = {}, prefix = ''):
   // guessing will find apps/<app>/src/index.html.
   const candidates = [config.htmlPath, detection?.htmlPath, 'index.html', 'public/index.html', 'src/index.html'].filter(Boolean) as string[];
 
+  // One level of subdirectories covers the common "app lives in a folder" layout (react/,
+  // apps/web/, web/) — typical for skill-routed installs, where nothing recorded the htmlPath.
+  try {
+    for (const entry of await fs.readdir(cwd, { withFileTypes: true })) {
+      if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        candidates.push(join(entry.name, 'index.html'));
+      }
+    }
+  } catch {
+    // cwd unreadable — the fixed candidates above still apply.
+  }
+
   for (const rel of candidates) {
     try {
       const html = await fs.readFile(join(cwd, rel), 'utf8');
