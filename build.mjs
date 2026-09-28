@@ -7,7 +7,7 @@ import { readFileSync } from 'node:fs';
 // beside it in every install layout.
 const pkgVersion = JSON.parse(readFileSync('./package.json', 'utf8')).version;
 
-const defaultServer = env.PINSAY_DEFAULT_SERVER || 'https://api.pinsay.dev';
+const defaultServer = env.PINSAY_DEFAULT_SERVER || 'https://app.pinsay.dev';
 
 // The Vite plugin is a SEPARATE bundle: it runs inside the host app's build, not as our CLI, and
 // it may import the optional Babel peers — which must never be pulled into dist/cli.js, whose

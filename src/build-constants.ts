@@ -12,7 +12,7 @@ declare const DEFAULT_SERVER: string | undefined;
 declare const CLI_VERSION: string | undefined;
 
 export const BUILD_DEFAULT_SERVER: string =
-  typeof DEFAULT_SERVER !== 'undefined' ? DEFAULT_SERVER : 'https://api.pinsay.dev';
+  typeof DEFAULT_SERVER !== 'undefined' ? DEFAULT_SERVER : 'https://app.pinsay.dev';
 
 export const BUILD_CLI_VERSION: string =
   typeof CLI_VERSION !== 'undefined' ? CLI_VERSION : '0.0.0-dev';

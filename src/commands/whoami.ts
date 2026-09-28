@@ -1,4 +1,4 @@
-import { findRepoRoot, readConfig } from '../config.js';
+import { canonicalServer, findRepoRoot, readConfig } from '../config.js';
 import { api } from '../api.js';
 import { resolveApiKey, getGlobalCredential, sourceLabel } from '../credentials.js';
 import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
@@ -12,7 +12,7 @@ export async function whoamiCommand(cwd: string, options: Record<string, string 
   const server = (
     (typeof options['server'] === 'string' ? (options['server'] as string) : undefined) ||
     config.server ||
-    process.env.PINSAY_SERVER ||
+    canonicalServer(process.env.PINSAY_SERVER) ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
 

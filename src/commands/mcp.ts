@@ -1,4 +1,4 @@
-import { readConfig, findRepoRoot, resolveProject } from '../config.js';
+import { canonicalServer, readConfig, findRepoRoot, resolveProject } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
@@ -17,7 +17,7 @@ export async function mcpCommand(
   const config = await readConfig(root).catch(() => ({} as any));
   const server = (
     (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
-    process.env.PINSAY_SERVER ||
+    canonicalServer(process.env.PINSAY_SERVER) ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
 

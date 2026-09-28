@@ -304,3 +304,23 @@ test('writeConfigFull writes exactly the given object, with no merge against the
         await fs.rm(dir, { recursive: true, force: true });
     }
 });
+
+test('legacy api.pinsay.dev server is read as the canonical app.pinsay.dev origin', async () => {
+    const { canonicalServer } = await import('../src/config.js');
+    assert.strictEqual(canonicalServer('https://api.pinsay.dev'), 'https://app.pinsay.dev');
+    assert.strictEqual(canonicalServer('https://api.pinsay.dev/'), 'https://app.pinsay.dev');
+    assert.strictEqual(canonicalServer('https://app.pinsay.dev'), 'https://app.pinsay.dev');
+    assert.strictEqual(canonicalServer('http://localhost:8090'), 'http://localhost:8090');
+    assert.strictEqual(canonicalServer(undefined), undefined);
+
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pinsay-test-legacy-'));
+    try {
+        await writeConfig(dir, { server: 'https://api.pinsay.dev' });
+        const conf = await readConfig(dir);
+        assert.strictEqual(conf.server, 'https://app.pinsay.dev');
+        const onDisk = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+        assert.strictEqual(onDisk.server, 'https://api.pinsay.dev', 'the file on disk is not rewritten');
+    } finally {
+        await fs.rm(dir, { recursive: true, force: true });
+    }
+});

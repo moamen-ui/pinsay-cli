@@ -213,10 +213,28 @@ export async function resolveRootAndConfig(
   return { root, config };
 }
 
+/**
+ * api.pinsay.dev became a legacy alias of https://app.pinsay.dev on 2026-09-28: corporate web
+ * filters category-block the unknown "api." subdomain while the app host is allowed. Both reach
+ * the same server, so a repo initialised earlier is read as the canonical origin. The file on disk
+ * is left alone; the next `init` writes the new value.
+ */
+export const LEGACY_SERVER = 'https://api.pinsay.dev';
+export const CANONICAL_SERVER = 'https://app.pinsay.dev';
+
+export function canonicalServer(server: string): string;
+export function canonicalServer(server: string | undefined): string | undefined;
+export function canonicalServer(server: string | undefined): string | undefined {
+  if (!server) return server;
+  return server.replace(/\/+$/, '') === LEGACY_SERVER ? CANONICAL_SERVER : server;
+}
+
 export async function readConfig(cwd: string): Promise<PinSayConfig> {
   try {
     const content = await fs.readFile(join(cwd, CONFIG_FILE), 'utf8');
-    return JSON.parse(content);
+    const config: PinSayConfig = JSON.parse(content);
+    if (config.server) config.server = canonicalServer(config.server);
+    return config;
   } catch (err: any) {
     if (err.code !== 'ENOENT') throw err;
     return {};

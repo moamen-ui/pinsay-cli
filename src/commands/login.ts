@@ -1,4 +1,4 @@
-import { findRepoRoot, readConfig, writeCredentials } from '../config.js';
+import { canonicalServer, findRepoRoot, readConfig, writeCredentials } from '../config.js';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
 import { saveGlobalCredential } from '../credentials.js';
@@ -27,7 +27,7 @@ export async function loginCommand(cwd: string, options: Record<string, string |
   const server = (
     (typeof options['server'] === 'string' ? (options['server'] as string) : undefined) ||
     config.server ||
-    process.env.PINSAY_SERVER ||
+    canonicalServer(process.env.PINSAY_SERVER) ||
     BUILD_DEFAULT_SERVER
   ).replace(/\/$/, '');
 

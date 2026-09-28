@@ -2,6 +2,7 @@ import { ask, select, multiSelect, closePrompts } from '../prompt.js';
 import { BUILD_DEFAULT_SERVER, BUILD_CLI_VERSION } from '../build-constants.js';
 import {
     readConfig,
+    canonicalServer,
     writeConfig,
     writeConfigFull,
     writeCredentials,
@@ -67,7 +68,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const isJoin = !isAddProject && Boolean(config.server) && (Boolean(config.project) || configIsMulti);
     const mode: 'join' | 'install' = isJoin ? 'join' : 'install';
 
-    let server = options['server'] || config.server || process.env.PINSAY_SERVER || BUILD_DEFAULT_SERVER;
+    let server = options['server'] || config.server || canonicalServer(process.env.PINSAY_SERVER) || BUILD_DEFAULT_SERVER;
 
     if (!isYes && !options['server'] && !config.server) {
         server = await ask('Server URL', { default: server as string });
