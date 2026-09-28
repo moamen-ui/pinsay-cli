@@ -416,3 +416,15 @@ test('resolveToken keeps a non-expiring cached token as-is (a test stub / non-JW
       }
     }),
   ));
+
+test('getGlobalCredential: a key saved against legacy api.pinsay.dev is found for app.pinsay.dev', () =>
+  withGlobalDir(async () => {
+    await saveGlobalCredential('https://api.pinsay.dev', { apiKey: 'pnsy_legacy' } as any);
+    const hit = await getGlobalCredential('https://app.pinsay.dev');
+    assert.strictEqual(hit?.apiKey, 'pnsy_legacy');
+    // A key saved against the canonical host wins over the legacy one.
+    await saveGlobalCredential('https://app.pinsay.dev', { apiKey: 'pnsy_new' } as any);
+    assert.strictEqual((await getGlobalCredential('https://app.pinsay.dev'))?.apiKey, 'pnsy_new');
+    // Other servers never borrow the legacy entry.
+    assert.strictEqual(await getGlobalCredential('https://self.example.com'), undefined);
+  }));

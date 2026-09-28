@@ -114,7 +114,12 @@ async function writeGlobalStore(store: GlobalCredentialsStore): Promise<void> {
 
 export async function getGlobalCredential(server: string): Promise<GlobalCredentialEntry | undefined> {
   const store = await readGlobalStore();
-  return store[normalizeServerOrigin(server)];
+  const origin = normalizeServerOrigin(server);
+  // api.pinsay.dev became a legacy alias of app.pinsay.dev on 2026-09-28 (same server). A key saved
+  // by `login` against the old host is still valid for the new one, so a user who signed in before
+  // the switch is not suddenly "logged out". See CANONICAL_SERVER in config.ts.
+  if (!store[origin] && origin === 'https://app.pinsay.dev') return store['https://api.pinsay.dev'];
+  return store[origin];
 }
 
 export async function saveGlobalCredential(
