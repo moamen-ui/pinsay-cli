@@ -179,7 +179,7 @@ test('login: no --key and no TTY (and no --no-browser) exits 2 with the fallback
           execAsync(`node ${cliPath} login --server ${serverUrl}`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
             assert.strictEqual(err.code, 2);
-            assert.match(err.stderr, /pinsay login --key <key>/);
+            assert.match(err.stderr, /npx pinsay-cli login --key <key>/);
             assert.match(err.stderr, /PINSAY_API_KEY/);
             return true;
           },

@@ -370,7 +370,7 @@ test('unknown command exits 2', () => withTempDir(async (dir) => {
 
 test('--help works', () => withTempDir(async (dir) => {
   const { stdout } = await execAsync(`node ${cliPath} --help`, { cwd: dir, env: envFor(dir) });
-  assert.match(stdout, /Usage: pinsay/);
+  assert.match(stdout, /Usage: npx pinsay-cli/);
 }));
 
 // -----------------------------------------------------------------------------------------------
