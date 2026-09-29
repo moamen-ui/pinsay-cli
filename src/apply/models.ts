@@ -84,8 +84,11 @@ export function resolveModels(
   flags: { models?: string; model?: string },
   env: NodeJS.ProcessEnv = process.env,
 ): AiModelEntry[] {
-  const modelsStr = flags.models || env['PINSAY_AI_MODELS'];
-  const modelStr = flags.model || env['PINSAY_AI_MODEL'];
+  // Explicit flags replace the env fallbacks entirely: a stale PINSAY_AI_MODEL left in someone's
+  // shell must never be silently appended to the list the agent just passed.
+  const explicit = !!(flags.models || flags.model);
+  const modelsStr = explicit ? flags.models : env['PINSAY_AI_MODELS'];
+  const modelStr = explicit ? flags.model : env['PINSAY_AI_MODEL'];
   return mergeModels(
     modelsStr ? parseModelsFlag(modelsStr) : undefined,
     modelStr ? [normalizeEntry({ model: modelStr })] : undefined,
@@ -97,16 +100,19 @@ export function resolveModelsFromArgs(
   args: { models?: unknown; model?: unknown } | undefined,
   env: NodeJS.ProcessEnv = process.env,
 ): AiModelEntry[] {
+  const hasArray = args?.models !== undefined && args.models !== null;
+  const single = typeof args?.model === 'string' && args.model ? args.model : undefined;
+  // Same rule as resolveModels: explicit args replace the env fallbacks entirely.
+  if (!hasArray && !single) {
+    return resolveModels({}, env);
+  }
   let fromArray: AiModelEntry[] | undefined;
-  if (args?.models !== undefined && args.models !== null) {
-    if (!Array.isArray(args.models)) throw new ModelsError('models must be an array of {model, role?}.');
-    fromArray = args.models.map((m) =>
+  if (hasArray) {
+    if (!Array.isArray(args!.models)) throw new ModelsError('models must be an array of {model, role?}.');
+    fromArray = args!.models.map((m) =>
       typeof m === 'string' ? normalizeEntry({ model: m }) : normalizeEntry((m ?? {}) as any),
     );
-  } else if (env['PINSAY_AI_MODELS'] && !args?.model) {
-    fromArray = parseModelsFlag(env['PINSAY_AI_MODELS']);
   }
-  const single = (typeof args?.model === 'string' && args.model) || env['PINSAY_AI_MODEL'];
   return mergeModels(fromArray, single ? [normalizeEntry({ model: single })] : undefined);
 }
 

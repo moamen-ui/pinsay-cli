@@ -182,3 +182,15 @@ test('markFailed sends aiModels + aiModel', async () => {
     assert.equal(bodies[0].aiModel, 'b1');
   });
 });
+
+test('resolveModels: explicit --models replaces env fallbacks', () => {
+  const env = { PINSAY_AI_MODEL: 'stale-model', PINSAY_AI_MODELS: 'stale2=planner' } as NodeJS.ProcessEnv;
+  assert.deepEqual(resolveModels({ models: 'a=planner,b=implementer' }, env).map((e) => e.model), ['a', 'b']);
+  assert.deepEqual(resolveModels({}, env).map((e) => e.model), ['stale2', 'stale-model']);
+});
+
+test('resolveModelsFromArgs: explicit models/model replace env fallbacks', () => {
+  const env = { PINSAY_AI_MODEL: 'stale-model' } as NodeJS.ProcessEnv;
+  assert.deepEqual(resolveModelsFromArgs({ models: [{ model: 'a', role: 'planner' }] }, env).map((e) => e.model), ['a']);
+  assert.deepEqual(resolveModelsFromArgs({}, env).map((e) => e.model), ['stale-model']);
+});
