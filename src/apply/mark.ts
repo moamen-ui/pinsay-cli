@@ -4,6 +4,14 @@ import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail 
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import type { ApplyClientContext } from './types.js';
+import {
+  mergeModels,
+  normalizeEntry,
+  modelsBody,
+  delegationWarning,
+  describeModels,
+  type AiModelEntry,
+} from './models.js';
 
 export type MarkAppliedOptions = {
   id: number | 'all';
@@ -14,6 +22,9 @@ export type MarkAppliedOptions = {
   /** The model id the tool reported running as (e.g. "claude-sonnet-5"), for structured AI
    *  attribution on the reply — see Reply.AiTool/AiModel server-side. */
   model?: string;
+  /** Every model that worked on the item, with roles (already validated). Sent as `aiModels`
+   *  alongside the legacy `aiModel` (primary). Merged with `model` when both are given. */
+  models?: AiModelEntry[];
   /** `--mark all` only: the same `--status` / `--env` filter the plan was built with. Omitted →
    *  the queue default (status Ready). */
   filter?: QueueFilter;
@@ -46,11 +57,19 @@ export async function markApplied(
   const projectCtx = await loadProjectContext(ctx);
   const email = getUserEmail(ctx.cwd);
   const appliedByLabel = options.tool ? `${email} via ${options.tool}` : email;
+  const models = mergeModels(
+    options.models,
+    options.model ? [normalizeEntry({ model: options.model })] : undefined,
+  );
+  const aiModelFields = modelsBody(models);
+  const warning = delegationWarning(projectCtx.delegation ?? 'auto', models);
+  if (warning) console.error(warning);
 
   if (options.dryRun) {
     console.log(`[dry-run] Would mark comment ${options.id} as applied`);
     console.log(`[dry-run] Reply: ${options.reply}`);
     console.log(`[dry-run] AppliedBy: ${appliedByLabel}`);
+    console.log(`[dry-run] Models: ${describeModels(models)}`);
     return {
       committed: false,
       patchedIds: typeof options.id === 'number' ? [options.id] : [],
@@ -105,7 +124,7 @@ export async function markApplied(
           // Structured AI attribution on the reply itself (Reply.AiTool/AiModel), distinct from the
           // free-text appliedByLabel above — see CommentService.Normalize server-side.
           aiTool: options.tool || undefined,
-          aiModel: options.model || undefined,
+          ...aiModelFields,
         },
         token: ctx.token,
       });
@@ -154,7 +173,7 @@ export async function markApplied(
         // against a deployed build.
         commitSha: sha || null,
         aiTool: options.tool || undefined,
-        aiModel: options.model || undefined,
+        ...aiModelFields,
       },
       token: ctx.token,
     });
@@ -179,12 +198,13 @@ export async function markFailed(
   reason: string,
   ctx: ApplyClientContext,
   tool?: string,
-  model?: string,
+  model?: string | AiModelEntry[],
 ): Promise<void> {
   const replyBody = `Could not apply: ${reason}`;
+  const models = typeof model === 'string' ? (model ? [normalizeEntry({ model })] : []) : (model ?? []);
   await api(ctx.server, `/api/comments/${id}/replies`, {
     method: 'POST',
-    body: { body: replyBody, aiTool: tool || undefined, aiModel: model || undefined },
+    body: { body: replyBody, aiTool: tool || undefined, ...modelsBody(models) },
     token: ctx.token,
   });
 

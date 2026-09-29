@@ -7,6 +7,7 @@ import { runApply } from '../apply/run.js';
 import { markApplied, markFailed } from '../apply/mark.js';
 import { fetchQueue } from '../apply/queue.js';
 import { toAiCommentView } from '../apply/projection.js';
+import { resolveModels, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext } from '../apply/types.js';
 
 /**
@@ -35,6 +36,22 @@ async function exitIfWorkspaceFrozen(server: string, token: string | undefined):
   } catch {
     // Best-effort: a network hiccup reading /me must not block apply on its own — if the workspace
     // really is frozen, every subsequent write still 423s downstream.
+  }
+}
+
+/** `--models` / `--model` (+ env fallbacks) → validated entries; exits 2 on invalid input. */
+function parseModelFlags(parsed: Record<string, string | boolean>): AiModelEntry[] {
+  try {
+    return resolveModels({
+      models: typeof parsed['models'] === 'string' ? parsed['models'] : undefined,
+      model: typeof parsed['model'] === 'string' ? parsed['model'] : undefined,
+    });
+  } catch (err) {
+    if (err instanceof ModelsError) {
+      console.error(err.message);
+      process.exit(2);
+    }
+    throw err;
   }
 }
 
@@ -163,9 +180,7 @@ export async function applyCommand(
           `Pass --tool <your-tool-name> explicitly if you are not that tool.`,
       );
     }
-    const model =
-      (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
-      process.env.PINSAY_AI_MODEL;
+    const models = parseModelFlags(parsed);
 
     const markStatus = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
     const markEnv = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
@@ -176,7 +191,7 @@ export async function applyCommand(
         noCommit,
         dryRun,
         tool,
-        model,
+        models,
         filter:
           markStatus !== undefined || markEnv !== undefined
             ? { status: markStatus, environment: markEnv }
@@ -214,11 +229,9 @@ export async function applyCommand(
           `Pass --tool <your-tool-name> explicitly if you are not that tool.`,
       );
     }
-    const failModel =
-      (typeof parsed['model'] === 'string' ? parsed['model'] : undefined) ||
-      process.env.PINSAY_AI_MODEL;
+    const failModels = parseModelFlags(parsed);
 
-    await markFailed(failId, reason, clientCtx, failTool, failModel);
+    await markFailed(failId, reason, clientCtx, failTool, failModels);
     process.exit(0);
   }
 

@@ -107,6 +107,28 @@ export const TOOL_PINSAY_GET_COMMENT = {
   },
 } as const;
 
+const MODELS_NOTICE =
+  'Pass `models` with EVERY model that touched the item and its role (planner/reviewer = your own id, ' +
+  'implementer = each worker model you delegated to), using exact model ids, not aliases.';
+
+const MODELS_PROPERTY = {
+  type: 'array',
+  maxItems: 8,
+  description:
+    'ALWAYS pass this: EVERY model that worked on the item, each with its role. Include the planner/reviewer ' +
+    '(your own model id) and every worker model you delegated to (role "implementer"). Use exact model ids, ' +
+    'not aliases like "haiku"/"sonnet". With one model and no delegation, pass just yours as implementer.',
+  items: {
+    type: 'object',
+    properties: {
+      model: { type: 'string', description: 'Exact model id, e.g. "claude-opus-5-5"' },
+      role: { type: 'string', enum: ['planner', 'implementer', 'reviewer'] },
+    },
+    required: ['model'],
+    additionalProperties: false,
+  },
+} as const;
+
 export const TOOL_PINSAY_MARK_APPLIED = {
   name: 'pinsay_mark_applied',
   description:
@@ -114,7 +136,7 @@ export const TOOL_PINSAY_MARK_APPLIED = {
     `user.email as the applier, and the tool/model attribution. Runs no git command and records no ` +
     `commit sha, so a comment marked this way is never flipped to Live by ` +
     `\`npx pinsay-cli status --deployed\`. Use it when a human will commit the change; to commit ` +
-    `now, use pinsay_commit_and_mark. Returns {id, status, commitUrl}. ${UNTRUSTED_NOTICE}`,
+    `now, use pinsay_commit_and_mark. Returns {id, status, commitUrl}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -139,8 +161,10 @@ export const TOOL_PINSAY_MARK_APPLIED = {
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
+        description:
+          'Legacy single model id (role unset); prefer `models`. Exact id, not an alias (e.g. "claude-sonnet-5-5", "gpt-5.2").',
       },
+      models: MODELS_PROPERTY,
     },
     required: ['id', 'reply'],
     additionalProperties: false,
@@ -157,7 +181,7 @@ export const TOOL_PINSAY_COMMIT_AND_MARK = {
     `the commits: "single" makes one commit for all ids; "separate" makes one commit per id, and with ` +
     `more than one id files is required and each entry is prefixed "<id>:" to assign it to that ` +
     `comment (e.g. "12:src/Button.tsx"; unprefixed entries go to the first id). Never pushes. ` +
-    `Returns [{id, commitUrl}]. ${UNTRUSTED_NOTICE}`,
+    `Returns [{id, commitUrl}]. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -188,8 +212,10 @@ export const TOOL_PINSAY_COMMIT_AND_MARK = {
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
+        description:
+          'Legacy single model id (role unset); prefer `models`. Exact id, not an alias (e.g. "claude-sonnet-5-5", "gpt-5.2").',
       },
+      models: MODELS_PROPERTY,
     },
     required: ['ids', 'reply'],
     additionalProperties: false,
@@ -201,7 +227,7 @@ export const TOOL_PINSAY_REPLY = {
   description:
     `Post a reply on a comment, visible to its author and the other stakeholders, with tool/model ` +
     `attribution. Does not change the comment's status; to close a comment out with a reply, use ` +
-    `pinsay_mark_applied or pinsay_commit_and_mark. Returns {replyId}. ${UNTRUSTED_NOTICE}`,
+    `pinsay_mark_applied or pinsay_commit_and_mark. Returns {replyId}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -222,8 +248,10 @@ export const TOOL_PINSAY_REPLY = {
       },
       model: {
         type: 'string',
-        description: 'The model id you are running as (e.g. "claude-sonnet-5", "gpt-5.2"). Always pass this too.',
+        description:
+          'Legacy single model id (role unset); prefer `models`. Exact id, not an alias (e.g. "claude-sonnet-5-5", "gpt-5.2").',
       },
+      models: MODELS_PROPERTY,
     },
     required: ['id', 'body'],
     additionalProperties: false,

@@ -301,23 +301,30 @@ export function buildApplyPrompt(
 
   lines.push('## When you finish an item');
   lines.push(
-    'Run exactly: `npx pinsay-cli apply --mark <id> --reply "<what changed>" --model <your-model-id> --tool <your-tool-name>`',
+    'Run exactly: `npx pinsay-cli apply --mark <id> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`',
   );
   lines.push(
-    '(Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --model <your-model-id> --tool <your-tool-name>`',
+    '(Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`',
   );
   lines.push(
-    'once at the end). Never run git push. `--model` (e.g. `claude-sonnet-5`, `gpt-5.2`) and `--tool` (e.g.',
+    'once at the end). Never run git push. `--models` MUST list EVERY model that touched the item and its role:',
   );
   lines.push(
-    '`claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) record which model and agent you are',
+    'the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). Use exact',
   );
   lines.push(
-    'running as. ALWAYS pass both explicitly, even on a project you ran `init` on — `--tool` silently falls back',
+    'model ids (e.g. `claude-opus-5-5`, `claude-sonnet-5-5`, `gpt-5.2`), never aliases like "haiku" or "sonnet". With one',
   );
   lines.push(
-    'to whichever tool happened to run `init`, which is wrong the moment a different tool applies a comment later.',
+    'model and no delegation, pass just yours as `<your-model-id>=implementer`. `--tool` (e.g. `claude-code`, `opencode`,',
   );
+  lines.push(
+    '`cursor`, `windsurf`, `antigravity`) records which agent you are running as. ALWAYS pass both explicitly, even on a',
+  );
+  lines.push(
+    'project you ran `init` on — `--tool` silently falls back to whichever tool happened to run `init`, which is wrong',
+  );
+  lines.push('the moment a different tool applies a comment later.');
 
   return lines.join('\n') + '\n';
 }

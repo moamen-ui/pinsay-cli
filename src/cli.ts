@@ -260,6 +260,11 @@ Options:
   --reply <text>     Reply text for applied comment (required with --mark)
   --no-commit        Skip git commit during --mark (PATCH only)
   --dry-run          Print what --mark would do without making git/API changes
+  --models <list>    Every model that worked on the item, with its role, for --mark/--fail:
+                     "<id>=<role>,<id>=<role>" (role: planner|implementer|reviewer, optional;
+                     e.g. "claude-opus-5-5=planner,claude-sonnet-5-5=implementer,claude-opus-5-5=reviewer").
+                     Env fallback: PINSAY_AI_MODELS
+  --model <id>       One model id (role unset); merged after --models. Env: PINSAY_AI_MODEL
   --fail <id>        Mark apply failed with a reply
   --reason <text>    Failure reason (required with --fail)
   --status <status>  Filter queue by status (open, ready, applied, archived)

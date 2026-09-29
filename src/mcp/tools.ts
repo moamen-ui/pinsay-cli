@@ -10,6 +10,7 @@ import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
+import { resolveModelsFromArgs, modelsBody, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext, ApplyPageDto, PageContextDto } from '../apply/types.js';
 
 export type McpContext = {
@@ -365,8 +366,18 @@ export async function handleGetComment(
   }
 }
 
+/** Validate the `models` array / legacy `model` args; a bad value is a tool error, not a silent drop. */
+function parseModelsArgs(args: { model?: unknown; models?: unknown } | undefined): AiModelEntry[] {
+  try {
+    return resolveModelsFromArgs(args);
+  } catch (err) {
+    if (err instanceof ModelsError) throw mcpError('forbidden', err.message);
+    throw err;
+  }
+}
+
 export async function handleMarkApplied(
-  args: { id: number; reply: string; commitUrl?: string; tool?: string; model?: string },
+  args: { id: number; reply: string; commitUrl?: string; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
   const id = Number(args?.id);
@@ -379,7 +390,7 @@ export async function handleMarkApplied(
   const appliedByLabel = email;
   const commitUrl = args.commitUrl || null;
   const tool = args.tool || ctx.configAiTool;
-  const model = args.model || process.env.PINSAY_AI_MODEL;
+  const models = parseModelsArgs(args);
 
   await api(ctx.server, `/api/comments/${id}`, {
     method: 'PATCH',
@@ -389,7 +400,7 @@ export async function handleMarkApplied(
       appliedByLabel,
       commitUrl,
       aiTool: tool || undefined,
-      aiModel: model || undefined,
+      ...modelsBody(models),
     },
     token: ctx.token,
   });
@@ -408,14 +419,14 @@ export async function handleMarkApplied(
 }
 
 export async function handleCommitAndMark(
-  args: { ids: number[]; reply: string; files?: string[]; tool?: string; model?: string },
+  args: { ids: number[]; reply: string; files?: string[]; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
   const ids = args?.ids;
   const reply = args?.reply;
   const files = args?.files;
   const tool = args?.tool || ctx.configAiTool;
-  const model = args?.model || process.env.PINSAY_AI_MODEL;
+  const models = parseModelsArgs(args);
 
   if (!Array.isArray(ids) || ids.length === 0 || typeof reply !== 'string') {
     throw mcpError('git', 'ids (non-empty array) and reply (string) are required');
@@ -520,7 +531,7 @@ export async function handleCommitAndMark(
             // so the same fix that shipped for `pinsay apply` has to hold here.
             commitSha: sha,
             aiTool: tool || undefined,
-            aiModel: model || undefined,
+            ...modelsBody(models),
           },
           token: ctx.token,
         });
@@ -572,7 +583,7 @@ export async function handleCommitAndMark(
           // Same reason as the single-comment path above.
           commitSha: sha,
           aiTool: tool || undefined,
-          aiModel: model || undefined,
+          ...modelsBody(models),
         },
         token: ctx.token,
       });
@@ -620,7 +631,7 @@ export async function handleCommitAndMark(
           // stays "applied" forever even once the fix ships.
           commitSha: sha,
           aiTool: tool || undefined,
-          aiModel: model || undefined,
+          ...modelsBody(models),
         },
         token: ctx.token,
       });
@@ -639,7 +650,7 @@ export async function handleCommitAndMark(
 }
 
 export async function handleReply(
-  args: { id: number; body: string; tool?: string; model?: string },
+  args: { id: number; body: string; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
   const id = Number(args?.id);
@@ -649,11 +660,11 @@ export async function handleReply(
   }
 
   const tool = args?.tool || ctx.configAiTool;
-  const model = args?.model || process.env.PINSAY_AI_MODEL;
+  const models = parseModelsArgs(args);
 
   const res = await api<any>(ctx.server, `/api/comments/${id}/replies`, {
     method: 'POST',
-    body: { body, aiTool: tool || undefined, aiModel: model || undefined },
+    body: { body, aiTool: tool || undefined, ...modelsBody(models) },
     token: ctx.token,
   });
 
