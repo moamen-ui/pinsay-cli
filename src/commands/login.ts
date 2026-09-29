@@ -64,14 +64,14 @@ export async function loginCommand(cwd: string, options: Record<string, string |
       if (outcome.reason === 'denied') {
         console.error('Sign-in was denied.');
       } else {
-        console.error('The sign-in code expired. Run `pinsay login` again.');
+        console.error('The sign-in code expired. Run `npx pinsay-cli login` again.');
       }
       process.exit(3);
     }
     key = outcome.result.apiKey;
     me = { displayName: outcome.result.displayName, email: outcome.result.email };
   } else {
-    console.error('No key provided and no terminal to sign in from — run `pinsay login --key <key>` or set PINSAY_API_KEY.');
+    console.error('No key provided and no terminal to sign in from — run `npx pinsay-cli login --key <key>` or set PINSAY_API_KEY.');
     process.exit(2);
   }
 

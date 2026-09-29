@@ -61,7 +61,7 @@ function parseArgs(args: string[]) {
 }
 
 const HELP = `
-Usage: pinsay <command> [options]
+Usage: npx pinsay-cli <command> [options]
 
 Commands:
   init      Set up the feedback widget in your project
@@ -106,7 +106,7 @@ async function main() {
     if (command === 'init') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay init [options]
+Usage: npx pinsay-cli init [options]
 
 Options:
   --server <url>           Feedback server URL
@@ -143,7 +143,7 @@ Options:
     } else if (command === 'login') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay login [options]
+Usage: npx pinsay-cli login [options]
 
 Authenticate once per machine and save the result to
 ~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $PINSAY_CONFIG_DIR), keyed by
@@ -168,7 +168,7 @@ Options:
     } else if (command === 'logout') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay logout [options]
+Usage: npx pinsay-cli logout [options]
 
 Removes this machine's saved global key for a server.
 
@@ -183,7 +183,7 @@ Options:
     } else if (command === 'whoami') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay whoami [options]
+Usage: npx pinsay-cli whoami [options]
 
 Prints the server, the signed-in account, and which of env/repo/global answered the API key —
 never the key itself.
@@ -199,7 +199,7 @@ Options:
     } else if (command === 'doctor') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay doctor [options]
+Usage: npx pinsay-cli doctor [options]
 
 Checks an existing install and prints one line per check.
 
@@ -230,7 +230,7 @@ Exit codes:
     } else if (command === 'update') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay update [options]
+Usage: npx pinsay-cli update [options]
 
 Refreshes the AI skills and pinsay.sh from the configured server.
 
@@ -249,7 +249,7 @@ Options:
     } else if (command === 'apply') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay apply [options]
+Usage: npx pinsay-cli apply [options]
 
 Turn pending feedback comments into a self-contained AI apply prompt.
 
@@ -273,7 +273,7 @@ Options:
     } else if (command === 'list' || command === 'comments') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay list [status] [environment] [options]
+Usage: npx pinsay-cli list [status] [environment] [options]
 
 List feedback comments in a summary view.
 
@@ -289,7 +289,7 @@ Options:
     } else if (command === 'map') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay map --from-source
+Usage: npx pinsay-cli map --from-source
 
 Rebuild .pinsay/manifest.json from source, without running a build.
 
@@ -307,7 +307,7 @@ Options:
     } else if (command === 'get') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay get <id> [options]
+Usage: npx pinsay-cli get <id> [options]
 
 View whitelisted comment projection for AI agents.
 
@@ -321,8 +321,8 @@ Options:
     } else if (command === 'status') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay status <id> <open|ready|applied|archived>
-       pinsay status --deployed [sha]
+Usage: npx pinsay-cli status <id> <open|ready|applied|archived>
+       npx pinsay-cli status --deployed [sha]
 
 Update comment status, or report a deployed build.
 
@@ -341,7 +341,7 @@ Update comment status, or report a deployed build.
     } else if (command === 'reply') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay reply <id> "<text>"
+Usage: npx pinsay-cli reply <id> "<text>"
 
 Add a reply to a comment.
 `);
@@ -351,7 +351,7 @@ Add a reply to a comment.
     } else if (command === 'mcp') {
         if (parsed['help']) {
             console.log(`
-Usage: pinsay mcp [options]
+Usage: npx pinsay-cli mcp [options]
 
 Start the PinSay stdio MCP server for AI tools.
 

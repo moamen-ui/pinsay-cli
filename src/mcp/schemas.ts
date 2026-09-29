@@ -113,7 +113,7 @@ export const TOOL_PINSAY_MARK_APPLIED = {
     `Mark one comment applied and post the reply on it, recording the optional commitUrl, the git ` +
     `user.email as the applier, and the tool/model attribution. Runs no git command and records no ` +
     `commit sha, so a comment marked this way is never flipped to Live by ` +
-    `\`pinsay status --deployed\`. Use it when a human will commit the change; to commit ` +
+    `\`npx pinsay-cli status --deployed\`. Use it when a human will commit the change; to commit ` +
     `now, use pinsay_commit_and_mark. Returns {id, status, commitUrl}. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',

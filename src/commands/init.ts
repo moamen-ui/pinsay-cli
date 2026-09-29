@@ -210,7 +210,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                         if (outcome.reason === 'denied') {
                             console.error('Sign-in was denied.');
                         } else {
-                            console.error('The sign-in code expired. Run `pinsay init` again.');
+                            console.error('The sign-in code expired. Run `npx pinsay-cli init` again.');
                         }
                         process.exit(3);
                     }
@@ -672,7 +672,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             if (!isJson) {
                 console.log(`ℹ ${appInfo.kind} detected — there's no single entry point to inject into automatically.
   If you know the file, name it and re-run — that always wins over detection:
-    npx -y pinsay init --html path/to/index.html
+    npx -y pinsay-cli init --html path/to/index.html
   Otherwise the pinsay-init skill was installed for ${tool}; run it and it will mount the widget:
     /pinsay-init (or @pinsay-init, depending on your AI tool)
   Config is already saved in .pinsay/config.json, so neither will ask for the key or project again.`);
@@ -1542,7 +1542,7 @@ async function handleMultiProjectSetup(args: {
                     console.log(
                         `\x1b[33mHeads up:\x1b[0m automatic widget injection isn't supported for ${app.dir} yet — ` +
                         `no index.html found (checked index.html, src/index.html, public/index.html). ` +
-                        `The project is still registered; run \`pinsay init --path ${app.dir} --project ${result.key} --html <path>\` ` +
+                        `The project is still registered; run \`npx pinsay-cli init --path ${app.dir} --project ${result.key} --html <path>\` ` +
                         `once you know the file, or mount the widget by hand.`,
                     );
                 }

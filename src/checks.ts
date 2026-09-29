@@ -119,7 +119,7 @@ export async function runInitChecks(
         id: 'config',
         status: 'error',
         message: 'No .pinsay/config.json',
-        hint: 'Run `npx -y pinsay init`',
+        hint: 'Run `npx -y pinsay-cli init`',
       });
       return checks;
     }
@@ -130,7 +130,7 @@ export async function runInitChecks(
       id: 'config',
       status: 'error',
       message: 'No .pinsay/config.json',
-      hint: 'Run `npx -y pinsay init`',
+      hint: 'Run `npx -y pinsay-cli init`',
     });
     // Everything below needs a server; there is nothing further to say.
     return checks;
@@ -343,7 +343,7 @@ export async function runInitChecks(
             id: 'stale',
             status: 'warn',
             message: `${stale.length} file${stale.length === 1 ? '' : 's'} behind the server (${meta.skillVersion}): ${stale.join(', ')}`,
-            hint: 'Run `npx -y pinsay update`',
+            hint: 'Run `npx -y pinsay-cli update`',
           },
     );
   }

@@ -138,7 +138,7 @@ export async function deployedCommand(
     process.exit(2);
   }
   if (resolved.reason === 'none') {
-    console.error('No project configured. Run `pinsay init` or pass --project.');
+    console.error('No project configured. Run `npx pinsay-cli init` or pass --project.');
     process.exit(2);
   }
 

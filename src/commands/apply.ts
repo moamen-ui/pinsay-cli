@@ -51,7 +51,7 @@ export async function applyCommand(
   ).replace(/\/$/, '');
 
   if (!server) {
-    console.error('No server configured. Run `pinsay init` or pass --server.');
+    console.error('No server configured. Run `npx pinsay-cli init` or pass --server.');
     process.exit(2);
   }
 
@@ -70,7 +70,7 @@ export async function applyCommand(
       process.exit(2);
     }
     if (resolved.reason === 'none') {
-      console.error('No project configured. Run `pinsay init` or pass --project.');
+      console.error('No project configured. Run `npx pinsay-cli init` or pass --project.');
       process.exit(2);
     }
     // ambiguous: `--mark all` cannot guess which project's queue to commit, but the default/

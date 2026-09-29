@@ -8,7 +8,7 @@ import type {
 
 export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`pinsay get <id> --json\`).
+Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`npx pinsay-cli get <id> --json\`).
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |

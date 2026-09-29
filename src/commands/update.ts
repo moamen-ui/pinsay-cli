@@ -60,7 +60,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   const server = (options.server || config.server || '').replace(/\/$/, '');
 
   if (!server) {
-    console.error('No server configured — run `npx -y pinsay init` first.');
+    console.error('No server configured — run `npx -y pinsay-cli init` first.');
     return 1;
   }
 
@@ -111,7 +111,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     if (!config.aiTool) {
       // No tool recorded at all (a config written before `aiTool` existed, and never re-run
       // through `init`): there is nothing to tell `installSkills` to install FOR.
-      console.error('No AI tool configured — run `npx -y pinsay init` to record one, then `update` again.');
+      console.error('No AI tool configured — run `npx -y pinsay-cli init` to record one, then `update` again.');
     } else {
       try {
         await installSkills(server, config.aiTool, cwd, config.skillsDir);
