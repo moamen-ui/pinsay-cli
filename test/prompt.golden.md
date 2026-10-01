@@ -100,10 +100,11 @@ Picked actions (trusted):
 ## When you finish an item
 Run exactly: `npx pinsay-cli apply --mark <id> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`
 (Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`
-once at the end). Never run git push. `--models` MUST list EVERY model that touched the item and its role:
-the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). Use exact
+once at the end). Never run git push. `--models` is MANDATORY and MUST list EVERY model that touched the item and its role:
+the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). NEVER guess or hardcode
+outdated model names from memory (like "gemini-2.5-pro"). Always inspect your active runtime model name directly. Use exact
 model ids (e.g. `claude-opus-5-5`, `claude-sonnet-5-5`, `gpt-5.2`), never aliases like "haiku" or "sonnet". With one
-model and no delegation, pass just yours as `<your-model-id>=implementer`. `--tool` (e.g. `claude-code`, `opencode`,
-`cursor`, `windsurf`, `antigravity`) records which agent you are running as. ALWAYS pass both explicitly, even on a
-project you ran `init` on — `--tool` silently falls back to whichever tool happened to run `init`, which is wrong
-the moment a different tool applies a comment later.
+model and no delegation, pass just yours as `<your-model-id>=implementer`. Explicit role `=<role>` is required on each entry.
+`--tool` (e.g. `claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) records which agent you are running as.
+ALWAYS pass both explicitly, even on a project you ran `init` on — `--tool` silently falls back to whichever tool happened
+to run `init`, which is wrong the moment a different tool applies a comment later.

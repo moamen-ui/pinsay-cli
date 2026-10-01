@@ -1,6 +1,7 @@
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
-import { api, ApiError } from '../api.js';
+import { api } from '../api.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
+import { checkAndNotifyUpdates } from '../lib/notify-update.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { BUILD_CLI_VERSION, BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { runApply } from '../apply/run.js';
@@ -40,6 +41,30 @@ async function exitIfWorkspaceFrozen(server: string, token: string | undefined):
 }
 
 /** `--models` / `--model` (+ env fallbacks) → validated entries; exits 2 on invalid input. */
+/**
+ * Enforces the server's minimum CLI version (exits 5 when too old) and prints the non-blocking
+ * "update available" notices. Best-effort: a failing /api/meta (old server, network) is ignored.
+ */
+async function checkMetaAndNotify(
+  server: string,
+  config: any,
+  root: string,
+  parsed: Record<string, string | boolean>,
+): Promise<void> {
+  try {
+    const meta = await api<any>(server, '/api/meta');
+    const minCli = meta?.minCliVersion || '0.0.0';
+    if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
+      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
+      process.exit(5);
+    }
+    await checkAndNotifyUpdates({ meta, config, cwd: root, silent: Boolean(parsed['json']) });
+  } catch {
+    // Best-effort: a 404 means an old server without /api/meta; other errors surface in the
+    // calls that follow.
+  }
+}
+
 function parseModelFlags(parsed: Record<string, string | boolean>): AiModelEntry[] {
   try {
     return resolveModels({
@@ -102,20 +127,7 @@ export async function applyCommand(
 
   const project = resolved.ok ? resolved.project.key : '';
 
-  // Check /api/meta for minCliVersion compatibility
-  try {
-    const meta = await api<any>(server, '/api/meta');
-    const minCli = meta?.minCliVersion || '0.0.0';
-    if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
-      process.exit(5);
-    }
-  } catch (err: any) {
-    // 404 means old server without /api/meta; other network errors handled in subsequent calls
-    if (!(err instanceof ApiError && err.code === 404)) {
-      // Best-effort check; continue if /api/meta fails for transient reasons
-    }
-  }
+  await checkMetaAndNotify(server, config, root, parsed);
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
   const token = await resolveToken(server, root, explicitKey);
@@ -161,8 +173,10 @@ export async function applyCommand(
     }
 
     const reply = typeof parsed['reply'] === 'string' ? parsed['reply'] : '';
-    if (!reply) {
-      console.error('--reply "<text>" is required when using --mark');
+    if (!reply || reply.trim().length < 15 || /^(done|fixed|applied|ok|yes)$/i.test(reply.trim())) {
+      console.error(
+        '--reply "<text>" is required when using --mark and must provide a substantive explanation of the changes (at least 15 characters, e.g. "Applied ✓ — updated logo source in header").',
+      );
       process.exit(2);
     }
 
@@ -181,6 +195,22 @@ export async function applyCommand(
       );
     }
     const models = parseModelFlags(parsed);
+    if (models.length === 0) {
+      console.error(
+        '--models "<model>=<role>" is mandatory when marking a comment as applied.\n' +
+          'Specify your actual active runtime model and role (e.g. --models "<active-model>=implementer").\n' +
+          'If multiple models or subagents participated (planner, implementer, reviewer), list all of them separated by commas.\n' +
+          'Never guess or hardcode model names from memory.',
+      );
+      process.exit(2);
+    }
+    const missingRole = models.find((m) => !m.role);
+    if (missingRole) {
+      console.error(
+        `Invalid --models entry "${missingRole.model}": explicit role is required. Expected "<model>=<role>" where role is one of: planner, implementer, reviewer (e.g. "${missingRole.model}=implementer").`,
+      );
+      process.exit(2);
+    }
 
     const markStatus = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
     const markEnv = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
@@ -288,18 +318,7 @@ async function applyAllProjects(
     process.exit(2);
   }
 
-  try {
-    const meta = await api<any>(server, '/api/meta');
-    const minCli = meta?.minCliVersion || '0.0.0';
-    if (compareSemver(BUILD_CLI_VERSION, minCli) < 0) {
-      console.error(tooOldMessage(BUILD_CLI_VERSION, minCli));
-      process.exit(5);
-    }
-  } catch (err: any) {
-    if (!(err instanceof ApiError && err.code === 404)) {
-      // best-effort
-    }
-  }
+  await checkMetaAndNotify(server, config, root, parsed);
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
   const token = await resolveToken(server, root, explicitKey);

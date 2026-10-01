@@ -307,24 +307,29 @@ export function buildApplyPrompt(
     '(Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`',
   );
   lines.push(
-    'once at the end). Never run git push. `--models` MUST list EVERY model that touched the item and its role:',
+    'once at the end). Never run git push. `--models` is MANDATORY and MUST list EVERY model that touched the item and its role:',
   );
   lines.push(
-    'the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). Use exact',
+    'the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). NEVER guess or hardcode',
+  );
+  lines.push(
+    'outdated model names from memory (like "gemini-2.5-pro"). Always inspect your active runtime model name directly. Use exact',
   );
   lines.push(
     'model ids (e.g. `claude-opus-5-5`, `claude-sonnet-5-5`, `gpt-5.2`), never aliases like "haiku" or "sonnet". With one',
   );
   lines.push(
-    'model and no delegation, pass just yours as `<your-model-id>=implementer`. `--tool` (e.g. `claude-code`, `opencode`,',
+    'model and no delegation, pass just yours as `<your-model-id>=implementer`. Explicit role `=<role>` is required on each entry.',
   );
   lines.push(
-    '`cursor`, `windsurf`, `antigravity`) records which agent you are running as. ALWAYS pass both explicitly, even on a',
+    '`--tool` (e.g. `claude-code`, `opencode`, `cursor`, `windsurf`, `antigravity`) records which agent you are running as.',
   );
   lines.push(
-    'project you ran `init` on — `--tool` silently falls back to whichever tool happened to run `init`, which is wrong',
+    'ALWAYS pass both explicitly, even on a project you ran `init` on — `--tool` silently falls back to whichever tool happened',
   );
-  lines.push('the moment a different tool applies a comment later.');
+  lines.push(
+    'to run `init`, which is wrong the moment a different tool applies a comment later.',
+  );
 
   return lines.join('\n') + '\n';
 }

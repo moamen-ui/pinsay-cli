@@ -293,6 +293,14 @@ export async function statusCommand(
     process.exit(2);
   }
 
+  if (statusNum === 3 /* Applied */) {
+    console.error(
+      "Marking a comment as 'applied' is not permitted via `pinsay status`.\n" +
+        "Use `pinsay apply --mark <id> --reply \"<explanation>\"` (or `pinsay reply <id> \"<text>\"`) to record a properly structured reply.",
+    );
+    process.exit(2);
+  }
+
   await api(server, `/api/comments/${id}`, {
     method: 'PATCH',
     body: { status: statusNum },

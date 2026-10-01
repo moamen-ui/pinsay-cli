@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
@@ -15,6 +16,8 @@ import {
   ModelsError,
 } from '../src/apply/models.js';
 import { markApplied, markFailed } from '../src/apply/mark.js';
+
+const __dirname = join(fileURLToPath(import.meta.url), '..');
 
 const TRIO = 'claude-opus-5-5=planner,claude-sonnet-5-5=implementer,claude-opus-5-5=reviewer';
 
@@ -193,4 +196,34 @@ test('resolveModelsFromArgs: explicit models/model replace env fallbacks', () =>
   const env = { PINSAY_AI_MODEL: 'stale-model' } as NodeJS.ProcessEnv;
   assert.deepEqual(resolveModelsFromArgs({ models: [{ model: 'a', role: 'planner' }] }, env).map((e) => e.model), ['a']);
   assert.deepEqual(resolveModelsFromArgs({}, env).map((e) => e.model), ['stale-model']);
+});
+
+test('apply --mark rejects without --models and when role is missing', async () => {
+  const cliPath = join(__dirname, '../dist/cli.js');
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-models-cli-'));
+  try {
+    await fs.writeFile(
+      join(dir, '.pinsay.json'),
+      JSON.stringify({ server: 'https://example.com', project: 'test-proj' }),
+    );
+    // 1. Missing --models entirely
+    const resNoModels = spawnSync(
+      process.execPath,
+      [cliPath, 'apply', '--mark', '1', '--reply', 'Applied ✓ — updated button color', '--no-commit', '--key', 'test-key'],
+      { cwd: dir, encoding: 'utf8', env: { ...process.env, PINSAY_AI_MODELS: '', PINSAY_AI_MODEL: '' } },
+    );
+    assert.equal(resNoModels.status, 2);
+    assert.ok(resNoModels.stderr.includes('--models "<model>=<role>" is mandatory'));
+
+    // 2. Missing role in --models entry
+    const resNoRole = spawnSync(
+      process.execPath,
+      [cliPath, 'apply', '--mark', '1', '--reply', 'Applied ✓ — updated button color', '--models', 'claude-opus-5-5', '--no-commit', '--key', 'test-key'],
+      { cwd: dir, encoding: 'utf8', env: { ...process.env, PINSAY_AI_MODELS: '', PINSAY_AI_MODEL: '' } },
+    );
+    assert.equal(resNoRole.status, 2);
+    assert.ok(resNoRole.stderr.includes('explicit role is required'));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
 });

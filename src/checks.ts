@@ -22,14 +22,15 @@ export interface CheckResult {
   fixable?: boolean;
 }
 
-export interface MetaResponse {
+export type MetaResponse = {
   version?: string;
   apiVersion?: number;
   minCliVersion?: string;
+  latestCliVersion?: string;
   skillVersion?: string | null;
   productName?: string;
   serverTime?: string;
-}
+};
 
 /**
  * Compares two semver-ish strings. Returns <0, 0, >0 like a comparator.
