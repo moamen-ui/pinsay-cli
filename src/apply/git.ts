@@ -59,6 +59,18 @@ export function headSha(cwd?: string): string {
   return result.stdout.trim();
 }
 
+/** Resolves a commit-ish (sha, branch, `HEAD`) to a full sha in `cwd`; throws when it is not a commit here. */
+export function resolveCommit(ref: string, cwd?: string): string {
+  const result = spawnSync('git', ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`], {
+    cwd,
+    encoding: 'utf8',
+  });
+  if (result.status !== 0) {
+    throw new Error(`Not a commit in this repository: ${ref}`);
+  }
+  return result.stdout.trim();
+}
+
 export function getRemoteUrl(cwd?: string, remote = 'origin'): string | null {
   const result = spawnSync('git', ['remote', 'get-url', remote], {
     cwd,

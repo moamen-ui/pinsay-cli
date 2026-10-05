@@ -258,7 +258,8 @@ Options:
   --tool <name>      Hand off prompt to claude, opencode, cursor, or clipboard
   --mark <id>|all    Commit staged changes and mark comment(s) applied
   --reply <text>     Reply text for applied comment (required with --mark)
-  --no-commit        Skip git commit during --mark (PATCH only)
+  --no-commit        Mark without committing: the fix is already committed (records --commit, default HEAD)
+  --commit <sha>     With --no-commit: the commit that holds the fix (default HEAD)
   --dry-run          Print what --mark would do without making git/API changes
   --models <list>    Every model that worked on the item, with its role, for --mark/--fail:
                      "<id>=<role>,<id>=<role>" (role: planner|implementer|reviewer, optional;

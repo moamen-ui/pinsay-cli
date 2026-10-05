@@ -1,6 +1,6 @@
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
-import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from './git.js';
+import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail, resolveCommit } from './git.js';
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import type { ApplyClientContext } from './types.js';
@@ -17,6 +17,8 @@ export type MarkAppliedOptions = {
   id: number | 'all';
   reply: string;
   noCommit?: boolean;
+  /** With `noCommit`: the commit that already holds the fix (default `HEAD`). Its sha and URL are recorded. */
+  commit?: string;
   dryRun?: boolean;
   tool?: string;
   /** The model id the tool reported running as (e.g. "claude-sonnet-5"), for structured AI
@@ -65,11 +67,24 @@ export async function markApplied(
   const warning = delegationWarning(projectCtx.delegation ?? 'auto', models);
   if (warning) console.error(warning);
 
+  // --no-commit: the fix is already committed (e.g. merged after review). Record that commit, so deploy
+  // detection can still test ancestry; a bad ref stops before anything is sent.
+  let existingSha: string | undefined;
+  if (options.noCommit) {
+    try {
+      existingSha = resolveCommit(options.commit ?? 'HEAD', ctx.cwd);
+    } catch (err) {
+      console.error((err as Error).message);
+      process.exit(1);
+    }
+  }
+
   if (options.dryRun) {
     console.log(`[dry-run] Would mark comment ${options.id} as applied`);
     console.log(`[dry-run] Reply: ${options.reply}`);
     console.log(`[dry-run] AppliedBy: ${appliedByLabel}`);
     console.log(`[dry-run] Models: ${describeModels(models)}`);
+    console.log(`[dry-run] Commit: ${existingSha ?? 'a new commit of the staged changes'}`);
     return {
       committed: false,
       patchedIds: typeof options.id === 'number' ? [options.id] : [],
@@ -107,6 +122,9 @@ export async function markApplied(
       sha = headSha(ctx.cwd);
       const remote = getRemoteUrl(ctx.cwd);
       commitUrl = commitUrlFor(sha, remote);
+    } else {
+      sha = existingSha;
+      commitUrl = sha ? commitUrlFor(sha, getRemoteUrl(ctx.cwd)) : null;
     }
 
     for (const item of pending) {
@@ -160,6 +178,9 @@ export async function markApplied(
       sha = headSha(ctx.cwd);
       const remote = getRemoteUrl(ctx.cwd);
       commitUrl = commitUrlFor(sha, remote);
+    } else {
+      sha = existingSha;
+      commitUrl = sha ? commitUrlFor(sha, getRemoteUrl(ctx.cwd)) : null;
     }
 
     await api(ctx.server, `/api/comments/${id}`, {

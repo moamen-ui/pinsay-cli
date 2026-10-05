@@ -373,3 +373,166 @@ test('markApplied all uses the --status/--env filter the plan was built with', a
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+test('markApplied with noCommit records HEAD sha and commitUrl', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-mark-test-'));
+  spawnSync('git', ['init'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'Developer'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'dev@example.com'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/myorg/myrepo.git'], { cwd: dir });
+
+  // Initial commit so HEAD exists, then a second commit that already holds the fix
+  await fs.writeFile(join(dir, 'README.md'), '# test\n');
+  spawnSync('git', ['add', 'README.md'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Initial commit'], { cwd: dir });
+  await fs.writeFile(join(dir, 'app.js'), 'console.log("fix");\n');
+  spawnSync('git', ['add', 'app.js'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Fix console log'], { cwd: dir });
+
+  let patchedBody: any = null;
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/branding') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { productName: 'PinSay' } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/my-app/capture-config')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { commitStyle: 2 } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/comments/10') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 10, body: 'Fix console log' } }));
+      return;
+    }
+    if (req.method === 'PATCH' && req.url === '/api/comments/10') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        patchedBody = JSON.parse(data);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: {} }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/api/events') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+
+  try {
+    const ctx: ApplyClientContext = {
+      server: stub.url,
+      project: 'my-app',
+      token: 'test-token',
+      cwd: dir,
+    };
+
+    const result = await markApplied(
+      {
+        id: 10,
+        reply: 'Fixed the console log statement',
+        noCommit: true,
+      },
+      ctx,
+    );
+
+    const head = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).stdout.trim();
+    assert.equal(result.committed, false);
+    assert.equal(result.sha, head);
+    assert.ok(patchedBody, 'PATCH request must have been made');
+    assert.equal(patchedBody.commitSha, head);
+    assert.equal(patchedBody.commitUrl, `https://github.com/myorg/myrepo/commit/${head}`);
+
+    const count = spawnSync('git', ['rev-list', '--count', 'HEAD'], { cwd: dir, encoding: 'utf8' });
+    assert.equal(count.stdout.trim(), '2', 'no new commit may be made');
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
+test('markApplied with noCommit and commit records that commit', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-mark-test-'));
+  spawnSync('git', ['init'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'Developer'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'dev@example.com'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/myorg/myrepo.git'], { cwd: dir });
+
+  await fs.writeFile(join(dir, 'README.md'), '# test\n');
+  spawnSync('git', ['add', 'README.md'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Initial commit'], { cwd: dir });
+  const firstSha = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: dir, encoding: 'utf8' }).stdout.trim();
+  await fs.writeFile(join(dir, 'app.js'), 'console.log("fix");\n');
+  spawnSync('git', ['add', 'app.js'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Fix console log'], { cwd: dir });
+
+  let patchedBody: any = null;
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/branding') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { productName: 'PinSay' } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/my-app/capture-config')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { commitStyle: 2 } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/comments/10') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 10, body: 'Fix console log' } }));
+      return;
+    }
+    if (req.method === 'PATCH' && req.url === '/api/comments/10') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        patchedBody = JSON.parse(data);
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: {} }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/api/events') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+
+  try {
+    const ctx: ApplyClientContext = {
+      server: stub.url,
+      project: 'my-app',
+      token: 'test-token',
+      cwd: dir,
+    };
+
+    const result = await markApplied(
+      {
+        id: 10,
+        reply: 'Fixed the console log statement',
+        noCommit: true,
+        commit: firstSha,
+      },
+      ctx,
+    );
+
+    assert.equal(result.committed, false);
+    assert.equal(result.sha, firstSha);
+    assert.ok(patchedBody, 'PATCH request must have been made');
+    assert.equal(patchedBody.commitSha, firstSha);
+    assert.equal(patchedBody.commitUrl, `https://github.com/myorg/myrepo/commit/${firstSha}`);
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
