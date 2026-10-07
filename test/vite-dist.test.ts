@@ -75,6 +75,7 @@ test('the built vite plugin actually stamps (not just the TypeScript source)', a
     );
     assert.ok(verdict.stamped, 'the built plugin did not stamp data-component-source');
   } finally {
-    rmSync(scratch, { recursive: true, force: true });
+    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
+    rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

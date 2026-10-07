@@ -118,6 +118,7 @@ test('mcp stdio: spawn node dist/cli.js mcp, initialize, tools/list, tools/call'
   } finally {
     await client.close();
     await stub.close();
-    rmSync(tmpDir, { recursive: true, force: true });
+    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });

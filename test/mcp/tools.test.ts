@@ -48,7 +48,8 @@ describe('mcp: tools handlers and helpers', () => {
   });
 
   afterEach(() => {
-    rmSync(tmpDir, { recursive: true, force: true });
+    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   });
 
   test('partitionItem: untrusted has exactly body, replies, snapshot; trusted has pickedActions', () => {

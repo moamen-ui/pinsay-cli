@@ -96,6 +96,7 @@ test('mcp: a 423 from the server comes back as a tool error carrying the server 
   } finally {
     await client.close();
     await stub.close();
-    rmSync(tmpDir, { recursive: true, force: true });
+    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
+    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
   }
 });
