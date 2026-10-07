@@ -1,4 +1,3 @@
-import { join } from 'node:path';
 import { SKILL_FILES, SUB_SKILLS } from '../skills.js';
 import type { PinSayConfig } from '../config.js';
 
@@ -18,11 +17,12 @@ export function skillFilesFor(config: PinSayConfig): string[] {
 
   // A `--skills-dir` override always writes the folder shape (see installSkills' `isFlatFileTool`),
   // so it always gets apply.md/translate.md/advanced.md as siblings too, regardless of aiTool.
-  const skillPaths = config.skillsDir
+  const dir = config.skillsDir?.replace(/\\/g, '/').replace(/\/+$/, '');
+  const skillPaths = dir
     ? [
-        join(config.skillsDir, 'pinsay-init', 'SKILL.md'),
-        join(config.skillsDir, 'pinsay-feedback', 'SKILL.md'),
-        ...SUB_SKILLS.map((name) => join(config.skillsDir!, 'pinsay-feedback', `${name}.md`)),
+        `${dir}/pinsay-init/SKILL.md`,
+        `${dir}/pinsay-feedback/SKILL.md`,
+        ...SUB_SKILLS.map((name) => `${dir}/pinsay-feedback/${name}.md`),
       ]
     : [...layout];
 

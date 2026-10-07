@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliRoot = join(here, '..');
@@ -41,7 +41,7 @@ test('the built vite plugin actually stamps (not just the TypeScript source)', a
   writeFileSync(
     probe,
     [
-      `import plugin from ${JSON.stringify(distVite)};`,
+      `import plugin from ${JSON.stringify(pathToFileURL(distVite).href)};`,
       `const p = plugin({ enabled: true, buildSha: false });`,
       `p.configResolved?.({ root: ${JSON.stringify(cliRoot)} });`,
       `const warnings = [];`,
