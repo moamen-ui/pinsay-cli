@@ -17,8 +17,8 @@ npx pinsay-cli init
 
 | Command | What it does |
 |---|---|
-| `npx pinsay-cli init` | Configure a repo (server, project, widget snippet, skills) |
-| `npx pinsay-cli login` / `whoami` / `logout` | Sign in once per machine; check / clear credentials |
+| `npx pinsay-cli init` | Configure a repo (project, widget snippet, skills) |
+| `npx pinsay-cli login` / `whoami` / `logout` | Sign in (asks: this machine or this repo only); check / clear credentials |
 | `npx pinsay-cli list` / `get <id>` | List pending feedback; inspect one comment |
 | `npx pinsay-cli apply` | Generate the fix-it prompt for your AI tool, then record what changed |
 | `npx pinsay-cli apply --plan` | Preview proposed edits without touching code |
@@ -38,7 +38,7 @@ npx pinsay-cli init
 
 ## API keys
 
-Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` → the per-machine store (`~/.config/pointer/credentials.json`, mode 0600, never committed).
+Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` → the per-machine store (`~/.config/pinsay/credentials.json`, mode 0600, never committed).
 
 ## MCP (Claude Code / Cursor)
 
