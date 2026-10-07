@@ -62,7 +62,7 @@ test('installSkills for a folder-capable tool (claude-code) writes SKILL.md plus
     // installSkills' return value accounts for every sibling it wrote.
     for (const name of SUB_SKILLS) {
       assert.ok(
-        installed.includes(join('.claude/skills/pinsay-feedback', `${name}.md`)),
+        installed.includes(`.claude/skills/pinsay-feedback/${name}.md`),
         `installed files should include ${name}.md`,
       );
     }

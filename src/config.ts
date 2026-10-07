@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join, dirname, relative, isAbsolute, sep } from 'node:path';
+import { join, dirname, relative, resolve, sep } from 'node:path';
 
 /**
  * One app inside a multi-project (monorepo) repo. Keyed by the PinSay project key in
@@ -177,7 +177,9 @@ export function resolveProject(
 }
 
 function resolveAbs(p: string): string {
-  return isAbsolute(p) ? normalizeTrailingSlash(p) : normalizeTrailingSlash(join(process.cwd(), p));
+  // resolve(), not isAbsolute ? p : join(cwd, p): on Windows '/repo/x' is "absolute" but keeps its '/' while
+  // join() output uses '\', so the startsWith(dir + sep) match in resolveProject failed. resolve() normalises both.
+  return normalizeTrailingSlash(resolve(p));
 }
 
 function normalizeTrailingSlash(p: string): string {
