@@ -7,6 +7,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as http from 'node:http';
+import { gitSymlinkStub } from './git-stub.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -196,6 +197,21 @@ test('init --yes finishes when .claude/skills is a plain file (Windows Git symli
   await fs.access(path.join(dir, '.pinsay/config.json'));
   assert.strictEqual(await fs.readFile(path.join(dir, '.claude/skills'), 'utf8'), 'notes about skills\nsecond line\n');
   await fs.access(path.join(dir, '.pinsay/pinsay.sh'));
+}));
+
+test('init --yes on a repo whose .claude/skills is a Git symlink stub (Windows checkout) installs and exits 0', () => withTempDir(async (dir) => {
+  gitSymlinkStub(dir, '.claude/skills', '../docs/skills');
+
+  // No throw: init succeeds end to end on the CEO's exact Windows shape.
+  const { stdout, stderr } = await execAsync(
+    `node ${cliPath} init --yes --key ptr_good --create "My App" --tool claude-code`,
+    { cwd: dir, env: envFor(dir) },
+  );
+  assert.match(stdout, /is set up/);
+  assert.doesNotMatch(stderr, /Fatal error|⚠ Skills/);
+
+  await fs.access(path.join(dir, 'docs/skills/pinsay-init/SKILL.md'));
+  assert.strictEqual(await fs.readFile(path.join(dir, '.claude/skills'), 'utf8'), '../docs/skills');
 }));
 
 test('init --json reports skillWarnings when a skill path is blocked', () => withTempDir(async (dir) => {
@@ -546,8 +562,11 @@ test('first install with --key saves the key to the global store and writes no r
   assert.strictEqual(store[origin].displayName, 'Test User');
   assert.ok(store[origin].savedAt);
 
-  const stat = await fs.stat(storePath);
-  assert.strictEqual(stat.mode & 0o777, 0o600, 'the global store file must be 0600');
+  // Windows has no POSIX file modes
+  if (process.platform !== 'win32') {
+    const stat = await fs.stat(storePath);
+    assert.strictEqual(stat.mode & 0o777, 0o600, 'the global store file must be 0600');
+  }
 }));
 
 test('--local-credentials writes the repo file instead of the global store', () => withTempDir(async (dir) => {

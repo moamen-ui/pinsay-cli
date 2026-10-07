@@ -146,6 +146,7 @@ test('buildApplyPrompt matches golden file', () => {
 
   const actual = buildApplyPrompt([item as any], context as any);
   const goldenPath = join(dirname(fileURLToPath(import.meta.url)), 'prompt.golden.md');
-  const expected = readFileSync(goldenPath, 'utf8');
+  // git may check the golden file out with CRLF line endings on Windows — normalise before comparing.
+  const expected = readFileSync(goldenPath, 'utf8').replace(/\r\n/g, '\n');
   assert.strictEqual(actual.trim(), expected.trim());
 });

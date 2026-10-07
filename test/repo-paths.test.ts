@@ -5,6 +5,7 @@ import { basename, dirname, join, relative, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { linkOrCopy, resolveRepoPath, RepoPathError, writeRepoFile } from '../src/lib/repo-paths.js';
+import { canSymlink, NO_SYMLINK } from './symlink-support.js';
 
 // The primary skills path, repo-relative, used across the cases below.
 const R = '.claude/skills/pinsay-init/SKILL.md';
@@ -175,11 +176,11 @@ test('resolveRepoPath create:true stops when a stub points outside the repositor
   }
 });
 
-test('resolveRepoPath create:true follows a broken symlink and the link starts working', async () => {
+test('resolveRepoPath create:true follows a broken symlink and the link starts working', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await fsp.mkdir(join(dir, '.claude'), { recursive: true });
-    await fsp.symlink('../.agents/skills', join(dir, '.claude/skills'), 'file');
+    await fsp.symlink('../.agents/skills', join(dir, '.claude/skills'), 'dir');
     const r = await resolveRepoPath(dir, R, { create: true });
     assert.equal(r.abs, join(dir, '.agents/skills/pinsay-init/SKILL.md'));
     await fsp.writeFile(r.abs, 'x', 'utf8');
@@ -189,7 +190,7 @@ test('resolveRepoPath create:true follows a broken symlink and the link starts w
   }
 });
 
-test('resolveRepoPath create:true stops when a broken symlink points outside the repository', async () => {
+test('resolveRepoPath create:true stops when a broken symlink points outside the repository', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await fsp.mkdir(join(dir, '.claude'), { recursive: true });
@@ -207,12 +208,12 @@ test('resolveRepoPath create:true stops when a broken symlink points outside the
   }
 });
 
-test('resolveRepoPath create:true walks through a live symlink to a folder', async () => {
+test('resolveRepoPath create:true walks through a live symlink to a folder', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await fsp.mkdir(join(dir, 'real-skills'), { recursive: true });
     await fsp.mkdir(join(dir, '.claude'), { recursive: true });
-    await fsp.symlink('../real-skills', join(dir, '.claude/skills'), 'file');
+    await fsp.symlink('../real-skills', join(dir, '.claude/skills'), 'dir');
     const r = await resolveRepoPath(dir, R, { create: true });
     assert.equal(r.abs, join(dir, R));
     const st = await fsp.stat(join(dir, 'real-skills/pinsay-init'));
@@ -222,7 +223,7 @@ test('resolveRepoPath create:true walks through a live symlink to a folder', asy
   }
 });
 
-test('resolveRepoPath create:true stops when a live symlink points to a file', async () => {
+test('resolveRepoPath create:true stops when a live symlink points to a file', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await stubFile(dir, 'file.txt', 'content');
@@ -242,7 +243,7 @@ test('resolveRepoPath create:true stops when a live symlink points to a file', a
   }
 });
 
-test('resolveRepoPath create:true stops on a symlink loop', async () => {
+test('resolveRepoPath create:true stops on a symlink loop', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await fsp.mkdir(join(dir, '.claude'), { recursive: true });
@@ -331,7 +332,7 @@ test('writeRepoFile stops when a folder is at the final path', async () => {
   }
 });
 
-test('writeRepoFile replaces a broken symlink at the final path with a regular file', async () => {
+test('writeRepoFile replaces a broken symlink at the final path with a regular file', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await fsp.mkdir(join(dir, '.claude/skills/pinsay-init'), { recursive: true });
@@ -345,7 +346,7 @@ test('writeRepoFile replaces a broken symlink at the final path with a regular f
   }
 });
 
-test('writeRepoFile writes through a live symlink at the final path', async () => {
+test('writeRepoFile writes through a live symlink at the final path', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     await stubFile(dir, 'real.md', 'original');
@@ -360,7 +361,7 @@ test('writeRepoFile writes through a live symlink at the final path', async () =
   }
 });
 
-test('linkOrCopy makes a relative symlink from the mirror to the source', async () => {
+test('linkOrCopy makes a relative symlink from the mirror to the source', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     const source = await stubFile(dir, '.claude/skills/pinsay-init/SKILL.md', 'src');
@@ -377,7 +378,7 @@ test('linkOrCopy makes a relative symlink from the mirror to the source', async 
   }
 });
 
-test('linkOrCopy twice keeps the existing link', async () => {
+test('linkOrCopy twice keeps the existing link', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     const source = await stubFile(dir, '.claude/skills/pinsay-init/SKILL.md', 'src');
@@ -393,7 +394,7 @@ test('linkOrCopy twice keeps the existing link', async () => {
   }
 });
 
-test('linkOrCopy replaces an earlier regular file at the destination with a link', async () => {
+test('linkOrCopy replaces an earlier regular file at the destination with a link', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     const source = await stubFile(dir, '.claude/skills/pinsay-init/SKILL.md', 'src');
@@ -409,7 +410,7 @@ test('linkOrCopy replaces an earlier regular file at the destination with a link
   }
 });
 
-test('linkOrCopy replaces a broken symlink at the destination with a link', async () => {
+test('linkOrCopy replaces a broken symlink at the destination with a link', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const dir = await tempDir();
   try {
     const source = await stubFile(dir, '.claude/skills/pinsay-init/SKILL.md', 'src');

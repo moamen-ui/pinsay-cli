@@ -19,7 +19,7 @@ async function stubServer(
   };
 }
 
-test('runApply --tool claude spawns claude -p with prompt', async () => {
+test('runApply --tool claude spawns claude -p with prompt', { skip: process.platform === 'win32' && 'uses a POSIX sh stub on PATH' }, async () => {
   const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-run-test-'));
   const binDir = join(dir, 'bin');
   await fs.mkdir(binDir, { recursive: true });

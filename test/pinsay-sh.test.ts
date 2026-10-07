@@ -47,13 +47,13 @@ async function withGlobalDir(fn: (globalDir: string) => Promise<void>) {
   }
 }
 
-test('pinsay.sh is valid bash syntax (bash -n)', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () => {
+test('pinsay.sh is valid bash syntax (bash -n)', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () => {
   // Never skip this — it is the one check that catches a shell syntax error before it reaches a
   // consumer repo, since nothing else in the CLI's own test suite parses the served shell script.
   execFileSync('bash', ['-n', shPath]);
 });
 
-test('pinsay.sh: a multi-project config with no -p prints the configured keys and exits 2', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: a multi-project config with no -p prints the configured keys and exits 2', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -71,7 +71,7 @@ test('pinsay.sh: a multi-project config with no -p prints the configured keys an
     );
   }));
 
-test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-project check', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-project check', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -89,7 +89,7 @@ test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-proje
     );
   }));
 
-test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, {
       server: 'http://127.0.0.1:1',
@@ -108,7 +108,7 @@ test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', { skip: 
     );
   }));
 
-test('pinsay.sh: a single-project config never hits the multi-project check', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: a single-project config never hits the multi-project check', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, { server: 'http://127.0.0.1:1', project: 'solo' });
 
@@ -125,7 +125,7 @@ test('pinsay.sh: a single-project config never hits the multi-project check', { 
 // Global credential store fallback (API key only — server/project resolution is unchanged)
 // -----------------------------------------------------------------------------------------------
 
-test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KEY line exists locally', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KEY line exists locally', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       // credentials.env carries SERVER/PROJECT (as `resolve_config` needs) but deliberately no
@@ -157,7 +157,7 @@ test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KE
     }),
   ));
 
-test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, repo, or global store)', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, repo, or global store)', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       await installShTo(
@@ -181,7 +181,7 @@ test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, rep
     }),
   ));
 
-test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: !shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)' }, () =>
+test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: (!shAvailable && 'needs the pinsay-api monorepo checkout (API/wwwroot/pinsay.sh)') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir((dir) =>
     withGlobalDir(async (globalDir) => {
       await installShTo(
@@ -214,7 +214,7 @@ test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: !sh
 // Per-machine folder `pinsay`, the read-only fallback to a pre-0.8.0 `pointer` store, fixed server
 // -----------------------------------------------------------------------------------------------
 
-test('pinsay.sh: reads an old `pointer` store when the `pinsay` one does not exist, and leaves it in place', { skip: !shAvailable && 'needs pinsay-api/API/wwwroot/pinsay.sh' }, () =>
+test('pinsay.sh: reads an old `pointer` store when the `pinsay` one does not exist, and leaves it in place', { skip: (!shAvailable && 'needs pinsay-api/API/wwwroot/pinsay.sh') || (process.platform === 'win32' && 'pinsay.sh is a POSIX shell script') }, () =>
   withTempDir(async (dir) => {
     await installShTo(dir, { project: 'solo' }, 'PINSAY_PROJECT=solo\n');
     const configHome = path.join(dir, 'xdg-config');

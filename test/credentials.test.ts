@@ -146,7 +146,7 @@ test('resolveApiKey: the global store is keyed by server origin, not by the exac
 // Global store mechanics: 0600 mode, get/save/remove
 // -----------------------------------------------------------------------------------------------
 
-test('saveGlobalCredential writes the store file with mode 0600', () =>
+test('saveGlobalCredential writes the store file with mode 0600', { skip: process.platform === 'win32' && 'Windows has no POSIX file modes' }, () =>
   withGlobalDir(async () => {
     await saveGlobalCredential('https://example.test', { apiKey: 'ptr_x' });
     const stat = await fs.stat(globalCredentialsPath());

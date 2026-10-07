@@ -1,5 +1,5 @@
 import { promises as fs, statSync } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 
 export type LibraryInfo = {
   name: string;
@@ -118,7 +118,7 @@ export async function collectFiles(cwd: string, options?: ScanOptions): Promise<
       if (stat.isDirectory()) {
         subdirs.push(fullPath);
       } else if (stat.isFile()) {
-        collected.push(relative(cwd, fullPath));
+        collected.push(relative(cwd, fullPath).split(sep).join('/')); // '/' on Windows too: callers match 'src/…'
       }
     }
     for (const sub of subdirs) {

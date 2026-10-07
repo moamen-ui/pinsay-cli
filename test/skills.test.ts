@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
 import { formatSkillWarnings, installSkills, SKILL_FILES, SUB_SKILLS } from '../src/skills.js';
+import { canSymlink, NO_SYMLINK } from './symlink-support.js';
+import { gitSymlinkStub } from './git-stub.js';
 
 /** A stub PinSay server serving fixed, distinguishable bodies for the four skill files. */
 async function stubServer(): Promise<{ url: string; close: () => Promise<void> }> {
@@ -149,7 +151,7 @@ test('SKILL_FILES: folder-capable tools list all three sub-files, flat-file tool
   }
 });
 
-test('A: claude-code fresh install', async () => {
+test('A: claude-code fresh install', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const stub = await stubServer();
   const dir = await scratchDir();
   try {
@@ -220,12 +222,41 @@ test('C: claude-code, .agents/skills dir exists, .claude/skills plain file ../.a
   }
 });
 
-test('D: claude-code, .claude/skills = symlink ../.agents/skills (missing target)', async () => {
+test('installSkills through a Git symlink checked out as a plain file (core.symlinks=false), target missing', async () => {
+  const stub = await stubServer();
+  const dir = await scratchDir();
+  try {
+    gitSymlinkStub(dir, '.claude/skills', '../docs/skills');
+
+    // Git itself wrote the stub: a plain text file whose content is the link target — the exact
+    // shape the CEO's Windows checkout has.
+    const stubSt = await fs.lstat(join(dir, '.claude/skills'));
+    assert.ok(stubSt.isFile());
+    assert.equal(await fs.readFile(join(dir, '.claude/skills'), 'utf8'), '../docs/skills');
+
+    const { warnings } = await installSkills(stub.url, 'claude-code', dir);
+    assert.deepEqual(warnings, []);
+
+    const initContent = await fs.readFile(join(dir, 'docs/skills/pinsay-init/SKILL.md'), 'utf8');
+    assert.match(initContent, /# init/);
+    await fs.access(join(dir, 'docs/skills/pinsay-feedback/apply.md'));
+
+    assert.equal(await fs.readFile(join(dir, '.claude/skills'), 'utf8'), '../docs/skills');
+
+    const mirrorContent = await fs.readFile(join(dir, '.agents/skills/pinsay-init/SKILL.md'), 'utf8');
+    assert.equal(mirrorContent, initContent);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});
+
+test('D: claude-code, .claude/skills = symlink ../.agents/skills (missing target)', { skip: !canSymlink && NO_SYMLINK }, async () => {
   const stub = await stubServer();
   const dir = await scratchDir();
   try {
     await fs.mkdir(join(dir, '.claude'), { recursive: true });
-    await fs.symlink('../.agents/skills', join(dir, '.claude/skills'));
+    await fs.symlink('../.agents/skills', join(dir, '.claude/skills'), 'dir');
 
     const { warnings } = await installSkills(stub.url, 'claude-code', dir);
     assert.deepEqual(warnings, []);
@@ -258,7 +289,7 @@ test('E: claude-code with symlink failure (EPERM fallback to copy)', async (t) =
   }
 });
 
-test('F: claude-code: run E mocked install, restore mock, run installSkills again', async (t) => {
+test('F: claude-code: run E mocked install, restore mock, run installSkills again', { skip: !canSymlink && NO_SYMLINK }, async (t) => {
   const stub = await stubServer();
   const dir = await scratchDir();
   t.mock.method(fs, 'symlink', async () => {
