@@ -94,7 +94,10 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
 
   if (missing.length === 0 && stale.length === 0) {
     console.log(`Up to date (skill version ${served ?? 'unknown'}).`);
-    for (const line of formatHideWarnings(await hidePinsayFiles(cwd, skillsDirExtra(config.skillsDir)))) console.error(line);
+    // --check never writes (see cli.ts help)
+    if (!options.check) {
+      for (const line of formatHideWarnings(await hidePinsayFiles(cwd, skillsDirExtra(config.skillsDir)))) console.error(line);
+    }
     return 0;
   }
 

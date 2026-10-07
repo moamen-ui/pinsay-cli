@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -146,6 +147,29 @@ test('update reports up to date once files are installed and match the server ve
     await updateCommand(dir, { server: stub.url });
     const code = await updateCommand(dir, { server: stub.url });
     assert.equal(code, 0);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});
+
+test('update --check on an up-to-date repo writes nothing (no .pinsay/.gitignore, no exclude block)', async () => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ project: 'demo', aiTool: 'claude-code' });
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+
+    const first = await updateCommand(dir, { server: stub.url });
+    assert.equal(first, 0);
+
+    await fs.rm(join(dir, '.pinsay/.gitignore'), { force: true });
+    await fs.writeFile(join(dir, '.git/info/exclude'), '# mine\n', 'utf8');
+
+    const code = await updateCommand(dir, { server: stub.url, check: true });
+    assert.equal(code, 0);
+    await assert.rejects(fs.access(join(dir, '.pinsay/.gitignore')), 'check must not create .pinsay/.gitignore');
+    const exclude = await fs.readFile(join(dir, '.git/info/exclude'), 'utf8');
+    assert.equal(exclude, '# mine\n');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();
