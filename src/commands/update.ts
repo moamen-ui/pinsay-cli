@@ -1,10 +1,10 @@
 import { promises as fs } from 'node:fs';
-import { dirname, join } from 'node:path';
 import { readConfig, isMultiProject, removeLegacyRepoFiles } from '../config.js';
 import { api } from '../api.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
-import { installSkills, buildFlatPinSayFeedback } from '../skills.js';
+import { installSkills, buildFlatPinSayFeedback, formatSkillWarnings } from '../skills.js';
+import { resolveRepoPath } from '../lib/repo-paths.js';
 import type { MetaResponse } from '../checks.js';
 import { resolveServer } from '../server.js';
 
@@ -79,8 +79,9 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   const stale: { path: string; installed: string | null }[] = [];
 
   for (const rel of files) {
-    const abs = join(cwd, rel);
+    let abs: string;
     try {
+      abs = (await resolveRepoPath(cwd, rel, { create: false })).abs;
       await fs.access(abs);
     } catch {
       missing.push(rel);
@@ -115,11 +116,24 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
       console.error('No AI tool configured — run `npx -y pinsay-cli init` to record one, then `update` again.');
     } else {
       try {
-        await installSkills(server, config.aiTool, cwd, config.skillsDir);
-        installedCount = missing.length;
-        console.log(`installed ${installedCount} file${installedCount === 1 ? '' : 's'}: ${missing.join(', ')}`);
+        const r = await installSkills(server, config.aiTool, cwd, config.skillsDir);
+        for (const line of formatSkillWarnings(r.warnings)) console.error(line);
       } catch (err: any) {
         console.error(`  failed to install missing skills: ${err?.message ?? err}`);
+      }
+      // Count what is really there now, not what we hoped to write.
+      const nowPresent: string[] = [];
+      for (const rel of missing) {
+        try {
+          await fs.access((await resolveRepoPath(cwd, rel, { create: false })).abs);
+          nowPresent.push(rel);
+        } catch {
+          // still missing — the warning above says why
+        }
+      }
+      installedCount = nowPresent.length;
+      if (installedCount > 0) {
+        console.log(`installed ${installedCount} file${installedCount === 1 ? '' : 's'}: ${nowPresent.join(', ')}`);
       }
     }
   }
@@ -141,8 +155,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
         body = await res.text();
       }
 
-      const abs = join(cwd, f.path);
-      await fs.mkdir(dirname(abs), { recursive: true });
+      const abs = (await resolveRepoPath(cwd, f.path, { create: true })).abs;
       // Writing through the path (not unlink+create) is what preserves a symlink.
       await fs.writeFile(abs, body, 'utf8');
       if (abs.endsWith('.sh')) await fs.chmod(abs, 0o755).catch(() => {});

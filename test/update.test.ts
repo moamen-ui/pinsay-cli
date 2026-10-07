@@ -172,3 +172,44 @@ test('update removes legacy .pinsay/credentials.env.example and .pinsay/.token_c
     await stub.close();
   }
 });
+
+test('update installs through a link stub and then reports up to date', async (t) => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ project: 'demo', aiTool: 'claude-code' });
+  try {
+    await fs.mkdir(join(dir, '.agents/skills'), { recursive: true });
+    await fs.mkdir(join(dir, '.claude'), { recursive: true });
+    await fs.writeFile(join(dir, '.claude/skills'), '../.agents/skills', 'utf8');
+
+    assert.equal(await updateCommand(dir, { server: stub.url }), 0);
+    await fs.access(join(dir, '.agents/skills/pinsay-feedback/apply.md'));
+
+    const log = t.mock.method(console, 'log', () => {});
+    assert.equal(await updateCommand(dir, { server: stub.url }), 0);
+    const lines = log.mock.calls.map((c) => String(c.arguments[0]));
+    assert.ok(lines.some((l) => /Up to date/.test(l)), `expected "Up to date" in: ${lines.join(' | ')}`);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});
+
+test('update returns 1 and warns, without throwing, when .claude/skills is a plain file', async (t) => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ project: 'demo', aiTool: 'claude-code' });
+  try {
+    await fs.mkdir(join(dir, '.claude'), { recursive: true });
+    await fs.writeFile(join(dir, '.claude/skills'), 'x\ny\n', 'utf8');
+
+    const err = t.mock.method(console, 'error', () => {});
+    t.mock.method(console, 'log', () => {});
+    const code = await updateCommand(dir, { server: stub.url });
+    assert.equal(code, 1);
+    const lines = err.mock.calls.map((c) => String(c.arguments[0]));
+    assert.ok(lines.some((l) => /is a file, not a folder/.test(l)), `got: ${lines.join(' | ')}`);
+    await fs.access(join(dir, '.pinsay/pinsay.sh'));
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});

@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { readConfig, isMultiProject, listProjects, type PinSayConfig, type ResolvedProject } from './config.js';
 import { api, ApiError } from './api.js';
 import { detectStack } from './detect.js';
-import { SKILL_FILES } from './skills.js';
+import { resolveRepoPath } from './lib/repo-paths.js';
 import { readStamp } from './lib/skill-stamp.js';
 import { skillFilesFor } from './lib/skill-paths.js';
 import { stackFileRelPath } from './stack/stackfile.js';
@@ -465,23 +465,16 @@ async function skillsCheck(cwd: string, config: PinSayConfig): Promise<CheckResu
   const tool = config.aiTool;
   if (!tool) return { id: 'skills', status: 'warn', message: 'No AI tool configured' };
 
-  const expected = SKILL_FILES[tool] ?? SKILL_FILES.other;
-
+  // skillFilesFor = exactly the paths installSkills writes (a --skills-dir install included) plus
+  // .pinsay/pinsay.sh. Looked up through resolveRepoPath, so an install that went through a link
+  // stub (a Git symlink checked out as a plain file on Windows) is found where it really is.
   const missing: string[] = [];
-  for (const rel of expected) {
+  for (const rel of skillFilesFor(config)) {
     try {
-      await fs.access(join(cwd, config.skillsDir ?? '', rel));
+      await fs.access((await resolveRepoPath(cwd, rel, { create: false })).abs);
     } catch {
       missing.push(rel);
     }
-  }
-  // pinsay.sh is gitignored alongside the skill files (see config.ts upsertGitignore) and is
-  // installed by the same call (installSkills) — a clone that never ran `init`/`update` is
-  // missing it too, and it is the file an AI agent actually executes in the no-Node fallback.
-  try {
-    await fs.access(join(cwd, '.pinsay/pinsay.sh'));
-  } catch {
-    missing.push('.pinsay/pinsay.sh');
   }
 
   return missing.length === 0

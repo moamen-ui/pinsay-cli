@@ -185,6 +185,39 @@ test('a default --yes run records delivery: embed', () => withTempDir(async (dir
   assert.strictEqual(config.delivery, 'embed');
 }));
 
+test('init --yes finishes when .claude/skills is a plain file (Windows Git symlink stub): warns, keeps the file', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.claude/skills'), 'notes about skills\nsecond line\n', 'utf8');
+  const { stdout, stderr } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --tool claude-code`, { cwd: dir, env: envFor(dir) });
+  assert.match(stdout, /is set up/);
+  assert.match(stderr, /⚠ Skills for claude-code: \.claude\/skills is a file, not a folder/);
+  assert.match(stderr, /git config core\.symlinks true/);
+  assert.doesNotMatch(stderr, /Fatal error/);
+  await fs.access(path.join(dir, '.pinsay/config.json'));
+  assert.strictEqual(await fs.readFile(path.join(dir, '.claude/skills'), 'utf8'), 'notes about skills\nsecond line\n');
+  await fs.access(path.join(dir, '.pinsay/pinsay.sh'));
+}));
+
+test('init --json reports skillWarnings when a skill path is blocked', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.claude/skills'), 'notes about skills\nsecond line\n', 'utf8');
+  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good --create "My App" --tool claude-code`, { cwd: dir, env: envFor(dir) });
+  const json = JSON.parse(stdout.trim());
+  assert.strictEqual(json.ok, true);
+  assert.strictEqual(json.skillWarnings.length, 2);
+  assert.strictEqual(json.skillWarnings[0].tool, 'claude-code');
+}));
+
+test('init --yes installs through a link stub to .agents/skills', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.agents/skills'), { recursive: true });
+  await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.claude/skills'), '../.agents/skills', 'utf8');
+  const { stderr } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --tool claude-code`, { cwd: dir, env: envFor(dir) });
+  assert.doesNotMatch(stderr, /⚠ Skills/);
+  await fs.access(path.join(dir, '.agents/skills/pinsay-init/SKILL.md'));
+  assert.strictEqual(await fs.readFile(path.join(dir, '.claude/skills'), 'utf8'), '../.agents/skills');
+}));
+
 /**
  * A "join": .pinsay/config.json already names a server and a project (written by whoever ran
  * `init` here first, then committed). A second developer cloning the repo should only be asked

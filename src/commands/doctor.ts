@@ -2,7 +2,7 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { readConfig, upsertGitignore, isMultiProject, listProjects } from '../config.js';
 import { runInitChecks, type CheckResult } from '../checks.js';
-import { installSkills } from '../skills.js';
+import { installSkills, formatSkillWarnings } from '../skills.js';
 import { detectStack } from '../detect.js';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
@@ -171,8 +171,9 @@ async function applyFixes(cwd: string, checks: CheckResult[], server: string): P
         const built = await buildManifest(cwd, { quiet: true });
         if (built.ok) repaired.push(check.id);
       } else if (check.id === 'skills' && server && config.aiTool) {
-        await installSkills(server, config.aiTool, cwd, config.skillsDir);
-        repaired.push(check.id);
+        const r = await installSkills(server, config.aiTool, cwd, config.skillsDir);
+        for (const line of formatSkillWarnings(r.warnings)) console.error(line);
+        if (r.warnings.length === 0) repaired.push(check.id);
       }
     } catch {
       // A failed repair is not fatal: the re-run reports the check as still failing, which is the

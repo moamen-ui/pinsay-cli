@@ -16,7 +16,7 @@ import { detectStack, detectAppUrl, extractTokens } from '../detect.js';
 import { discoverNxApps, isNxWorkspace, type DiscoveredApp } from '../monorepo.js';
 import { injectVite, injectStatic } from '../inject/index.js';
 import { injectSourceMap } from '../inject/source-map.js';
-import { installSkills } from '../skills.js';
+import { installSkills, formatSkillWarnings, type SkillWarning } from '../skills.js';
 import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
 import { postEvent } from '../events.js';
@@ -579,6 +579,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     let routedToSkill = false;
     let filesMod: string[] = [];
     let skillFiles: string[] = [];
+    let skillWarnings: SkillWarning[] = [];
 
     // --pin asks the server which build it is serving and nails the page to it, with the integrity
     // hash the server itself publishes. Resolved HERE, before the stack branch, because the static
@@ -702,8 +703,22 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         // each other's files.
         const installed: string[] = [];
         for (const t of tools) {
-            installed.push(...(await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined)).files);
+            try {
+                const r = await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined);
+                installed.push(...r.files);
+                skillWarnings.push(...r.warnings);
+            } catch (err: any) {
+                // installSkills reports file problems as warnings; this only catches a bug, and even
+                // then the rest of init (config, widget, stack) must stand.
+                skillWarnings.push({
+                    tool: t,
+                    path: '(all skill files)',
+                    message: `could not install the skills (${err?.message ?? err}).`,
+                    hint: 'Run "npx pinsay-cli update" to try again.',
+                });
+            }
         }
+        if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
         filesMod.push(...installed);
         // Kept for the human summary below: "installed" does not tell anyone WHAT was written into
         // their repository, and these are files they will want to find, read and commit.
@@ -826,6 +841,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             injected,
             routedToSkill,
             files: filesMod,
+            skillWarnings,
             checks,
             cliVersion: BUILD_CLI_VERSION
         }));
@@ -857,7 +873,7 @@ ${green('✔')} ${bold(`Joined ${product} project ${finalProjectKey} as ${me?.di
 ${envLabel !== null ? `\n  ${dim('Environment(s)')}  ${envLabel}` : ''}
   ${dim('Server')}          ${server}
   ${dim('Key')}             ${keyLine}
-  ${dim('Skills')}          ${skillFiles.length ? skillFiles.join('\n                    ') : 'installed'}
+  ${dim('Skills')}          ${skillFiles.length ? skillFiles.join('\n                    ') : (skillWarnings.length ? 'not installed — see the warning above' : 'installed')}
 ${rule}`);
     } else {
         console.log(`
@@ -867,7 +883,7 @@ ${green('✔')} ${bold(`${product} is set up`)}
   ${dim('Project')}       ${projectName || finalProjectKey} ${dim(`(${finalProjectKey})`)}
 ${envLabel !== null ? `  ${dim('Environments')}  ${envLabel}\n` : ''}  ${dim('Server')}        ${server}
   ${dim('Key')}           ${keyLine}
-  ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : 'installed'}
+  ${dim('Skills')}        ${skillFiles.length ? skillFiles.join('\n                ') : (skillWarnings.length ? 'not installed — see the warning above' : 'installed')}
 ${rule}`);
     }
 
@@ -1345,8 +1361,14 @@ async function handleMultiJoin(
 ): Promise<never> {
     closePrompts();
     const tool = (options['tool'] as string) || config.aiTool || 'other';
+    const skillWarnings: SkillWarning[] = [];
     if (!options['no-skills']) {
-        await installSkills(server, tool, cwd, options['skills-dir'] as string).catch(() => {});
+        try {
+            skillWarnings.push(...(await installSkills(server, tool, cwd, options['skills-dir'] as string)).warnings);
+        } catch (err: any) {
+            skillWarnings.push({ tool, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
+        }
+        if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
 
     const projects = listProjects(config);
@@ -1398,6 +1420,7 @@ async function handleMultiJoin(
                 htmlPath: p.htmlPath,
                 delivery: p.delivery ?? config.delivery ?? 'embed',
             })),
+            skillWarnings,
             cliVersion: BUILD_CLI_VERSION,
         }));
     } else {
@@ -1544,10 +1567,16 @@ async function handleMultiProjectSetup(args: {
 
     closePrompts();
 
+    const skillWarnings: SkillWarning[] = [];
     if (!options['no-skills']) {
         for (const t of tools) {
-            await installSkills(server, t, cwd, t === tool ? (options['skills-dir'] as string) : undefined).catch(() => {});
+            try {
+                skillWarnings.push(...(await installSkills(server, t, cwd, t === tool ? (options['skills-dir'] as string) : undefined)).warnings);
+            } catch (err: any) {
+                skillWarnings.push({ tool: t, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
+            }
         }
+        if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
 
     const projectsMap: Record<string, ProjectEntry> = { ...(config.projects ?? {}) };
@@ -1611,6 +1640,7 @@ async function handleMultiProjectSetup(args: {
                 const r = results.find((res) => res.key === k);
                 return { key: k, path: p.path, injected: r ? r.injected : false, htmlPath: p.htmlPath, delivery: p.delivery ?? repoDefaultDelivery };
             }),
+            skillWarnings,
             cliVersion: BUILD_CLI_VERSION,
         }));
     } else {
