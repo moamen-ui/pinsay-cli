@@ -11,7 +11,9 @@ import { fileURLToPath } from 'node:url';
 const execFileAsync = promisify(execFile);
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const shPath = path.resolve(__dirname, '../../API/wwwroot/pinsay.sh');
+// The served script lives in this monorepo's API project (the old path assumed the CLI sat inside
+// pinsay-api/, so every test here was silently skipped).
+const shPath = path.resolve(__dirname, '../../pinsay-api/API/wwwroot/pinsay.sh');
 const shAvailable = existsSync(shPath);
 
 async function withTempDir(fn: (dir: string) => Promise<void>) {
@@ -59,7 +61,7 @@ test('pinsay.sh: a multi-project config with no -p prints the configured keys an
     });
 
     await assert.rejects(
-      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], { cwd: dir }),
+      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], { cwd: dir, env: { ...process.env, PINSAY_SERVER: 'http://127.0.0.1:1' } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(err.stderr, /Several projects configured/);
@@ -77,7 +79,7 @@ test('pinsay.sh: -p <key> resolves the project and proceeds past the multi-proje
     });
 
     await assert.rejects(
-      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), '-p', 'a', 'list'], { cwd: dir }),
+      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), '-p', 'a', 'list'], { cwd: dir, env: { ...process.env, PINSAY_SERVER: 'http://127.0.0.1:1' } }),
       (err: any) => {
         // Fails on the network call (there is no real server) — the point is it got PAST the
         // "several projects configured" refusal, which a bare `list` (no -p) hits instead.
@@ -97,7 +99,7 @@ test('pinsay.sh: PINSAY_PROJECT env resolves the project just like -p', { skip: 
     await assert.rejects(
       execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], {
         cwd: dir,
-        env: { ...process.env, PINSAY_PROJECT: 'b' },
+        env: { ...process.env, PINSAY_PROJECT: 'b', PINSAY_SERVER: 'http://127.0.0.1:1' },
       }),
       (err: any) => {
         assert.doesNotMatch(err.stderr ?? '', /Several projects configured/);
@@ -111,7 +113,7 @@ test('pinsay.sh: a single-project config never hits the multi-project check', { 
     await installShTo(dir, { server: 'http://127.0.0.1:1', project: 'solo' });
 
     await assert.rejects(
-      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], { cwd: dir }),
+      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], { cwd: dir, env: { ...process.env, PINSAY_SERVER: 'http://127.0.0.1:1' } }),
       (err: any) => {
         assert.doesNotMatch(err.stderr ?? '', /Several projects configured/);
         return true;
@@ -142,7 +144,7 @@ test('pinsay.sh: falls back to the global credential store when no PINSAY_API_KE
       await assert.rejects(
         execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], {
           cwd: dir,
-          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir },
+          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_SERVER: 'http://127.0.0.1:1' },
         }),
         (err: any) => {
           // Port 1 refuses connections, so this still fails — the point is it got PAST "Missing
@@ -168,7 +170,7 @@ test('pinsay.sh: "Missing configuration" when no key resolves anywhere (env, rep
       await assert.rejects(
         execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], {
           cwd: dir,
-          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir },
+          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_SERVER: 'http://127.0.0.1:1' },
         }),
         (err: any) => {
           assert.strictEqual(err.code, 1);
@@ -196,7 +198,7 @@ test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: !sh
       await assert.rejects(
         execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], {
           cwd: dir,
-          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_API_KEY: 'ptr_env' },
+          env: { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_API_KEY: 'ptr_env', PINSAY_SERVER: 'http://127.0.0.1:1' },
         }),
         (err: any) => {
           // Same network failure as above — proves resolution completed (env wins, no missing-
@@ -207,3 +209,39 @@ test('pinsay.sh: PINSAY_API_KEY env var wins over the global store', { skip: !sh
       );
     }),
   ));
+
+// -----------------------------------------------------------------------------------------------
+// Per-machine folder `pinsay`, the read-only fallback to a pre-0.8.0 `pointer` store, fixed server
+// -----------------------------------------------------------------------------------------------
+
+test('pinsay.sh: reads an old `pointer` store when the `pinsay` one does not exist, and leaves it in place', { skip: !shAvailable && 'needs pinsay-api/API/wwwroot/pinsay.sh' }, () =>
+  withTempDir(async (dir) => {
+    await installShTo(dir, { project: 'solo' }, 'PINSAY_PROJECT=solo\n');
+    const configHome = path.join(dir, 'xdg-config');
+    const cacheHome = path.join(dir, 'xdg-cache');
+    const legacyFile = path.join(configHome, 'pointer', 'credentials.json');
+    await fs.mkdir(path.dirname(legacyFile), { recursive: true });
+    await fs.writeFile(legacyFile, JSON.stringify({ 'http://127.0.0.1:1': { apiKey: 'ptr_legacy' } }), 'utf8');
+    const env: NodeJS.ProcessEnv = { ...process.env, XDG_CONFIG_HOME: configHome, XDG_CACHE_HOME: cacheHome, PINSAY_SERVER: 'http://127.0.0.1:1' };
+    delete env.PINSAY_CONFIG_DIR;
+    delete env.PINSAY_API_KEY;
+
+    await assert.rejects(
+      execFileAsync('bash', [path.join(dir, '.pinsay/pinsay.sh'), 'list'], { cwd: dir, env }),
+      (err: any) => {
+        // Port 1 refuses the connection; the point is the key resolved (no "Missing configuration").
+        assert.doesNotMatch(err.stderr ?? '', /Missing configuration/);
+        return true;
+      },
+    );
+    assert.ok(existsSync(legacyFile), 'the shell never moves or deletes the old store');
+    assert.ok(existsSync(path.join(cacheHome, 'pinsay')), 'the JWT cache goes to the pinsay folder');
+    assert.ok(!existsSync(path.join(cacheHome, 'pointer')), 'nothing is written under pointer');
+  }));
+
+test('pinsay.sh: the server is fixed (app.pinsay.dev or the PINSAY_SERVER override), never read from files', { skip: !shAvailable && 'needs pinsay-api/API/wwwroot/pinsay.sh' }, async () => {
+  const script = await fs.readFile(shPath, 'utf8');
+  assert.match(script, /SERVER="\$\{PINSAY_SERVER:-https:\/\/app\.pinsay\.dev\}"/);
+  assert.doesNotMatch(script, /resolve_config PINSAY_SERVER/);
+  assert.doesNotMatch(script, /\.config\}\/pointer"|\.cache\}\/pointer"/, 'no pointer folder is used for writing');
+});
