@@ -1,8 +1,7 @@
 import { ask, select, multiSelect, closePrompts } from '../prompt.js';
-import { BUILD_DEFAULT_SERVER, BUILD_CLI_VERSION } from '../build-constants.js';
+import { BUILD_CLI_VERSION } from '../build-constants.js';
 import {
     readConfig,
-    canonicalServer,
     writeConfig,
     writeConfigFull,
     writeCredentials,
@@ -28,6 +27,7 @@ import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../
 import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
 import { resolveApiKey, saveGlobalCredential, type ApiKeySource } from '../credentials.js';
 import { runDeviceLogin } from '../device-login.js';
+import { resolveServer } from '../server.js';
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const isYes = options['yes'] || options['json'];
@@ -57,22 +57,18 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const isAddProject = Boolean(pathFlag);
     const configIsMulti = isMultiProject(config);
 
-    // A "join": .pinsay/config.json already names a server AND a project (or, in a multi-project
+    // A "join": .pinsay/config.json already names a project (or, in a multi-project
     // repo, at least one app under `projects`). Whoever ran `init` the first time already made
-    // every decision this command would otherwise ask about — server, project(s), environments,
+    // every decision this command would otherwise ask about — project(s), environments,
     // delivery — and committed it. A second developer cloning the repo (or the same developer on a
     // second machine) only needs their own API key: everything else here is read back from the
     // committed config instead of asked again, and nothing is injected, since the embed snippet
     // (or the extension) is already in the app's committed source. Never true for `--path`: adding
     // a new app to an already-configured repo is "add a project", not "join the existing one".
-    const isJoin = !isAddProject && Boolean(config.server) && (Boolean(config.project) || configIsMulti);
+    const isJoin = !isAddProject && (Boolean(config.project) || configIsMulti);
     const mode: 'join' | 'install' = isJoin ? 'join' : 'install';
 
-    let server = options['server'] || config.server || canonicalServer(process.env.PINSAY_SERVER) || BUILD_DEFAULT_SERVER;
-
-    if (!isYes && !options['server'] && !config.server) {
-        server = await ask('Server URL', { default: server as string });
-    }
+    const server = resolveServer();
 
     // Resolve a key from the same three sources every other command uses — env var, this repo's
     // `.pinsay/credentials.env`, or the global per-machine store `login` writes to — BEFORE the
@@ -292,9 +288,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (writeLocalCreds) {
-        // Server is known here; project is added later only in single-project mode (a multi-project
+        // The project is added later only in single-project mode (a multi-project
         // repo's pinsay.sh takes -p, so a pinned PINSAY_PROJECT would be wrong for every other app).
-        await writeCredentials(cwd, key, { server: server as string });
+        await writeCredentials(cwd, key);
     }
     await upsertGitignore(cwd, product, (options['skills-dir'] as string) || config.skillsDir);
 
@@ -777,7 +773,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // config.ts. Environments and their activation are a dashboard concern now; `env`/`envs` above
     // exist only to drive this run's injection and (opt-in, via `--environment`) activation.
     const configPatch: Record<string, unknown> = {
-        server: server as string,
         project: finalProjectKey,
         aiTool: tool,
         skillsDir: options['skills-dir'] as string,
@@ -789,10 +784,10 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     filesMod.push('.pinsay/config.json');
     if (writeLocalCreds) {
         // Re-write credentials now that the project key is final, so pinsay.sh can resolve
-        // server/project from this file in repos that have no .env (see writeCredentials). Skipped
+        // the project from this file in repos that have no .env (see writeCredentials). Skipped
         // entirely when the key lives in the global store instead — there is no repo-local secret
         // to keep in sync.
-        await writeCredentials(cwd, key, { server: server as string, project: finalProjectKey });
+        await writeCredentials(cwd, key, { project: finalProjectKey });
         // Written back near the top of this function, long before filesMod exists. It is the one
         // file in this list that holds a secret, so omitting it from `--json`'s `files` is the
         // worst omission of the set: a caller reading that list to know what to gitignore, review
@@ -890,7 +885,7 @@ ${rule}`);
 ${bold('Next')}  Reviewers open the widget through the ${product} Chrome extension — nothing was injected.
 
 ${installLine}
-  2. Extension → Options → set server ${server}; sign in with your ${product} account.
+  2. Open the extension and sign in with your ${product} account.
   3. Open your app, click the extension icon, choose project ${dim(finalProjectKey)}, Activate.
   4. Then ${bold('npx pinsay-cli list')} / ${bold('apply')} as usual.
       ${dim(`Dashboard: ${branding.urls?.app || server}`)}`);
@@ -1588,7 +1583,6 @@ async function handleMultiProjectSetup(args: {
     for (const r of results) projectsMap[r.key] = r.entry;
 
     await writeConfigFull(cwd, {
-        server,
         aiTool: tool,
         skillsDir: ((options['skills-dir'] as string) || config.skillsDir) ?? undefined,
         cliVersion: BUILD_CLI_VERSION,
@@ -1601,7 +1595,7 @@ async function handleMultiProjectSetup(args: {
         // did already), and `.pinsay/pinsay.sh` takes `-p <key>` in that mode — a single
         // hardcoded PINSAY_PROJECT line would silently pin every no-Node invocation to whichever
         // app happened to be `results[0]`, wrong for every other configured app.
-        await writeCredentials(cwd, key, { server });
+        await writeCredentials(cwd, key);
     }
 
     await postEvent(server, token, {

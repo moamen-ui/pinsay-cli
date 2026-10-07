@@ -257,14 +257,14 @@ after(() => {
 });
 
 function envFor(globalDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, PINSAY_CONFIG_DIR: globalDir };
+  return { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_SERVER: serverUrl };
 }
 
 test('login saves the key globally; whoami reports it; logout removes it', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       const { stdout: loginOut } = await execAsync(
-        `node ${cliPath} login --key ptr_good --server ${serverUrl}`,
+        `node ${cliPath} login --key ptr_good`,
         { cwd: repo, env: envFor(globalDir) },
       );
       assert.match(loginOut, /Signed in to/);
@@ -273,7 +273,7 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
       const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
       assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
 
-      const { stdout: whoamiOut } = await execAsync(`node ${cliPath} whoami --server ${serverUrl} --json`, {
+      const { stdout: whoamiOut } = await execAsync(`node ${cliPath} whoami --json`, {
         cwd: repo,
         env: envFor(globalDir),
       });
@@ -283,14 +283,14 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
       assert.strictEqual(whoami.displayName, 'Test User');
       assert.strictEqual(whoami.email, 'test@example.com');
 
-      const { stdout: logoutOut } = await execAsync(`node ${cliPath} logout --server ${serverUrl}`, {
+      const { stdout: logoutOut } = await execAsync(`node ${cliPath} logout`, {
         cwd: repo,
         env: envFor(globalDir),
       });
       assert.match(logoutOut, /Removed the saved key/);
 
       await assert.rejects(
-        execAsync(`node ${cliPath} whoami --server ${serverUrl} --json`, { cwd: repo, env: envFor(globalDir) }),
+        execAsync(`node ${cliPath} whoami --json`, { cwd: repo, env: envFor(globalDir) }),
         (err: any) => {
           assert.strictEqual(err.code, 3);
           return true;
@@ -303,12 +303,12 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
 test('whoami reports source env when PINSAY_API_KEY is set, even with a global entry present', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
-      await execAsync(`node ${cliPath} login --key ptr_good --server ${serverUrl}`, {
+      await execAsync(`node ${cliPath} login --key ptr_good`, {
         cwd: repo,
         env: envFor(globalDir),
       });
 
-      const { stdout } = await execAsync(`node ${cliPath} whoami --server ${serverUrl} --json`, {
+      const { stdout } = await execAsync(`node ${cliPath} whoami --json`, {
         cwd: repo,
         env: { ...envFor(globalDir), PINSAY_API_KEY: 'ptr_good' },
       });
@@ -320,7 +320,7 @@ test('whoami reports source env when PINSAY_API_KEY is set, even with a global e
 test('logout on a server with no saved key reports nothing removed', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
-      const { stdout } = await execAsync(`node ${cliPath} logout --server ${serverUrl} --json`, {
+      const { stdout } = await execAsync(`node ${cliPath} logout --json`, {
         cwd: repo,
         env: envFor(globalDir),
       });
@@ -333,13 +333,13 @@ test('login --scope repo writes .pinsay/credentials.env and leaves the global st
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       const { stdout } = await execAsync(
-        `node ${cliPath} login --key ptr_good --server ${serverUrl} --scope repo`,
+        `node ${cliPath} login --key ptr_good --scope repo`,
         { cwd: repo, env: envFor(globalDir) },
       );
       assert.match(stdout, /this repo only/);
       const creds = await fs.readFile(path.join(repo, '.pinsay/credentials.env'), 'utf8');
       assert.match(creds, /PINSAY_API_KEY=ptr_good/);
-      assert.match(creds, new RegExp(`PINSAY_SERVER=${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+      assert.doesNotMatch(creds, /PINSAY_SERVER=/);
       await assert.rejects(fs.access(path.join(globalDir, 'credentials.json')), 'global store must not be created');
     }),
   ));
@@ -348,7 +348,7 @@ test('login --scope with an unknown value exits 2', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       await assert.rejects(
-        execAsync(`node ${cliPath} login --key ptr_good --server ${serverUrl} --scope machine`, { cwd: repo, env: envFor(globalDir) }),
+        execAsync(`node ${cliPath} login --key ptr_good --scope machine`, { cwd: repo, env: envFor(globalDir) }),
         (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
       );
     }),

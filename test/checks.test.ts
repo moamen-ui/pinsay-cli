@@ -50,7 +50,7 @@ test('extension delivery: widget check is ok even with nothing injected, and no 
   // No index.html, no marker, no env file at all — an embed install would report "Widget not found".
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', delivery: 'extension' });
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const widget = checks.find((c) => c.id === 'widget');
@@ -68,7 +68,7 @@ test('extension delivery: a configured store URL means no extension warning', as
   });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', delivery: 'extension' });
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   assert.equal(checks.find((c) => c.id === 'widget')?.status, 'ok');
@@ -82,7 +82,7 @@ test('embed delivery (the default): the extension check never runs at all', asyn
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
   await fs.writeFile(join(dir, 'index.html'), '<html><!-- pinsay-feedback:start --></html>', 'utf8');
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   assert.equal(checks.find((c) => c.id === 'widget')?.status, 'ok');

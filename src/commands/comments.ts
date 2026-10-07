@@ -2,8 +2,8 @@ import { findRepoRoot, readConfig, resolveProject, listProjects, type PinSayConf
 import { resolveSource } from '../vite/resolve.js';
 import { api } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
-import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
+import { resolveServer } from '../server.js';
 
 function mapStatusToNumber(status?: string): number | undefined {
   if (!status) return undefined;
@@ -57,15 +57,7 @@ export async function getClient(
 ) {
   const root = await findRepoRoot(cwd);
   const config = await readConfig(root);
-  const server = (
-    (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
-
-  if (!server) {
-    console.error('No server configured.');
-    process.exit(2);
-  }
+  const server = resolveServer();
 
   const explicitKey = typeof parsed['key'] === 'string' ? parsed['key'] : undefined;
   const token = await resolveToken(server, root, explicitKey);

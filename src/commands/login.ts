@@ -1,9 +1,9 @@
-import { canonicalServer, findRepoRoot, readConfig, writeCredentials } from '../config.js';
+import { findRepoRoot, writeCredentials } from '../config.js';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
 import { saveGlobalCredential } from '../credentials.js';
-import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
 import { runDeviceLogin } from '../device-login.js';
+import { resolveServer } from '../server.js';
 
 /**
  * Authenticates once per machine and saves the result to the global credential store (see
@@ -19,17 +19,8 @@ import { runDeviceLogin } from '../device-login.js';
  * No `--key` and no TTY (CI, a pipe) has no one to open a browser for or prompt — hard exit 2.
  */
 export async function loginCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
-  // A repo's own `.pinsay/config.json` server is a convenience default only — login is global and
-  // not scoped to "this repo" in any other way.
   const root = await findRepoRoot(cwd);
-  const config = await readConfig(root).catch(() => ({}) as any);
-
-  const server = (
-    (typeof options['server'] === 'string' ? (options['server'] as string) : undefined) ||
-    config.server ||
-    canonicalServer(process.env.PINSAY_SERVER) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
+  const server = resolveServer();
 
   const branding = await getBranding(server);
   const product = branding.productName;
@@ -84,7 +75,7 @@ export async function loginCommand(cwd: string, options: Record<string, string |
   if (scope === 'repo') {
     // Repo scope: the multi-account case (a second identity on the same server for one repo). The
     // repo file wins over the global store in resolveApiKey, so this overrides a machine-wide key.
-    await writeCredentials(root, key!, { server });
+    await writeCredentials(root, key!);
     console.log(`✔ Signed in to ${server} as ${who} — saved to .pinsay/credentials.env (this repo only; overrides the global store here)`);
     process.exit(0);
   }

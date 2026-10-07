@@ -1,10 +1,11 @@
-import { canonicalServer, readConfig, findRepoRoot, resolveProject } from '../config.js';
+import { readConfig, findRepoRoot, resolveProject } from '../config.js';
 import { api, ApiError } from '../api.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
-import { BUILD_CLI_VERSION, BUILD_DEFAULT_SERVER } from '../build-constants.js';
+import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { runMcpServer } from '../mcp/server.js';
 import type { McpContext } from '../mcp/tools.js';
+import { resolveServer } from '../server.js';
 
 export async function mcpCommand(
   cwd: string,
@@ -15,11 +16,7 @@ export async function mcpCommand(
   // relative to the repo root, not wherever that happened to be.
   const root = await findRepoRoot(cwd);
   const config = await readConfig(root).catch(() => ({} as any));
-  const server = (
-    (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
-    canonicalServer(process.env.PINSAY_SERVER) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
+  const server = resolveServer();
 
   // `--project` (or PINSAY_PROJECT/config.project in single-project mode) is carried as-is —
   // `executeTool` (mcp/tools.ts) is what actually resolves it per call, falling back to cwd/the

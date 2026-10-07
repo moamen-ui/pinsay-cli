@@ -3,13 +3,14 @@ import { api } from '../api.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
 import { checkAndNotifyUpdates } from '../lib/notify-update.js';
 import { resolveToken, readApiKey } from '../auth.js';
-import { BUILD_CLI_VERSION, BUILD_DEFAULT_SERVER } from '../build-constants.js';
+import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { runApply } from '../apply/run.js';
 import { markApplied, markFailed } from '../apply/mark.js';
 import { fetchQueue } from '../apply/queue.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { resolveModels, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext } from '../apply/types.js';
+import { resolveServer } from '../server.js';
 
 /**
  * DB-18: a workspace that is paused or scheduled for deletion refuses every write with 423 — for a
@@ -87,15 +88,7 @@ export async function applyCommand(
 ): Promise<void> {
   const root = await findRepoRoot(cwd);
   const config = await readConfig(root);
-  const server = (
-    (typeof parsed['server'] === 'string' ? parsed['server'] : config.server) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
-
-  if (!server) {
-    console.error('No server configured. Run `npx pinsay-cli init` or pass --server.');
-    process.exit(2);
-  }
+  const server = resolveServer();
 
   const projectFlag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
   const resolved = resolveProject(config, cwd, root, projectFlag);

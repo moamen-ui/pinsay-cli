@@ -10,6 +10,7 @@ import { readStamp } from './lib/skill-stamp.js';
 import { skillFilesFor } from './lib/skill-paths.js';
 import { stackFileRelPath } from './stack/stackfile.js';
 import { resolveApiKey, sourceLabel } from './credentials.js';
+import { resolveServer } from './server.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -96,7 +97,7 @@ export async function runInitChecks(
 ): Promise<CheckResult[]> {
   const checks: CheckResult[] = [];
   const config: PinSayConfig = await readConfig(cwd);
-  const server = (overrides.server || config.server || '').replace(/\/$/, '');
+  const server = (overrides.server || resolveServer()).replace(/\/$/, '');
   const multiProject = isMultiProject(config);
   // Single-project mode: the one project this repo has (possibly overridden — legacy behaviour,
   // unchanged). Multi-project mode: every configured project, or just the one `--project` named.

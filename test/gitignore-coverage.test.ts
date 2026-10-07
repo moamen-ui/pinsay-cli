@@ -92,7 +92,7 @@ function globalDirFor(dir: string): string {
 }
 
 function envFor(dir: string): NodeJS.ProcessEnv {
-  return { ...process.env, PINSAY_CONFIG_DIR: globalDirFor(dir) };
+  return { ...process.env, PINSAY_CONFIG_DIR: globalDirFor(dir), PINSAY_SERVER: serverUrl };
 }
 
 function gitStatusPorcelain(dir: string): string[] {
@@ -126,7 +126,7 @@ for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']
       await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
       await execAsync(
-        `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --tool ${tool}`,
+        `node ${cliPath} init --yes --key ptr_good --create "My App" --tool ${tool}`,
         { cwd: dir, env: envFor(dir) },
       );
 
@@ -143,7 +143,7 @@ test('init --yes --skills-dir custom/skills: git status shows only the committed
     await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
-      `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --skills-dir custom/skills`,
+      `node ${cliPath} init --yes --key ptr_good --create "My App" --skills-dir custom/skills`,
       { cwd: dir, env: envFor(dir) },
     );
 
@@ -165,7 +165,7 @@ test('init --yes --path apps/a (multi-project): git status shows only the commit
     await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
-      `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl}`,
+      `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a`,
       { cwd: dir, env: envFor(dir) },
     );
 

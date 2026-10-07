@@ -89,7 +89,7 @@ test('list --json with no resolvable project covers every configured project, gr
   withTempDir(async (dir) => {
     await writeMultiProjectRepo(dir);
 
-    const { stdout } = await execAsync(`node ${cliPath} list --json`, { cwd: dir });
+    const { stdout } = await execAsync(`node ${cliPath} list --json`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } });
     const grouped = JSON.parse(stdout);
 
     assert.strictEqual(grouped.length, 2);
@@ -103,7 +103,7 @@ test('list --json --project narrows to that one project (single-mode shape)', ()
   withTempDir(async (dir) => {
     await writeMultiProjectRepo(dir);
 
-    const { stdout } = await execAsync(`node ${cliPath} list --json --project a`, { cwd: dir });
+    const { stdout } = await execAsync(`node ${cliPath} list --json --project a`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } });
     const items = JSON.parse(stdout);
     assert.strictEqual(Array.isArray(items), true, 'a resolved single project keeps the flat array shape');
     assert.strictEqual(items.length, 1);
@@ -115,7 +115,7 @@ test('list --json run from inside an app directory resolves that app without --p
     await writeMultiProjectRepo(dir);
     await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });
 
-    const { stdout } = await execAsync(`node ${cliPath} list --json`, { cwd: path.join(dir, 'apps/b') });
+    const { stdout } = await execAsync(`node ${cliPath} list --json`, { cwd: path.join(dir, 'apps/b'), env: { ...process.env, PINSAY_SERVER: serverUrl } });
     const items = JSON.parse(stdout);
     assert.strictEqual(Array.isArray(items), true);
     assert.strictEqual(items.length, 0);
@@ -125,7 +125,7 @@ test('list human output groups by "## <key> (<path>)" headers', () =>
   withTempDir(async (dir) => {
     await writeMultiProjectRepo(dir);
 
-    const { stdout } = await execAsync(`node ${cliPath} list`, { cwd: dir });
+    const { stdout } = await execAsync(`node ${cliPath} list`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } });
     assert.match(stdout, /## a \(apps\/a\)/);
     assert.match(stdout, /## b \(apps\/b\)/);
     assert.match(stdout, /#1 \[Open\] \[Local\] Alice: Fix the header/);

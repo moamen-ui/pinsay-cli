@@ -99,7 +99,7 @@ test('a CLI older than minCliVersion stops immediately and skips the rest', asyn
   });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' }, 'ptr_key');
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   assert.equal(exitCodeFor(checks), 5);
@@ -113,7 +113,7 @@ test('a server with no /api/meta warns rather than failing', async () => {
   const stub = await stubServer({ 'GET /api/branding': [200, { productName: 'PinSay' }] });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const meta = checks.find((c) => c.id === 'meta');
@@ -140,7 +140,7 @@ test('a rejected API key is an error, and a valid one unlocks the project check'
     'POST /api/auth/login-with-key': [400, { message: 'invalid' }],
   });
   const badDir = await scratch({ server: rejecting.url, project: 'demo', environment: 'local' }, 'ptr_bad');
-  const badChecks = await runInitChecks(badDir, {}, '1.0.0');
+  const badChecks = await runInitChecks(badDir, { server: rejecting.url }, '1.0.0');
   await rejecting.close();
 
   assert.equal(badChecks.find((c) => c.id === 'key')?.status, 'error');
@@ -154,7 +154,7 @@ test('a rejected API key is an error, and a valid one unlocks the project check'
     'GET /widget.js': [200, 'console.log(1)'],
   });
   const goodDir = await scratch({ server: accepting.url, project: 'demo', environment: 'local' }, 'ptr_good');
-  const goodChecks = await runInitChecks(goodDir, {}, '1.0.0');
+  const goodChecks = await runInitChecks(goodDir, { server: accepting.url }, '1.0.0');
   await accepting.close();
 
   assert.equal(goodChecks.find((c) => c.id === 'key')?.status, 'ok');
@@ -187,7 +187,7 @@ test('the key check names its source, including the global store, and hints `log
     const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
     await saveGlobalCredential(stub.url, { apiKey: 'ptr_global' });
 
-    const checks = await runInitChecks(dir, {}, '1.0.0');
+    const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
     assert.equal(checks.find((c) => c.id === 'key')?.status, 'ok');
     assert.match(checks.find((c) => c.id === 'key')?.message ?? '', /\(global store\)/);
   } finally {
@@ -206,7 +206,7 @@ test('no key anywhere (env, repo, or global) hints `login`', async () => {
     const stub = await stubServer({ 'GET /api/branding': [200, {}] });
     const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
 
-    const checks = await runInitChecks(dir, {}, '1.0.0');
+    const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
     await stub.close();
 
     const key = checks.find((c) => c.id === 'key');
@@ -231,7 +231,7 @@ test('a project active for nothing warns, not errors, independent of any configu
   // one being present, or on its value, to decide the message.
   const dir = await scratch({ server: stub.url, project: 'demo' }, 'ptr_good');
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const project = checks.find((c) => c.id === 'project');
@@ -250,7 +250,7 @@ test('a project active for several environments reports all of them, from the se
   });
   const dir = await scratch({ server: stub.url, project: 'demo' }, 'ptr_good');
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const project = checks.find((c) => c.id === 'project');
@@ -268,7 +268,7 @@ test('a project missing from the workspace is an error', async () => {
   });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' }, 'ptr_good');
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   assert.equal(checks.find((c) => c.id === 'project')?.status, 'error');
@@ -283,7 +283,7 @@ test('clock skew beyond five minutes warns', async () => {
   });
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const clock = checks.find((c) => c.id === 'clock');
@@ -296,18 +296,18 @@ test('the widget check accepts either the marker block or a Vite env var', async
 
   const markerDir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
   await fs.writeFile(join(markerDir, 'index.html'), '<html><!-- pinsay-feedback:start --></html>', 'utf8');
-  const markerChecks = await runInitChecks(markerDir, {}, '1.0.0');
+  const markerChecks = await runInitChecks(markerDir, { server: stub.url }, '1.0.0');
   assert.equal(markerChecks.find((c) => c.id === 'widget')?.status, 'ok');
 
   const envDir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
   await fs.writeFile(join(envDir, '.env'), 'VITE_PINSAY_PROJECT=demo\n', 'utf8');
-  const envChecks = await runInitChecks(envDir, {}, '1.0.0');
+  const envChecks = await runInitChecks(envDir, { server: stub.url }, '1.0.0');
   assert.equal(envChecks.find((c) => c.id === 'widget')?.status, 'ok');
 
   // Absent is a WARNING, never an error: a Next or Angular install mounts the widget in a
   // component this scan never reads, so "not found" is genuinely inconclusive.
   const emptyDir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
-  const emptyChecks = await runInitChecks(emptyDir, {}, '1.0.0');
+  const emptyChecks = await runInitChecks(emptyDir, { server: stub.url }, '1.0.0');
   assert.equal(emptyChecks.find((c) => c.id === 'widget')?.status, 'warn');
 
   await stub.close();
@@ -359,7 +359,7 @@ test('multi-project: runs project/widget/stack checks per app, keyed with [proje
   await fs.writeFile(join(dir, 'apps/a/index.html'), '<html><!-- pinsay-feedback:start --></html>', 'utf8');
   // apps/b has no widget at all — must warn for b specifically, not fail a.
 
-  const checks = await runInitChecks(dir, {}, '1.0.0');
+  const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
   await stub.close();
 
   const widgetChecks = checks.filter((c) => c.id === 'widget');

@@ -1,19 +1,10 @@
-import { canonicalServer, findRepoRoot, readConfig } from '../config.js';
 import { removeGlobalCredential, normalizeServerOrigin } from '../credentials.js';
-import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
+import { resolveServer } from '../server.js';
 
-/** Removes this machine's saved global credential for one server (see `login`). Never touches a
+/** Removes this machine's saved global key (see `login`). Never touches a
  *  repo's own `.pinsay/credentials.env` — that is a separate, explicit opt-out (`--local-credentials`). */
-export async function logoutCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
-  const root = await findRepoRoot(cwd);
-  const config = await readConfig(root).catch(() => ({}) as any);
-
-  const server = (
-    (typeof options['server'] === 'string' ? (options['server'] as string) : undefined) ||
-    config.server ||
-    canonicalServer(process.env.PINSAY_SERVER) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
+export async function logoutCommand(_cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
+  const server = resolveServer();
 
   const origin = normalizeServerOrigin(server);
   const removed = await removeGlobalCredential(server);

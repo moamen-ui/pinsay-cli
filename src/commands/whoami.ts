@@ -1,20 +1,14 @@
-import { canonicalServer, findRepoRoot, readConfig } from '../config.js';
+import { findRepoRoot } from '../config.js';
 import { api } from '../api.js';
 import { resolveApiKey, getGlobalCredential, sourceLabel } from '../credentials.js';
-import { BUILD_DEFAULT_SERVER } from '../build-constants.js';
+import { resolveServer } from '../server.js';
 
 /** Reports the server, the signed-in account, and which of env/repo/global answered the API key —
  *  never the key itself. */
 export async function whoamiCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
   const root = await findRepoRoot(cwd);
-  const config = await readConfig(root).catch(() => ({}) as any);
 
-  const server = (
-    (typeof options['server'] === 'string' ? (options['server'] as string) : undefined) ||
-    config.server ||
-    canonicalServer(process.env.PINSAY_SERVER) ||
-    BUILD_DEFAULT_SERVER
-  ).replace(/\/$/, '');
+  const server = resolveServer();
 
   const isJson = options['json'] === true;
   const { key, source } = await resolveApiKey(root, server);

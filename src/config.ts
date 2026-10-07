@@ -42,6 +42,11 @@ export interface PinSayConfig {
    * install time). Still read here, for a config written by an install from before this change.
    */
   environment?: string;
+  /**
+   * @deprecated Never written since 0.8.0 — the CLI talks to one server only (see `resolveServer`
+   * in server.ts). Still read, only so a config naming ANOTHER server can be refused clearly
+   * (`serverSettingError`); a config naming app.pinsay.dev or api.pinsay.dev is accepted as is.
+   */
   server?: string;
   aiTool?: string;
   skillsDir?: string;
@@ -265,11 +270,9 @@ export async function writeConfigFull(cwd: string, config: PinSayConfig): Promis
 }
 
 /**
- * Writes `.pinsay/credentials.env`. Besides the key it also records PINSAY_SERVER / PINSAY_PROJECT
- * when known: `.pinsay/pinsay.sh` (the no-Node fallback) resolves them from the app's `.env`, the
- * built bundle, or — its documented last resort — this very file. A repo with no `.env` (Angular,
- * Rails, static HTML…) therefore only works if we write them here; `init` used to write the key
- * alone and `pinsay.sh list` failed with "Missing configuration".
+ * Writes `.pinsay/credentials.env`: the key, plus PINSAY_PROJECT when known (`.pinsay/pinsay.sh`, the no-Node
+ * fallback, reads the project from here in repos with no `.env`). No PINSAY_SERVER line since 0.8.0: there is one
+ * server.
  *
  * Called only when `init` writes the key locally — a `--local-credentials` install, or the answer
  * "no" to "save this key for all repos on this machine?". When the key is instead saved to the
@@ -280,12 +283,11 @@ export async function writeConfigFull(cwd: string, config: PinSayConfig): Promis
 export async function writeCredentials(
   cwd: string,
   token: string,
-  extra: { server?: string; project?: string } = {},
+  extra: { project?: string } = {},
 ): Promise<void> {
   const file = join(cwd, CREDENTIALS_FILE);
   await fs.mkdir(dirname(file), { recursive: true });
   const lines = [`PINSAY_API_KEY=${token}`];
-  if (extra.server) lines.push(`PINSAY_SERVER=${extra.server}`);
   if (extra.project) lines.push(`PINSAY_PROJECT=${extra.project}`);
   await fs.writeFile(file, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
 }

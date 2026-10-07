@@ -1,11 +1,12 @@
 import { promises as fs } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { readConfig, removeLegacyRepoFiles } from '../config.js';
+import { readConfig, isMultiProject, removeLegacyRepoFiles } from '../config.js';
 import { api } from '../api.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
 import { installSkills, buildFlatPinSayFeedback } from '../skills.js';
 import type { MetaResponse } from '../checks.js';
+import { resolveServer } from '../server.js';
 
 export interface UpdateOptions {
   server?: string;
@@ -57,10 +58,10 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   for (const f of removedLegacyFiles) console.log(`\x1b[2mremoved legacy ${f}\x1b[0m`);
 
   const config = await readConfig(cwd);
-  const server = (options.server || config.server || '').replace(/\/$/, '');
+  const server = (options.server || resolveServer()).replace(/\/$/, '');
 
-  if (!server) {
-    console.error('No server configured — run `npx -y pinsay-cli init` first.');
+  if (!config.project && !isMultiProject(config)) {
+    console.error('No .pinsay/config.json here — run `npx -y pinsay-cli init` first.');
     return 1;
   }
 
@@ -69,7 +70,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     const meta = await api<MetaResponse>(server, '/api/meta');
     served = meta?.skillVersion ?? null;
   } catch {
-    console.error(`Could not reach ${server} — check the URL.`);
+    console.error(`Could not reach ${server}.`);
     return 1;
   }
 

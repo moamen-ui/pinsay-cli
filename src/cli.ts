@@ -10,6 +10,7 @@ import { whoamiCommand } from './commands/whoami.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
 import { ApiError } from './api.js';
+import { serverSettingError } from './server.js';
 
 function parseArgs(args: string[]) {
     const parsed: Record<string, string | boolean> = {};
@@ -66,7 +67,7 @@ Usage: npx pinsay-cli <command> [options]
 Commands:
   init      Set up the feedback widget in your project
   login     Authenticate once per machine (saves a key for every repo)
-  logout    Remove this machine's saved key for a server
+  logout    Remove this machine's saved key
   whoami    Show the signed-in account and where the API key came from
   doctor    Diagnose an install and report what is wrong
   update    Refresh the served skills to the server's current version
@@ -103,13 +104,22 @@ async function main() {
         }
     }
     
+    // No server choice since 0.8.0 (see server.ts): a `--server` flag, or a `.pinsay/config.json`
+    // naming another server, stops here before anything talks to a server. `map` never does.
+    if (command !== 'map' && !parsed['help']) {
+        const serverError = await serverSettingError(cwd(), parsed);
+        if (serverError) {
+            console.error(serverError);
+            process.exit(2);
+        }
+    }
+
     if (command === 'init') {
         if (parsed['help']) {
             console.log(`
 Usage: npx pinsay-cli init [options]
 
 Options:
-  --server <url>           Feedback server URL
   --key <key>              API key
   --project <key>          Project key
   --create <name>          Create project with name
@@ -155,7 +165,6 @@ key it hands back. Pass --key to skip the browser and validate a pasted key inst
 before.
 
 Options:
-  --server <url>          Server URL (default: this repo's .pinsay/config.json, then $PINSAY_SERVER)
   --key <key>             API key — skips the browser flow entirely
   --no-browser            Print the sign-in link/code but don't try to open a browser
   --scope <global|repo>   global (default): save for every repo on this machine;
@@ -170,10 +179,9 @@ Options:
             console.log(`
 Usage: npx pinsay-cli logout [options]
 
-Removes this machine's saved global key for a server.
+Removes this machine's saved global key.
 
 Options:
-  --server <url>     Server URL (default: this repo's .pinsay/config.json, then $PINSAY_SERVER)
   --json             Emit { ok, server, removed } as JSON
   -h, --help         Show this help
 `);
@@ -189,7 +197,6 @@ Prints the server, the signed-in account, and which of env/repo/global answered 
 never the key itself.
 
 Options:
-  --server <url>     Server URL (default: this repo's .pinsay/config.json, then $PINSAY_SERVER)
   --json             Emit { ok, server, displayName, email, source } as JSON
   -h, --help         Show this help
 `);
@@ -204,7 +211,6 @@ Usage: npx pinsay-cli doctor [options]
 Checks an existing install and prints one line per check.
 
 Options:
-  --server <url>     Override the server from .pinsay/config.json
   --project <key>    Override the project key
   --json             Emit { ok, checks } as JSON
   --fix              Apply the idempotent repairs (gitignore, skills, stack)
@@ -220,7 +226,6 @@ Exit codes:
             process.exit(0);
         }
         const code = await doctorCommand(cwd(), {
-            server: typeof parsed['server'] === 'string' ? parsed['server'] : undefined,
             project: typeof parsed['project'] === 'string' ? parsed['project'] : undefined,
             json: parsed['json'] === true,
             fix: parsed['fix'] === true,
@@ -232,17 +237,15 @@ Exit codes:
             console.log(`
 Usage: npx pinsay-cli update [options]
 
-Refreshes the AI skills and pinsay.sh from the configured server.
+Refreshes the AI skills and pinsay.sh from the server.
 
 Options:
-  --server <url>     Override the server from .pinsay/config.json
   --check            Report what is out of date without writing anything
   -h, --help         Show this help
 `);
             process.exit(0);
         }
         const code = await updateCommand(cwd(), {
-            server: typeof parsed['server'] === 'string' ? parsed['server'] : undefined,
             check: parsed['check'] === true,
         });
         process.exit(code);
@@ -363,7 +366,6 @@ Start the PinSay stdio MCP server for AI tools.
 
 Options:
   --log <file>       Log MCP server traffic to file
-  --server <url>     Feedback server URL
   --project <key>    Project key
   --key <key>        API key
   -h, --help         Show this help

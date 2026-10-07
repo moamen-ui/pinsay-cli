@@ -123,12 +123,12 @@ function globalDirFor(dir: string): string {
 }
 
 function envFor(dir: string): NodeJS.ProcessEnv {
-  return { ...process.env, PINSAY_CONFIG_DIR: globalDirFor(dir) };
+  return { ...process.env, PINSAY_CONFIG_DIR: globalDirFor(dir), PINSAY_SERVER: serverUrl };
 }
 
 test('init --yes without --key exits 2', () => withTempDir(async (dir) => {
   try {
-    await execAsync(`node ${cliPath} init --yes --create "My App" --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+    await execAsync(`node ${cliPath} init --yes --create "My App"`, { cwd: dir, env: envFor(dir) });
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 2);
@@ -144,7 +144,7 @@ test('init --yes without --key exits 2', () => withTempDir(async (dir) => {
 // worked is worse than any crash, because there is nothing to search for when it happens.
 test('interactive init without a TTY refuses loudly instead of exiting 0', () => withTempDir(async (dir) => {
   try {
-    await execAsync(`node ${cliPath} init --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+    await execAsync(`node ${cliPath} init`, { cwd: dir, env: envFor(dir) });
     assert.fail('a non-interactive init must not report success');
   } catch (err: any) {
     assert.strictEqual(err.code, 2, 'must exit 2 (usage error), not 0');
@@ -159,7 +159,7 @@ test('interactive init without a TTY refuses loudly instead of exiting 0', () =>
 
 test('init --yes with bad key exits 3', () => withTempDir(async (dir) => {
   try {
-    await execAsync(`node ${cliPath} init --yes --key ptr_bogus --create "My App" --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+    await execAsync(`node ${cliPath} init --yes --key ptr_bogus --create "My App"`, { cwd: dir, env: envFor(dir) });
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 3);
@@ -167,7 +167,7 @@ test('init --yes with bad key exits 3', () => withTempDir(async (dir) => {
 }));
 
 test('init --json prints JSON and nothing else', () => withTempDir(async (dir) => {
-  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good --create "My App" --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good --create "My App"`, { cwd: dir, env: envFor(dir) });
   const lines = stdout.trim().split('\n');
   assert.strictEqual(lines.length, 1, 'Should output exactly one line');
   const json = JSON.parse(lines[0]);
@@ -179,7 +179,7 @@ test('init --json prints JSON and nothing else', () => withTempDir(async (dir) =
 }));
 
 test('a default --yes run records delivery: embed', () => withTempDir(async (dir) => {
-  const { stdout } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+  const { stdout } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App"`, { cwd: dir, env: envFor(dir) });
   assert.match(stdout, /is set up/);
   const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
   assert.strictEqual(config.delivery, 'embed');
@@ -214,7 +214,7 @@ test('init --yes joins an already-configured repo, asking only for the key', () 
   // pre-global-store behaviour — see the credentials-focused tests further down for the default
   // (global store) and --local-credentials on their own.
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
   assert.match(stdout, /Joined/);
@@ -248,7 +248,7 @@ test('init --json in join mode reports mode: join and does not ask for --project
     'utf8',
   );
 
-  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good --server ${serverUrl}`, { cwd: dir, env: envFor(dir) });
+  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good`, { cwd: dir, env: envFor(dir) });
   const json = JSON.parse(stdout.trim().split('\n')[0]);
   assert.strictEqual(json.mode, 'join');
   assert.strictEqual(json.project.key, 'existing');
@@ -275,7 +275,7 @@ test('a join with a recorded htmlPath says the widget is already embedded', () =
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
   assert.match(stdout, /already embedded in this app's committed source/);
@@ -308,7 +308,7 @@ test('a join whose first install was skill-routed points at /pinsay-init instead
   );
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
   assert.doesNotMatch(stdout, /already embedded in this app's committed source/);
@@ -318,7 +318,7 @@ test('a join whose first install was skill-routed points at /pinsay-init instead
 
 test('--delivery bogus exits 2', () => withTempDir(async (dir) => {
   try {
-    await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --delivery bogus`, { cwd: dir, env: envFor(dir) });
+    await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --delivery bogus`, { cwd: dir, env: envFor(dir) });
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 2);
@@ -332,7 +332,7 @@ test('init --yes --delivery extension skips injection and records delivery', () 
   await fs.writeFile(indexPath, original, 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --delivery extension`,
+    `node ${cliPath} init --yes --key ptr_good --create "My App" --delivery extension`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -348,7 +348,7 @@ test('init --yes --delivery extension skips injection and records delivery', () 
 
 test('init --json --delivery extension reports delivery and the extension URLs', () => withTempDir(async (dir) => {
   const { stdout } = await execAsync(
-    `node ${cliPath} init --json --key ptr_good --create "My App" --server ${serverUrl} --delivery extension`,
+    `node ${cliPath} init --json --key ptr_good --create "My App" --delivery extension`,
     { cwd: dir, env: envFor(dir) },
   );
   const json = JSON.parse(stdout.trim().split('\n')[0]);
@@ -393,11 +393,11 @@ test('init --yes --path adds a second app to a multi-project config (real Nx-app
   await fs.writeFile(path.join(dir, 'apps/b/src/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a`,
     { cwd: dir, env: envFor(dir) },
   );
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -441,7 +441,7 @@ test('init --yes --path migrates an existing single-project config into `project
   await fs.writeFile(path.join(dir, 'apps/landing/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-landing --path apps/landing --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-landing --path apps/landing`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -475,7 +475,7 @@ test('init --yes --path migrating the SAME project this run configures does not 
   await fs.writeFile(path.join(dir, 'apps/profile/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-profile --path apps/profile --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-profile --path apps/profile`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -495,7 +495,7 @@ test('first install with --key saves the key to the global store and writes no r
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --create "My App"`,
     { cwd: dir, env: envFor(dir) },
   );
   assert.match(stdout, /this machine's global store/);
@@ -520,7 +520,7 @@ test('--local-credentials writes the repo file instead of the global store', () 
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --create "My App" --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -565,7 +565,7 @@ test('a join needs no --key at all when a key is already saved in the global sto
   );
 
   // No --key anywhere on the command line — the global store alone must resolve it.
-  const { stdout } = await execAsync(`node ${cliPath} init --yes --server ${serverUrl}`, {
+  const { stdout } = await execAsync(`node ${cliPath} init --yes`, {
     cwd: dir,
     env: envFor(dir),
   });
@@ -605,7 +605,7 @@ test('init --yes removes legacy .pinsay/credentials.env.example and .pinsay/.tok
   await fs.writeFile(path.join(dir, '.pinsay/.token_cache'), '{"token":"stale"}', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --create "My App" --server ${serverUrl}`,
+    `node ${cliPath} init --yes --key ptr_good --create "My App"`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -634,7 +634,7 @@ test('a join also removes legacy .pinsay files, without touching credentials.env
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -649,18 +649,18 @@ test('a join also removes legacy .pinsay files, without touching credentials.env
   assert.match(creds, /PINSAY_API_KEY=ptr_good/, 'credentials.env itself must never be touched by the cleanup');
 }));
 
-test('init --yes --path twice with --local-credentials: credentials.env has PINSAY_SERVER but no PINSAY_PROJECT (multi-project)', () => withTempDir(async (dir) => {
+test('init --yes --path twice with --local-credentials: credentials.env has neither PINSAY_SERVER nor PINSAY_PROJECT (multi-project)', () => withTempDir(async (dir) => {
   await fs.mkdir(path.join(dir, 'apps/a'), { recursive: true });
   await fs.mkdir(path.join(dir, 'apps/b'), { recursive: true });
   await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
   await fs.writeFile(path.join(dir, 'apps/b/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --server ${serverUrl} --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -669,14 +669,14 @@ test('init --yes --path twice with --local-credentials: credentials.env has PINS
 
   const creds = await fs.readFile(path.join(dir, '.pinsay/credentials.env'), 'utf8');
   assert.match(creds, /^PINSAY_API_KEY=ptr_good$/m);
-  assert.match(creds, new RegExp(`^PINSAY_SERVER=${serverUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'm'));
+  assert.doesNotMatch(creds, /PINSAY_SERVER=/);
   assert.doesNotMatch(creds, /^PINSAY_PROJECT=/m, 'a multi-project repo must never pin credentials.env to one project — pinsay.sh takes -p there');
 }));
 
 test('init --scope repo writes the repo credentials file instead of the global store', () => withTempDir(async (dir) => {
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --project existing --scope repo`,
+    `node ${cliPath} init --yes --key ptr_good --project existing --scope repo`,
     { cwd: dir, env: envFor(dir) },
   );
   assert.match(stdout, /credentials\.env/);
@@ -686,7 +686,25 @@ test('init --scope repo writes the repo credentials file instead of the global s
 
 test('init --scope with an unknown value exits 2', () => withTempDir(async (dir) => {
   await assert.rejects(
-    execAsync(`node ${cliPath} init --yes --key ptr_good --server ${serverUrl} --project existing --scope machine`, { cwd: dir, env: envFor(dir) }),
+    execAsync(`node ${cliPath} init --yes --key ptr_good --project existing --scope machine`, { cwd: dir, env: envFor(dir) }),
     (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
   );
+}));
+
+test('init --yes writes no server into .pinsay/config.json', () => withTempDir(async (dir) => {
+  await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App"`, { cwd: dir, env: envFor(dir) });
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual('server' in config, false);
+  assert.ok(config.project, 'project is still written');
+}));
+
+test('a config with a project and no server is a join', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pinsay'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pinsay/config.json'),
+    JSON.stringify({ project: 'my-app', aiTool: 'claude-code', delivery: 'embed' }),
+    'utf8',
+  );
+  const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good`, { cwd: dir, env: envFor(dir) });
+  assert.strictEqual(JSON.parse(stdout).mode, 'join');
 }));

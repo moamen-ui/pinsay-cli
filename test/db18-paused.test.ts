@@ -114,7 +114,7 @@ test('apply (default): a paused workspace exits 2 with the paused message, befor
     touchedQueueOrWrite = false;
 
     await assert.rejects(
-      execAsync(`node ${cliPath} apply`, { cwd: dir }),
+      execAsync(`node ${cliPath} apply`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(
@@ -138,7 +138,7 @@ test('apply: a workspace scheduled for deletion exits 2 with the scheduled-delet
     touchedQueueOrWrite = false;
 
     await assert.rejects(
-      execAsync(`node ${cliPath} apply`, { cwd: dir }),
+      execAsync(`node ${cliPath} apply`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(
@@ -158,7 +158,7 @@ test('apply --plan: same check, same exit 2, before any git/AI work', () =>
     touchedQueueOrWrite = false;
 
     await assert.rejects(
-      execAsync(`node ${cliPath} apply --plan`, { cwd: dir }),
+      execAsync(`node ${cliPath} apply --plan`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(err.stderr, /is paused — apply is disabled until a workspace admin resumes it\./);
@@ -175,7 +175,7 @@ test('apply --mark: same check, same exit 2, before marking anything', () =>
     touchedQueueOrWrite = false;
 
     await assert.rejects(
-      execAsync(`node ${cliPath} apply --mark 5 --reply "done"`, { cwd: dir }),
+      execAsync(`node ${cliPath} apply --mark 5 --reply "done"`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(err.stderr, /is paused — apply is disabled until a workspace admin resumes it\./);
@@ -193,7 +193,7 @@ test('apply: an active (not frozen) workspace is unaffected — reaches the queu
 
     // No git repo in `dir`, so runApply itself will fail past the frozen-check (fine — this test
     // only asserts the frozen-check let it THROUGH, not that the whole apply run succeeds).
-    await execAsync(`node ${cliPath} apply --plan`, { cwd: dir }).catch(() => {});
+    await execAsync(`node ${cliPath} apply --plan`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }).catch(() => {});
     assert.strictEqual(touchedQueueOrWrite, true, 'an active workspace must reach the queue fetch');
   }));
 
@@ -206,7 +206,7 @@ test('apply --json: a mid-run freeze (queue 423s after /me said "not frozen") st
 
     try {
       await assert.rejects(
-        execAsync(`node ${cliPath} apply --json`, { cwd: dir }),
+        execAsync(`node ${cliPath} apply --json`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
         (err: any) => {
           assert.strictEqual(err.code, 2, `expected exit 2, got ${err.code}: ${err.stderr}`);
           assert.match(err.stderr, /This workspace is paused\./);
@@ -261,7 +261,7 @@ test('pinsay status --deployed: a 423 from the server warns and exits 0 (never f
       );
       await fs.writeFile(path.join(dir, '.pinsay/credentials.env'), 'PINSAY_API_KEY=ptr_good\n', 'utf8');
 
-      const { stdout, stderr } = await execAsync(`node ${cliPath} status --deployed`, { cwd: dir });
+      const { stdout, stderr } = await execAsync(`node ${cliPath} status --deployed`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: deployedUrl } });
       // DB-18 code review (NIT): prints the server's OWN message (distinguishes "paused" from
       // "scheduled for deletion") rather than a hard-coded "paused" string.
       assert.match(stderr, /PinSay: This workspace is paused\. — build not reported\./);

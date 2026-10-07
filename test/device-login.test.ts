@@ -18,6 +18,9 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const cliPath = path.resolve(__dirname, '../dist/cli.js');
 
+// Set by withStubServer before each test body runs; envFor points the child at it.
+let serverUrl: string;
+
 async function withTempDir(fn: (dir: string) => Promise<void>) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pinsay-device-login-test-'));
   try {
@@ -39,7 +42,7 @@ async function withGlobalDir(fn: (globalDir: string) => Promise<void>) {
 }
 
 function envFor(globalDir: string): NodeJS.ProcessEnv {
-  return { ...process.env, PINSAY_CONFIG_DIR: globalDir };
+  return { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_SERVER: serverUrl };
 }
 
 type PollBehavior = 'approve-after-one' | 'deny-immediately' | 'expire-immediately';
@@ -104,7 +107,7 @@ async function withStubServer(
 
   await new Promise<void>((resolve) => server.listen(0, resolve));
   const addr = server.address() as import('net').AddressInfo;
-  const serverUrl = `http://localhost:${addr.port}`;
+  serverUrl = `http://localhost:${addr.port}`;
 
   try {
     await fn(serverUrl);
@@ -117,7 +120,7 @@ test('login --no-browser: prints the link and code, then saves the key globally 
   withStubServer('approve-after-one', (serverUrl) =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
-        const { stdout } = await execAsync(`node ${cliPath} login --no-browser --server ${serverUrl}`, {
+        const { stdout } = await execAsync(`node ${cliPath} login --no-browser`, {
           cwd: repo,
           env: envFor(globalDir),
         });
@@ -141,7 +144,7 @@ test('login --no-browser: a denied code exits 3 with a clear message', () =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
         await assert.rejects(
-          execAsync(`node ${cliPath} login --no-browser --server ${serverUrl}`, { cwd: repo, env: envFor(globalDir) }),
+          execAsync(`node ${cliPath} login --no-browser`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
             assert.strictEqual(err.code, 3);
             assert.match(err.stderr, /denied/i);
@@ -157,7 +160,7 @@ test('login --no-browser: an expired code exits 3 with a clear message', () =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
         await assert.rejects(
-          execAsync(`node ${cliPath} login --no-browser --server ${serverUrl}`, { cwd: repo, env: envFor(globalDir) }),
+          execAsync(`node ${cliPath} login --no-browser`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
             assert.strictEqual(err.code, 3);
             assert.match(err.stderr, /expired/i);
@@ -176,7 +179,7 @@ test('login: no --key and no TTY (and no --no-browser) exits 2 with the fallback
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
         await assert.rejects(
-          execAsync(`node ${cliPath} login --server ${serverUrl}`, { cwd: repo, env: envFor(globalDir) }),
+          execAsync(`node ${cliPath} login`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
             assert.strictEqual(err.code, 2);
             assert.match(err.stderr, /npx pinsay-cli login --key <key>/);

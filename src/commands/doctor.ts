@@ -9,6 +9,7 @@ import { postEvent } from '../events.js';
 import { detectDesignTokens } from '../stack/design.js';
 import { readStackFile, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
 import { resolveApiKey } from '../credentials.js';
+import { resolveServer } from '../server.js';
 
 const ICON = { ok: '✔', warn: '⚠', error: '✘' } as const;
 
@@ -63,14 +64,16 @@ export async function doctorCommand(cwd: string, options: DoctorOptions, cliVers
     return 0;
   }
 
-  let checks = await runInitChecks(cwd, { server: options.server, project: options.project }, cliVersion);
+  const server = (options.server || resolveServer()).replace(/\/$/, '');
+
+  let checks = await runInitChecks(cwd, { server, project: options.project }, cliVersion);
 
   if (options.fix) {
     // Re-run afterwards so the reported state is the state AFTER repair, not before it — a doctor
     // that fixes something and still prints the complaint is worse than one that does neither.
-    const repaired = await applyFixes(cwd, checks);
+    const repaired = await applyFixes(cwd, checks, server);
     if (repaired.length > 0) {
-      checks = await runInitChecks(cwd, { server: options.server, project: options.project }, cliVersion);
+      checks = await runInitChecks(cwd, { server, project: options.project }, cliVersion);
     }
   }
 
@@ -107,7 +110,7 @@ async function reportRun(cwd: string, options: DoctorOptions, checks: CheckResul
 
   try {
     const config = await readConfig(cwd);
-    const server = (options.server || config.server || '').replace(/\/$/, '');
+    const server = (options.server || resolveServer()).replace(/\/$/, '');
     if (!server) return;
 
     const { key: apiKey } = await resolveApiKey(cwd, server);
@@ -127,10 +130,9 @@ async function reportRun(cwd: string, options: DoctorOptions, checks: CheckResul
 }
 
 /** Applies only the idempotent repairs. Returns the ids actually repaired. */
-async function applyFixes(cwd: string, checks: CheckResult[]): Promise<string[]> {
+async function applyFixes(cwd: string, checks: CheckResult[], server: string): Promise<string[]> {
   const repaired: string[] = [];
   const config = await readConfig(cwd);
-  const server = (config.server || '').replace(/\/$/, '');
 
   // Only the `stack` repair needs auth, so this is resolved lazily and its failure is not fatal to
   // the other repairs.
