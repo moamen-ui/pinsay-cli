@@ -1,4 +1,5 @@
-import { findRepoRoot, upsertGitignore, writeCredentials } from '../config.js';
+import { findRepoRoot, writeCredentials } from '../config.js';
+import { hidePinsayFiles, formatHideWarnings } from '../lib/git-exclude.js';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
 import { saveGlobalCredential } from '../credentials.js';
@@ -89,9 +90,9 @@ export async function loginCommand(cwd: string, options: Record<string, string |
   if (scope === 'repo') {
     // Repo scope: also the multi-account case (a second identity for one repo). The repo file wins
     // over the global store in resolveApiKey, so this overrides a machine-wide key here. The
-    // .gitignore block is ensured too: this repo may never have run `init`, and the file is a secret.
+    // PinSay's files are hidden from git (.git/info/exclude) too: this repo may never have run `init`, and the file is a secret.
     await writeCredentials(root, key!);
-    await upsertGitignore(root, product);
+    for (const line of formatHideWarnings(await hidePinsayFiles(root))) console.error(line);
     console.log(`✔ Signed in to ${server} as ${who} — saved to .pinsay/credentials.env (this repo only; overrides the global store here)`);
     process.exit(0);
   }

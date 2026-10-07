@@ -110,12 +110,11 @@ function gitStatusPorcelain(dir: string): string[] {
 }
 
 /**
- * The gitignore contract, exercised end-to-end rather than by reading `upsertGitignore`'s output
- * text: after a real `init --yes` for every AI tool layout the CLI can write (including a custom
- * `--skills-dir`), `git status --porcelain` must show ONLY the files a repo is actually meant to
- * commit — the injected HTML, `.gitignore` itself, and `.pinsay/config.json` / `stack.json`.
- * Nothing from `.claude/`, `.cursor/`, `.windsurf/`, `.agents/`, or a custom skills dir may appear,
- * whichever tool (or override) produced it.
+ * The hide-from-git contract, exercised end-to-end: after a real `init --yes` for every AI tool
+ * layout the CLI can write (including a custom `--skills-dir`), `git status --porcelain` must show
+ * ONLY the file init changed in the app itself — the injected HTML. Nothing from `.pinsay/`,
+ * `.claude/`, `.cursor/`, `.windsurf/`, `.agents/`, or a custom skills dir may appear, and init
+ * never creates or edits the repo's `.gitignore` (PinSay's paths go into `.git/info/exclude`).
  */
 for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']) {
   test(`init --yes --tool ${tool}: git status shows only the committed files`, () =>
@@ -131,7 +130,8 @@ for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']
       );
 
       const files = gitStatusPorcelain(dir);
-      assert.deepStrictEqual(files, ['.gitignore', '.pinsay/config.json', '.pinsay/stack.json', 'index.html']);
+      assert.deepStrictEqual(files, ['index.html']);
+      await assert.rejects(fs.access(path.join(dir, '.gitignore')));
     }));
 }
 
@@ -153,10 +153,11 @@ test('init --yes --skills-dir custom/skills: git status shows only the committed
     await fs.access(path.join(dir, 'custom/skills/pinsay-feedback/SKILL.md'));
 
     const files = gitStatusPorcelain(dir);
-    assert.deepStrictEqual(files, ['.gitignore', '.pinsay/config.json', '.pinsay/stack.json', 'index.html']);
+    assert.deepStrictEqual(files, ['index.html']);
+    await assert.rejects(fs.access(path.join(dir, '.gitignore')));
   }));
 
-test('init --yes --path apps/a (multi-project): git status shows only the committed files, including .pinsay/projects/*.stack.json', () =>
+test('init --yes --path apps/a (multi-project): git status shows only the injected html', () =>
   withTempDir(async (dir) => {
     execFileSync('git', ['init'], { cwd: dir, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: dir, env: envFor(dir) });
@@ -170,5 +171,6 @@ test('init --yes --path apps/a (multi-project): git status shows only the commit
     );
 
     const files = gitStatusPorcelain(dir);
-    assert.deepStrictEqual(files, ['.gitignore', '.pinsay/config.json', '.pinsay/projects/p1.stack.json', 'apps/a/index.html']);
+    assert.deepStrictEqual(files, ['apps/a/index.html']);
+    await assert.rejects(fs.access(path.join(dir, '.gitignore')));
   }));

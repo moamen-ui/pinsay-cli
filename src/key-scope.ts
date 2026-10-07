@@ -6,7 +6,7 @@ export type KeyScope = 'global' | 'repo';
 // One question, asked word for word by both `init` and `login`.
 export const KEY_SCOPE_QUESTION = 'Where should this API key be stored?';
 export const KEY_SCOPE_GLOBAL = 'Global — this machine, every repo (~/.config/pinsay/credentials.json)';
-export const KEY_SCOPE_REPO = 'Repo — .pinsay/credentials.env in this repo only (gitignored)';
+export const KEY_SCOPE_REPO = 'Repo — .pinsay/credentials.env in this repo only (hidden from git)';
 
 /**
  * The scope a flag fixed: `--scope global|repo` (case-insensitive), or `--local-credentials` (an

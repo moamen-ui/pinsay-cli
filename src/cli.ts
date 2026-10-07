@@ -140,7 +140,7 @@ Options:
   --source-map             Wire in the Vite plugin that stamps component source hashes
   --scope <global|repo>    Where the API key is stored, without asking: global (this machine, all
                            repos, ~/.config/pinsay/credentials.json; the default with --yes) or
-                           repo (.pinsay/credentials.env, gitignored, this repo only).
+                           repo (.pinsay/credentials.env, hidden from git, this repo only).
                            --local-credentials is an alias for --scope repo
   --no-browser             When signing in in the browser (first run, no key resolved yet), print
                            the link/code but don't try to open a browser
@@ -158,7 +158,7 @@ Usage: npx pinsay-cli login [options]
 
 Sign in and save your API key. On a terminal it asks where to save it:
   Global  this machine, every repo (~/.config/pinsay/credentials.json, honours $XDG_CONFIG_HOME)
-  Repo    .pinsay/credentials.env in this repo only (gitignored)
+  Repo    .pinsay/credentials.env in this repo only (hidden from git)
 With no terminal (CI, a pipe) or with --yes it saves globally, unless --scope repo is given.
 
 With no --key on a real terminal, opens your browser to sign in (mirrors \`gh auth login\`): prints

@@ -451,8 +451,9 @@ test('init --yes --path adds a second app to a multi-project config (real Nx-app
   await fs.access(path.join(dir, '.pinsay/projects/p1.stack.json'));
   await fs.access(path.join(dir, '.pinsay/projects/p2.stack.json'));
 
-  const gitignore = await fs.readFile(path.join(dir, '.gitignore'), 'utf8');
-  assert.match(gitignore, /!\.pinsay\/projects\//);
+  // This dir is not a git repo: init never writes a root .gitignore, only `.pinsay/.gitignore`.
+  await assert.rejects(fs.access(path.join(dir, '.gitignore')));
+  await fs.access(path.join(dir, '.pinsay/.gitignore'));
 }));
 
 test('init --yes --path migrates an existing single-project config into `projects`', () => withTempDir(async (dir) => {

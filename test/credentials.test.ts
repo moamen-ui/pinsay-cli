@@ -560,7 +560,7 @@ test('login with no terminal and no --scope saves globally (the non-interactive 
     }),
   ));
 
-test('login --local-credentials writes the repo file and gitignores it', () =>
+test('login --local-credentials writes the repo file and hides it from git', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good --local-credentials`, {
@@ -569,7 +569,9 @@ test('login --local-credentials writes the repo file and gitignores it', () =>
       });
       assert.match(stdout, /saved to \.pinsay\/credentials\.env/);
       assert.match(await fs.readFile(path.join(repo, '.pinsay', 'credentials.env'), 'utf8'), /^PINSAY_API_KEY=ptr_good$/m);
-      assert.match(await fs.readFile(path.join(repo, '.gitignore'), 'utf8'), /^\.pinsay\/\*$/m);
+      // Not a git repo here: only `.pinsay/.gitignore` is written, and no root .gitignore is created.
+      await fs.access(path.join(repo, '.pinsay', '.gitignore'));
+      await assert.rejects(fs.access(path.join(repo, '.gitignore')));
     }),
   ));
 

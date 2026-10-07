@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { join, posix } from 'node:path';
+import { join, posix, relative, resolve, sep, isAbsolute } from 'node:path';
 import { RepoPathError, linkOrCopy, writeRepoFile } from './lib/repo-paths.js';
 
 /** A failed fetch of a served file. `reason` is short ("HTTP 404", "fetch failed") so warnings group. */
@@ -36,6 +36,8 @@ export interface SkillInstallResult {
     files: string[];
     /** One per file that was not installed. Empty when everything installed. */
     warnings: SkillWarning[];
+    /** Repo-relative paths (with '/') where PinSay files physically landed — for hidePinsayFiles. */
+    hide: string[];
 }
 
 function toWarning(tool: string, path: string, server: string, err: unknown): SkillWarning {
@@ -191,7 +193,16 @@ export async function installSkills(
 ): Promise<SkillInstallResult> {
     const files: string[] = [];
     const warnings: SkillWarning[] = [];
+    const hide: string[] = [];
     server = server.replace(/\/$/, '');
+
+    // Where a file really landed, repo-relative with '/'. A link stub can redirect a write elsewhere in the
+    // repo (e.g. docs/skills/pinsay-init/), and that folder must be hidden from git too.
+    const landed = (abs: string, folder: boolean) => {
+        const rel = relative(resolve(cwd), abs).split(sep).join('/');
+        if (rel === '' || rel.startsWith('../') || isAbsolute(rel)) return;
+        hide.push(folder ? `${posix.dirname(rel)}/` : rel);
+    };
 
     const step = async (rel: string, work: () => Promise<void>): Promise<void> => {
         try {
@@ -228,6 +239,7 @@ export async function installSkills(
                     ? await buildFlatPinSayFeedback(server)
                     : await fetchText(url);
             primaryAbs = (await writeRepoFile(cwd, rel, body)).abs;
+            landed(primaryAbs, !isFlatFileTool);
             files.push(rel);
         });
         // Not written: nothing to mirror or to put siblings next to. The warning already says why.
@@ -239,7 +251,8 @@ export async function installSkills(
             // symlink to the primary file, or a copy where links can't be made (see linkOrCopy).
             const mirrorRel = `.agents/skills/${skillName}/SKILL.md`;
             await step(mirrorRel, async () => {
-                await linkOrCopy(cwd, source, mirrorRel);
+                const m = await linkOrCopy(cwd, source, mirrorRel);
+                landed(m.abs, true);
                 files.push(mirrorRel);
             });
         }
@@ -262,5 +275,5 @@ export async function installSkills(
     await writeOrLink(layout[0], 'pinsay-init');
     await writeOrLink(layout[1], 'pinsay-feedback');
 
-    return { files, warnings };
+    return { files, warnings, hide: [...new Set(hide)] };
 }

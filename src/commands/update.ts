@@ -7,6 +7,7 @@ import { installSkills, buildFlatPinSayFeedback, formatSkillWarnings } from '../
 import { resolveRepoPath } from '../lib/repo-paths.js';
 import type { MetaResponse } from '../checks.js';
 import { resolveServer } from '../server.js';
+import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
 
 export interface UpdateOptions {
   server?: string;
@@ -43,7 +44,7 @@ function isFlatPinSayFeedbackFile(path: string, aiTool: string | undefined, skil
  * A skill file installed months ago is frozen prose describing an API that has moved on — the
  * problem the version stamp exists to make visible and this command exists to fix. Since skills
  * and pinsay.sh are gitignored (derived, per-machine state — see `config.ts`'s
- * `upsertGitignore`), a fresh clone of a repo that already has PinSay set up has NEITHER: there
+ * `lib/git-exclude.ts`), a fresh clone of a repo that already has PinSay set up has NEITHER: there
  * is nothing to refresh, only something to install, which used to be silently skipped here.
  *
  * Symlinks are preserved deliberately: installSkills points `.agents/<name>/SKILL.md` at the
@@ -93,6 +94,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
 
   if (missing.length === 0 && stale.length === 0) {
     console.log(`Up to date (skill version ${served ?? 'unknown'}).`);
+    for (const line of formatHideWarnings(await hidePinsayFiles(cwd, skillsDirExtra(config.skillsDir)))) console.error(line);
     return 0;
   }
 
@@ -109,6 +111,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   }
 
   let installedCount = 0;
+  let installHide: string[] = [];
   if (missing.length > 0) {
     if (!config.aiTool) {
       // No tool recorded at all (a config written before `aiTool` existed, and never re-run
@@ -118,6 +121,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
       try {
         const r = await installSkills(server, config.aiTool, cwd, config.skillsDir);
         for (const line of formatSkillWarnings(r.warnings)) console.error(line);
+        installHide = r.hide;
       } catch (err: any) {
         console.error(`  failed to install missing skills: ${err?.message ?? err}`);
       }
@@ -168,6 +172,10 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   if (stale.length > 0) {
     console.log(`updated ${updated} file${updated === 1 ? '' : 's'} (skill version ${from} → ${served ?? 'unknown'})`);
   }
+
+  // Every run: hide PinSay's files from git (also repairs a clone whose block is missing).
+  const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(config.skillsDir), ...installHide]);
+  for (const line of formatHideWarnings(hidden)) console.error(line);
 
   const installedOk = missing.length === 0 || installedCount === missing.length;
   const updatedOk = updated === stale.length;

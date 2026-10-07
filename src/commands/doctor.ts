@@ -1,8 +1,9 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { readConfig, upsertGitignore, isMultiProject, listProjects } from '../config.js';
+import { readConfig, isMultiProject, listProjects } from '../config.js';
 import { runInitChecks, type CheckResult } from '../checks.js';
 import { installSkills, formatSkillWarnings } from '../skills.js';
+import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
 import { detectStack } from '../detect.js';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
@@ -156,14 +157,9 @@ async function applyFixes(cwd: string, checks: CheckResult[], server: string): P
     if (check.id === 'stack') continue; // handled once below — see the note there
     try {
       if (check.id === 'gitignore') {
-        const path = join(cwd, '.gitignore');
-        const before = await fs.readFile(path, 'utf8').catch(() => '');
-        // Reuse the canonical block (and its migration logic) rather than hand-rolling a second,
-        // narrower copy here — this is the same repair `init` applies on every run, just invoked
-        // directly instead of waiting for the next `init`/`update`.
-        await upsertGitignore(cwd, 'Feedback tool', config.skillsDir);
-        const after = await fs.readFile(path, 'utf8').catch(() => '');
-        if (after !== before) repaired.push(check.id);
+        const r = await hidePinsayFiles(cwd, skillsDirExtra(config.skillsDir));
+        for (const line of formatHideWarnings(r)) console.error(line);
+        if (r.status === 'written' || r.status === 'unchanged') repaired.push(check.id);
       } else if (check.id === 'source-map') {
         // Rebuild it rather than telling the developer to run `pinsay map --from-source`
         // themselves: the CLI is standing right here with everything it needs.
@@ -173,6 +169,7 @@ async function applyFixes(cwd: string, checks: CheckResult[], server: string): P
       } else if (check.id === 'skills' && server && config.aiTool) {
         const r = await installSkills(server, config.aiTool, cwd, config.skillsDir);
         for (const line of formatSkillWarnings(r.warnings)) console.error(line);
+        await hidePinsayFiles(cwd, [...skillsDirExtra(config.skillsDir), ...r.hide]);
         if (r.warnings.length === 0) repaired.push(check.id);
       }
     } catch {

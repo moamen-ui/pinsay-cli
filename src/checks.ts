@@ -10,6 +10,7 @@ import { readStamp } from './lib/skill-stamp.js';
 import { skillFilesFor } from './lib/skill-paths.js';
 import { stackFileRelPath } from './stack/stackfile.js';
 import { resolveApiKey, sourceLabel } from './credentials.js';
+import { excludeBlockStatus, trackedPinsayFiles } from './lib/git-exclude.js';
 import { resolveServer } from './server.js';
 
 const execFileAsync = promisify(execFile);
@@ -490,8 +491,9 @@ async function skillsCheck(cwd: string, config: PinSayConfig): Promise<CheckResu
 
 /**
  * Two separate concerns under one id in the contract, and only one of them is an error:
- * missing ignore lines are a warning, but credentials.env actually being TRACKED means the key is
- * in git history and is the single most serious thing doctor can find.
+ * PinSay's files not being hidden from git (the `.git/info/exclude` block) is a warning, but
+ * credentials.env actually being TRACKED means the key is in git history and is the single most
+ * serious thing doctor can find. Other tracked PinSay files are a warning with the `git rm` command.
  */
 async function gitignoreChecks(cwd: string): Promise<CheckResult[]> {
   const results: CheckResult[] = [];
@@ -514,16 +516,25 @@ async function gitignoreChecks(cwd: string): Promise<CheckResult[]> {
     return results;
   }
 
-  try {
-    const ignore = await fs.readFile(join(cwd, '.gitignore'), 'utf8');
-    results.push(
-      ignore.includes('.pinsay/')
-        ? { id: 'gitignore', status: 'ok', message: 'Credentials ignored by git' }
-        : { id: 'gitignore', status: 'warn', message: '.gitignore is missing the .pinsay/ entries', fixable: true },
-    );
-  } catch {
-    results.push({ id: 'gitignore', status: 'warn', message: 'No .gitignore found', fixable: true });
+  const block = await excludeBlockStatus(cwd);
+  if (block === 'not-a-repo') {
+    results.push({ id: 'gitignore', status: 'ok', message: 'Not a git repository — nothing to hide' });
+    return results;
   }
+  const others = (await trackedPinsayFiles(cwd)).filter((f) => f !== '.pinsay/credentials.env');
+  if (others.length > 0) {
+    results.push({
+      id: 'gitignore',
+      status: 'warn',
+      message: `Git tracks PinSay files that should be per-machine: ${others.join(', ')}`,
+      hint: `Run: git rm -r --cached -- ${others.join(' ')}`,
+    });
+  }
+  results.push(
+    block === 'ok'
+      ? { id: 'gitignore', status: 'ok', message: 'PinSay files hidden from git (.git/info/exclude)' }
+      : { id: 'gitignore', status: 'warn', message: "PinSay's files are not hidden from git yet", hint: 'Run `npx pinsay-cli doctor --fix`', fixable: true },
+  );
 
   return results;
 }

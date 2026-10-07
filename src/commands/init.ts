@@ -5,7 +5,6 @@ import {
     writeConfig,
     writeConfigFull,
     writeCredentials,
-    upsertGitignore,
     isMultiProject,
     listProjects,
     removeLegacyRepoFiles,
@@ -17,6 +16,7 @@ import { discoverNxApps, isNxWorkspace, type DiscoveredApp } from '../monorepo.j
 import { injectVite, injectStatic } from '../inject/index.js';
 import { injectSourceMap } from '../inject/source-map.js';
 import { installSkills, formatSkillWarnings, type SkillWarning } from '../skills.js';
+import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
 import { getBranding } from '../branding.js';
 import { api, ApiError } from '../api.js';
 import { postEvent } from '../events.js';
@@ -289,7 +289,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         // repo's pinsay.sh takes -p, so a pinned PINSAY_PROJECT would be wrong for every other app).
         await writeCredentials(cwd, key);
     }
-    await upsertGitignore(cwd, product, (options['skills-dir'] as string) || config.skillsDir);
+    await hidePinsayFiles(cwd, skillsDirExtra((options['skills-dir'] as string) || config.skillsDir));
 
     // Multi-project join: the repo already has one or more apps configured under `projects`, this
     // is another clone/machine, and there is nothing to inject or ask beyond the key already
@@ -693,6 +693,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
+    const skillHide: string[] = [];
     if (!options['no-skills']) {
         // Skills and pinsay.sh are gitignored (derived, per-machine) — every clone needs its own
         // copy, a join included. This is, in fact, the main thing a join DOES.
@@ -707,6 +708,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 const r = await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined);
                 installed.push(...r.files);
                 skillWarnings.push(...r.warnings);
+                skillHide.push(...r.hide);
             } catch (err: any) {
                 // installSkills reports file problems as warnings; this only catches a bug, and even
                 // then the rest of init (config, widget, stack) must stand.
@@ -726,6 +728,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         // listed the same two paths three times over in the summary.
         skillFiles = [...new Set(installed.filter((f) => f.includes('SKILL.md') || f.endsWith('.md')))];
     }
+    const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(options['skills-dir'] as string), ...skillHide]);
+    if (!isJson) for (const line of formatHideWarnings(hidden)) console.error(line);
 
     const pkgStr = await fs.readFile(join(cwd, 'package.json'), 'utf8').catch(() => '{}');
     const tokens = extractTokens(JSON.parse(pkgStr));
@@ -806,8 +810,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         // or clean up never sees it.
         filesMod.push('.pinsay/credentials.env');
     }
-    // upsertGitignore also writes; reported for the same reason.
-    filesMod.push('.gitignore');
 
     if (!isJson) console.log('Verifying...');
     // Real checks now, against the install that was just written. This previously called a stub
@@ -842,6 +844,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             routedToSkill,
             files: filesMod,
             skillWarnings,
+            hiddenFromGit: hidden.status,
+            trackedPinsayFiles: hidden.tracked,
             checks,
             cliVersion: BUILD_CLI_VERSION
         }));
@@ -1362,14 +1366,19 @@ async function handleMultiJoin(
     closePrompts();
     const tool = (options['tool'] as string) || config.aiTool || 'other';
     const skillWarnings: SkillWarning[] = [];
+    const hide: string[] = [];
     if (!options['no-skills']) {
         try {
-            skillWarnings.push(...(await installSkills(server, tool, cwd, options['skills-dir'] as string)).warnings);
+            const r = await installSkills(server, tool, cwd, options['skills-dir'] as string);
+            skillWarnings.push(...r.warnings);
+            hide.push(...r.hide);
         } catch (err: any) {
             skillWarnings.push({ tool, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
         }
         if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
+    const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(options['skills-dir'] as string), ...hide]);
+    if (!isJson) for (const line of formatHideWarnings(hidden)) console.error(line);
 
     const projects = listProjects(config);
     for (const p of projects) {
@@ -1421,6 +1430,8 @@ async function handleMultiJoin(
                 delivery: p.delivery ?? config.delivery ?? 'embed',
             })),
             skillWarnings,
+            hiddenFromGit: hidden.status,
+            trackedPinsayFiles: hidden.tracked,
             cliVersion: BUILD_CLI_VERSION,
         }));
     } else {
@@ -1568,16 +1579,21 @@ async function handleMultiProjectSetup(args: {
     closePrompts();
 
     const skillWarnings: SkillWarning[] = [];
+    const hide: string[] = [];
     if (!options['no-skills']) {
         for (const t of tools) {
             try {
-                skillWarnings.push(...(await installSkills(server, t, cwd, t === tool ? (options['skills-dir'] as string) : undefined)).warnings);
+                const r = await installSkills(server, t, cwd, t === tool ? (options['skills-dir'] as string) : undefined);
+                skillWarnings.push(...r.warnings);
+                hide.push(...r.hide);
             } catch (err: any) {
                 skillWarnings.push({ tool: t, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
             }
         }
         if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
+    const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(options['skills-dir'] as string), ...hide]);
+    if (!isJson) for (const line of formatHideWarnings(hidden)) console.error(line);
 
     const projectsMap: Record<string, ProjectEntry> = { ...(config.projects ?? {}) };
     let migrationNote: string | null = null;
@@ -1641,6 +1657,8 @@ async function handleMultiProjectSetup(args: {
                 return { key: k, path: p.path, injected: r ? r.injected : false, htmlPath: p.htmlPath, delivery: p.delivery ?? repoDefaultDelivery };
             }),
             skillWarnings,
+            hiddenFromGit: hidden.status,
+            trackedPinsayFiles: hidden.tracked,
             cliVersion: BUILD_CLI_VERSION,
         }));
     } else {
