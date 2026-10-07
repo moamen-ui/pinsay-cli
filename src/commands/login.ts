@@ -1,24 +1,37 @@
-import { findRepoRoot, writeCredentials } from '../config.js';
+import { findRepoRoot, upsertGitignore, writeCredentials } from '../config.js';
 import { api } from '../api.js';
 import { getBranding } from '../branding.js';
 import { saveGlobalCredential } from '../credentials.js';
 import { runDeviceLogin } from '../device-login.js';
+import { closePrompts } from '../prompt.js';
+import { askKeyScope, decideKeyScope, scopeFromFlags } from '../key-scope.js';
 import { resolveServer } from '../server.js';
 
 /**
- * Authenticates once per machine and saves the result to the global credential store (see
- * `credentials.ts`), keyed by server origin — every repo on this machine then resolves a key for
- * that server without asking again (see `resolveApiKey`'s precedence).
+ * Signs in and saves the API key — in the global per-machine store (see `credentials.ts`), which
+ * every repo on this machine then resolves without asking again, or in this repo's gitignored
+ * `.pinsay/credentials.env` only.
+ *
+ * Where it is saved: `--scope global|repo` / `--local-credentials` decide without asking; otherwise
+ * on a terminal it asks the same question `init` asks (`key-scope.ts`); with no terminal, or with
+ * `--yes`, it saves globally.
  *
  * Two paths to a key:
  *   - No `--key` on a real terminal: the browser ("device code") flow in `device-login.ts` —
  *     mirrors `gh auth login`. This is the default because pasting a long-lived key is the more
  *     error-prone, more copy-pasteable-into-the-wrong-place option.
- *   - `--key <key>`: the original manual path — exchanges the pasted key for the account it
- *     belongs to via `/api/auth/login-with-key` + `/api/auth/me`, unchanged.
+ *   - `--key <key>`: exchanges the pasted key for the account it belongs to via
+ *     `/api/auth/login-with-key` + `/api/auth/me`.
  * No `--key` and no TTY (CI, a pipe) has no one to open a browser for or prompt — hard exit 2.
  */
 export async function loginCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
+  // Checked before signing in: a typo in --scope must not cost a browser round trip.
+  const flags = scopeFromFlags(options);
+  if (flags.error) {
+    console.error(flags.error);
+    process.exit(2);
+  }
+
   const root = await findRepoRoot(cwd);
   const server = resolveServer();
 
@@ -66,16 +79,19 @@ export async function loginCommand(cwd: string, options: Record<string, string |
     process.exit(2);
   }
 
-  const scope = typeof options['scope'] === 'string' ? String(options['scope']).toLowerCase() : 'global';
-  if (scope !== 'global' && scope !== 'repo') {
-    console.error(`Invalid --scope "${options['scope']}". Valid values: global, repo.`);
-    process.exit(2);
-  }
+  // Asked after a successful sign-in, as `init` does: a failed sign-in asks nothing.
+  const interactive = Boolean(process.stdin.isTTY) && options['yes'] !== true;
+  const decided = decideKeyScope(flags.scope, interactive);
+  const scope = decided === 'ask' ? await askKeyScope() : decided;
+  closePrompts();
+
   const who = me?.displayName ? `${me.displayName}${me?.email ? ` (${me.email})` : ''}` : me?.email ?? 'you';
   if (scope === 'repo') {
-    // Repo scope: the multi-account case (a second identity on the same server for one repo). The
-    // repo file wins over the global store in resolveApiKey, so this overrides a machine-wide key.
+    // Repo scope: also the multi-account case (a second identity for one repo). The repo file wins
+    // over the global store in resolveApiKey, so this overrides a machine-wide key here. The
+    // .gitignore block is ensured too: this repo may never have run `init`, and the file is a secret.
     await writeCredentials(root, key!);
+    await upsertGitignore(root, product);
     console.log(`✔ Signed in to ${server} as ${who} — saved to .pinsay/credentials.env (this repo only; overrides the global store here)`);
     process.exit(0);
   }

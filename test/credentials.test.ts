@@ -550,3 +550,35 @@ test('removeGlobalCredential(app.pinsay.dev) also removes a key saved against le
     assert.strictEqual(await removeGlobalCredential('https://app.pinsay.dev'), true);
     assert.strictEqual(await getGlobalCredential('https://app.pinsay.dev'), undefined);
   }));
+
+test('login with no terminal and no --scope saves globally (the non-interactive default)', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
+      assert.match(stdout, /saved for all repos on this machine/);
+      await assert.rejects(fs.access(path.join(repo, '.pinsay', 'credentials.env')));
+    }),
+  ));
+
+test('login --local-credentials writes the repo file and gitignores it', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good --local-credentials`, {
+        cwd: repo,
+        env: envFor(globalDir),
+      });
+      assert.match(stdout, /saved to \.pinsay\/credentials\.env/);
+      assert.match(await fs.readFile(path.join(repo, '.pinsay', 'credentials.env'), 'utf8'), /^PINSAY_API_KEY=ptr_good$/m);
+      assert.match(await fs.readFile(path.join(repo, '.gitignore'), 'utf8'), /^\.pinsay\/\*$/m);
+    }),
+  ));
+
+test('login --scope with an unknown value exits 2 before signing in (no --key needed)', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await assert.rejects(
+        execAsync(`node ${cliPath} login --scope machine`, { cwd: repo, env: envFor(globalDir) }),
+        (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
+      );
+    }),
+  ));

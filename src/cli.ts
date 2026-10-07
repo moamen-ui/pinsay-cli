@@ -66,7 +66,7 @@ Usage: npx pinsay-cli <command> [options]
 
 Commands:
   init      Set up the feedback widget in your project
-  login     Authenticate once per machine (saves a key for every repo)
+  login     Sign in and save your API key (this machine, or this repo only)
   logout    Remove this machine's saved key
   whoami    Show the signed-in account and where the API key came from
   doctor    Diagnose an install and report what is wrong
@@ -138,9 +138,10 @@ Options:
   --no-skills              Skip skills installation
   --no-design              Skip design token detection
   --source-map             Wire in the Vite plugin that stamps component source hashes
-  --scope <global|repo>    Where the API key is stored: global (default — this machine, all repos,
-                           ~/.config/pointer/credentials.json) or repo (.pinsay/credentials.env,
-                           gitignored, this repo only). --local-credentials is an alias for --scope repo
+  --scope <global|repo>    Where the API key is stored, without asking: global (this machine, all
+                           repos, ~/.config/pinsay/credentials.json; the default with --yes) or
+                           repo (.pinsay/credentials.env, gitignored, this repo only).
+                           --local-credentials is an alias for --scope repo
   --no-browser             When signing in in the browser (first run, no key resolved yet), print
                            the link/code but don't try to open a browser
   -y, --yes                Non-interactive
@@ -155,20 +156,21 @@ Options:
             console.log(`
 Usage: npx pinsay-cli login [options]
 
-Authenticate once per machine and save the result to
-~/.config/pointer/credentials.json (honours $XDG_CONFIG_HOME / $PINSAY_CONFIG_DIR), keyed by
-server. Every repo on this machine then resolves a key for that server without being asked again.
+Sign in and save your API key. On a terminal it asks where to save it:
+  Global  this machine, every repo (~/.config/pinsay/credentials.json, honours $XDG_CONFIG_HOME)
+  Repo    .pinsay/credentials.env in this repo only (gitignored)
+With no terminal (CI, a pipe) or with --yes it saves globally, unless --scope repo is given.
 
 With no --key on a real terminal, opens your browser to sign in (mirrors \`gh auth login\`): prints
 a link and a short code, waits for you to approve it in the dashboard, then saves the personal API
-key it hands back. Pass --key to skip the browser and validate a pasted key instead, unchanged from
-before.
+key it hands back. Pass --key to skip the browser and validate a pasted key instead.
 
 Options:
   --key <key>             API key — skips the browser flow entirely
   --no-browser            Print the sign-in link/code but don't try to open a browser
-  --scope <global|repo>   global (default): save for every repo on this machine;
-                          repo: write .pinsay/credentials.env in the current repo only
+  --scope <global|repo>   Where to save the key, without asking
+  --local-credentials     Alias for --scope repo
+  -y, --yes               Don't ask; save globally unless --scope repo is given
   -h, --help              Show this help
 `);
             process.exit(0);

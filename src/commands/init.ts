@@ -27,6 +27,7 @@ import { detectDesignTokens, summarizeDesignTokens, type DesignBlock } from '../
 import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
 import { resolveApiKey, saveGlobalCredential, type ApiKeySource } from '../credentials.js';
 import { runDeviceLogin } from '../device-login.js';
+import { askKeyScope } from '../key-scope.js';
 import { resolveServer } from '../server.js';
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
@@ -274,11 +275,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     if (freshlyAuthenticated) {
         let saveGlobally = !localCredentialsFlag;
         if (saveGlobally && !isYes && scopeFlag === undefined) {
-            const choice = await select('Where should this API key be stored?', [
-                'Global — this machine, every repo (~/.config/pointer/credentials.json)',
-                'Repo — .pinsay/credentials.env in this repo only (gitignored)',
-            ]);
-            saveGlobally = choice.startsWith('Global');
+            saveGlobally = (await askKeyScope()) === 'global';
         }
         if (saveGlobally) {
             await saveGlobalCredential(server as string, { apiKey: key, email: me?.email, displayName: me?.displayName });
@@ -850,7 +847,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // concern this run never touched, and printing a defaulted "local" here would misstate that.
     const envLabel = environmentPinned ? (envs.length > 1 ? envs.join(', ') : env) : null;
     const keyLine = keyLivesGlobally
-        ? `this machine's global store ${dim('(~/.config/pointer/credentials.json)')}`
+        ? `this machine's global store ${dim('(~/.config/pinsay/credentials.json)')}`
         : `.pinsay/credentials.env ${dim('(gitignored)')}`;
 
     if (isJoin) {
