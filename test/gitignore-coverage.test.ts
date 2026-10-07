@@ -82,7 +82,7 @@ async function withTempDir(fn: (dir: string) => Promise<void>) {
 /**
  * Every spawned CLI process gets its own isolated global-credential-store directory. `init --yes
  * --key ...` now defaults to saving the key to this machine's real global store
- * (`~/.config/pointer/credentials.json`) — without this override every test below would write into
+ * (`~/.config/pinsay/credentials.json`) — without this override every test below would write into
  * the actual developer/CI machine's home directory.
  */
 function globalDirFor(dir: string): string {

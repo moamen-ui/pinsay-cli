@@ -47,24 +47,49 @@ export function normalizeServerOrigin(server: string): string {
   }
 }
 
+/** The per-machine folder name, inside the OS config dir and the OS cache dir. */
+const DIR_NAME = 'pinsay';
+
+/**
+ * The folder name every CLI before 0.8.0 used. Read once, only to move an existing credential
+ * store to `DIR_NAME` (see `migrateLegacyStore`); never written. The old cache folder is simply
+ * no longer read — a JWT is re-fetched — and never deleted: a folder called `pointer` might
+ * belong to another tool.
+ */
+const LEGACY_DIR_NAME = 'pointer';
+
+/** The OS config base: `%APPDATA%` on Windows, else `$XDG_CONFIG_HOME` or `~/.config`. */
+function configBase(): string {
+  if (process.platform === 'win32') {
+    return process.env.APPDATA || join(homedir(), 'AppData', 'Roaming');
+  }
+  return process.env.XDG_CONFIG_HOME || join(homedir(), '.config');
+}
+
 /**
  * Directory holding the global credential store (and nothing else — the token cache lives under
  * the XDG *cache* dir, see `globalCacheDir`, deliberately not here).
  *
  * `$PINSAY_CONFIG_DIR` overrides everything below it, so tests never touch a real machine's
- * `~/.config`. Otherwise: Windows uses `%APPDATA%\pointer`; everywhere else honours
- * `$XDG_CONFIG_HOME` and falls back to `~/.config/pointer`.
+ * `~/.config`. Otherwise: Windows uses `%APPDATA%\pinsay`; everywhere else honours
+ * `$XDG_CONFIG_HOME` and falls back to `~/.config/pinsay`.
  */
 export function globalConfigDir(): string {
   if (process.env.PINSAY_CONFIG_DIR) return process.env.PINSAY_CONFIG_DIR;
-  if (process.platform === 'win32') {
-    return join(process.env.APPDATA || join(homedir(), 'AppData', 'Roaming'), 'pointer');
-  }
-  return join(process.env.XDG_CONFIG_HOME || join(homedir(), '.config'), 'pointer');
+  return join(configBase(), DIR_NAME);
 }
 
 export function globalCredentialsPath(): string {
   return join(globalConfigDir(), 'credentials.json');
+}
+
+/**
+ * The pre-0.8.0 store file (`~/.config/pointer/credentials.json`, `%APPDATA%\pointer\...`), or
+ * `undefined` when `$PINSAY_CONFIG_DIR` is set: a test's isolated store never migrates anything.
+ */
+export function legacyGlobalCredentialsPath(): string | undefined {
+  if (process.env.PINSAY_CONFIG_DIR) return undefined;
+  return join(configBase(), LEGACY_DIR_NAME, 'credentials.json');
 }
 
 /**
@@ -78,9 +103,9 @@ export function globalCredentialsPath(): string {
 export function globalCacheDir(): string {
   if (process.env.PINSAY_CONFIG_DIR) return join(process.env.PINSAY_CONFIG_DIR, 'cache');
   if (process.platform === 'win32') {
-    return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), 'pointer', 'cache');
+    return join(process.env.LOCALAPPDATA || join(homedir(), 'AppData', 'Local'), DIR_NAME, 'cache');
   }
-  return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), 'pointer');
+  return join(process.env.XDG_CACHE_HOME || join(homedir(), '.cache'), DIR_NAME);
 }
 
 /** The cached-JWT file for one (server, apiKey) pair — hashed so the filename never leaks the key. */
@@ -92,14 +117,59 @@ export function tokenCacheFile(server: string, apiKey: string): string {
   return join(globalCacheDir(), `${hash}.json`);
 }
 
+/** True for what `writeGlobalStore` writes: a JSON object whose every value has a string `apiKey`. */
+function isCredentialStore(value: unknown): value is GlobalCredentialsStore {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.values(value).every(
+    (entry) => !!entry && typeof entry === 'object' && typeof (entry as { apiKey?: unknown }).apiKey === 'string',
+  );
+}
+
 async function readGlobalStore(): Promise<GlobalCredentialsStore> {
+  let raw: string;
   try {
-    const raw = await fs.readFile(globalCredentialsPath(), 'utf8');
+    raw = await fs.readFile(globalCredentialsPath(), 'utf8');
+  } catch (err: any) {
+    // No store in the new place yet: a machine that signed in with a CLI before 0.8.0 still has
+    // it under the old `pointer` folder — move it over once instead of looking logged out.
+    if (err?.code === 'ENOENT') return migrateLegacyStore();
+    return {};
+  }
+  try {
     const parsed = JSON.parse(raw);
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
   }
+}
+
+/**
+ * Moves the pre-0.8.0 store (`legacyGlobalCredentialsPath`) to `globalCredentialsPath`, once.
+ *
+ * Only a file that really is a credential store is moved (a `pointer` folder could belong to
+ * another tool). Move, not copy: the key never sits in two places and `logout` stays truthful.
+ * If the new file cannot be written the old content is still returned (read-through) and the old
+ * file is left where it is. The old folder is removed only when it is empty afterwards.
+ */
+async function migrateLegacyStore(): Promise<GlobalCredentialsStore> {
+  const legacyFile = legacyGlobalCredentialsPath();
+  if (!legacyFile) return {};
+  let legacy: unknown;
+  try {
+    legacy = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
+  } catch {
+    return {};
+  }
+  if (!isCredentialStore(legacy)) return {};
+  try {
+    await writeGlobalStore(legacy);
+  } catch {
+    return legacy;
+  }
+  await fs.rm(legacyFile, { force: true }).catch(() => {});
+  // Never recursive: removes the folder only if nothing else is left in it.
+  await fs.rmdir(dirname(legacyFile)).catch(() => {});
+  return legacy;
 }
 
 async function writeGlobalStore(store: GlobalCredentialsStore): Promise<void> {
@@ -131,12 +201,19 @@ export async function saveGlobalCredential(
   await writeGlobalStore(store);
 }
 
-/** Returns true when an entry existed and was removed; false when there was nothing to remove. */
+/**
+ * Returns true when an entry existed and was removed; false when there was nothing to remove.
+ * Removing `https://app.pinsay.dev` also removes a key saved against the legacy
+ * `https://api.pinsay.dev` — the same alias `getGlobalCredential` reads — or `whoami` would keep
+ * answering after `logout`.
+ */
 export async function removeGlobalCredential(server: string): Promise<boolean> {
   const store = await readGlobalStore();
   const origin = normalizeServerOrigin(server);
-  if (!(origin in store)) return false;
-  delete store[origin];
+  const origins = origin === 'https://app.pinsay.dev' ? [origin, 'https://api.pinsay.dev'] : [origin];
+  const present = origins.filter((o) => o in store);
+  if (present.length === 0) return false;
+  for (const o of present) delete store[o];
   await writeGlobalStore(store);
   return true;
 }

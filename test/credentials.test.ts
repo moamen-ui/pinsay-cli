@@ -16,6 +16,7 @@ import {
   sourceLabel,
   globalCredentialsPath,
   tokenCacheFile,
+  legacyGlobalCredentialsPath,
 } from '../src/credentials.js';
 import { resolveToken } from '../src/auth.js';
 
@@ -355,7 +356,7 @@ test('login --scope with an unknown value exits 2', () =>
 
 // -----------------------------------------------------------------------------------------------
 // Expired cached JWT (see auth.ts's isJwtExpired) — a dead cache entry must not wedge every
-// later command into a 401 until someone thinks to clear ~/.cache/pointer by hand.
+// later command into a 401 until someone thinks to clear ~/.cache/pinsay by hand.
 // -----------------------------------------------------------------------------------------------
 
 function fakeJwt(exp: number): string {
@@ -427,4 +428,125 @@ test('getGlobalCredential: a key saved against legacy api.pinsay.dev is found fo
     assert.strictEqual((await getGlobalCredential('https://app.pinsay.dev'))?.apiKey, 'pnsy_new');
     // Other servers never borrow the legacy entry.
     assert.strictEqual(await getGlobalCredential('https://self.example.com'), undefined);
+  }));
+
+// -----------------------------------------------------------------------------------------------
+// Per-machine folder `pinsay`, and the one-time move of a pre-0.8.0 `pointer` store
+// -----------------------------------------------------------------------------------------------
+
+/**
+ * Points XDG_CONFIG_HOME / XDG_CACHE_HOME at fresh temp dirs and UNSETS PINSAY_CONFIG_DIR (which
+ * disables the legacy read), so the real base-dir logic runs — never against a real ~/.config.
+ */
+async function withXdgDirs(fn: (configHome: string, cacheHome: string) => Promise<void>) {
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'pinsay-xdg-'));
+  const configHome = path.join(root, 'config');
+  const cacheHome = path.join(root, 'cache');
+  await fs.mkdir(configHome, { recursive: true });
+  await fs.mkdir(cacheHome, { recursive: true });
+  const prev = {
+    PINSAY_CONFIG_DIR: process.env.PINSAY_CONFIG_DIR,
+    XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    XDG_CACHE_HOME: process.env.XDG_CACHE_HOME,
+  };
+  delete process.env.PINSAY_CONFIG_DIR;
+  process.env.XDG_CONFIG_HOME = configHome;
+  process.env.XDG_CACHE_HOME = cacheHome;
+  try {
+    await fn(configHome, cacheHome);
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+    await fs.rm(root, { recursive: true, force: true });
+  }
+}
+
+async function exists(p: string): Promise<boolean> {
+  return fs.access(p).then(() => true, () => false);
+}
+
+const legacyStore = { 'https://example.test': { apiKey: 'ptr_legacy', savedAt: '2026-01-01T00:00:00.000Z' } };
+
+test('the store and the JWT cache live in a `pinsay` folder', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome, cacheHome) => {
+    assert.strictEqual(globalCredentialsPath(), path.join(configHome, 'pinsay', 'credentials.json'));
+    assert.strictEqual(path.dirname(tokenCacheFile('https://example.test', 'ptr_x')), path.join(cacheHome, 'pinsay'));
+    assert.strictEqual(legacyGlobalCredentialsPath(), path.join(configHome, 'pointer', 'credentials.json'));
+  }));
+
+test('a pre-0.8.0 `pointer` store is moved to the `pinsay` folder on first read', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome) => {
+    const legacyDir = path.join(configHome, 'pointer');
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
+
+    const entry = await getGlobalCredential('https://example.test');
+    assert.strictEqual(entry?.apiKey, 'ptr_legacy');
+
+    const moved = JSON.parse(await fs.readFile(path.join(configHome, 'pinsay', 'credentials.json'), 'utf8'));
+    assert.deepStrictEqual(moved, legacyStore);
+    const mode = (await fs.stat(path.join(configHome, 'pinsay', 'credentials.json'))).mode & 0o777;
+    assert.strictEqual(mode, 0o600);
+    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), false, 'old file must be gone');
+    assert.strictEqual(await exists(legacyDir), false, 'empty old folder must be removed');
+  }));
+
+test('the move keeps an old `pointer` folder that still holds other files', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome) => {
+    const legacyDir = path.join(configHome, 'pointer');
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
+    await fs.writeFile(path.join(legacyDir, 'other.txt'), 'not ours', 'utf8');
+
+    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_legacy');
+    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), false);
+    assert.strictEqual(await fs.readFile(path.join(legacyDir, 'other.txt'), 'utf8'), 'not ours');
+  }));
+
+test('when both stores exist the new one wins and the old file is left alone', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome) => {
+    const legacyDir = path.join(configHome, 'pointer');
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
+    await saveGlobalCredential('https://example.test', { apiKey: 'ptr_new' });
+    // saveGlobalCredential read first, so the legacy store was moved and then overwritten by the new key.
+    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_new');
+
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
+    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_new');
+    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
+  }));
+
+test('an old `pointer/credentials.json` that is not a credential store is ignored and kept', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome) => {
+    const legacyDir = path.join(configHome, 'pointer');
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify({ foo: 'bar' }), 'utf8');
+
+    assert.strictEqual(await getGlobalCredential('https://example.test'), undefined);
+    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
+    assert.strictEqual(await exists(path.join(configHome, 'pinsay', 'credentials.json')), false);
+  }));
+
+test('PINSAY_CONFIG_DIR turns the legacy read off', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+  withXdgDirs(async (configHome) => {
+    const legacyDir = path.join(configHome, 'pointer');
+    await fs.mkdir(legacyDir, { recursive: true });
+    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
+    await withGlobalDir(async () => {
+      assert.strictEqual(legacyGlobalCredentialsPath(), undefined);
+      assert.strictEqual(await getGlobalCredential('https://example.test'), undefined);
+    });
+    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
+  }));
+
+test('removeGlobalCredential(app.pinsay.dev) also removes a key saved against legacy api.pinsay.dev', () =>
+  withGlobalDir(async () => {
+    await saveGlobalCredential('https://api.pinsay.dev', { apiKey: 'ptr_old_host' });
+    assert.strictEqual((await getGlobalCredential('https://app.pinsay.dev'))?.apiKey, 'ptr_old_host');
+    assert.strictEqual(await removeGlobalCredential('https://app.pinsay.dev'), true);
+    assert.strictEqual(await getGlobalCredential('https://app.pinsay.dev'), undefined);
   }));

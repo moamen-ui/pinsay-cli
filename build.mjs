@@ -28,7 +28,7 @@ await esbuild.build({
   platform: 'node',
   format: 'esm',
   // Same optional peers the plugin bundle excludes, and for the same reason — except this bundle
-  // reaches them only through `pointer map`, which imports the stamping visitor. Left bundled,
+  // reaches them only through `pinsay map`, which imports the stamping visitor. Left bundled,
   // esbuild inlined the whole Babel toolchain: dist/cli.js went from ~200KB to 1.9MB, every
   // install paid for a parser it will usually never run, and Babel's own `Scope.push` method
   // broke the invariant that proves this CLI can never `git push`.

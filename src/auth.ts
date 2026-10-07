@@ -61,7 +61,7 @@ export async function resolveToken(
     const cached = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
     const token = typeof cached?.token === 'string' ? cached.token.trim() : '';
     // A cached JWT past its own `exp` is worse than no cache at all: every command silently
-    // fails 401 against a dead token until someone thinks to clear ~/.cache/pointer by hand.
+    // fails 401 against a dead token until someone thinks to clear ~/.cache/pinsay by hand.
     // Fall through to a fresh exchange instead of trusting it.
     if (token && !isJwtExpired(token)) return token;
   } catch {
