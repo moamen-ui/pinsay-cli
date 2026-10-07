@@ -1,10 +1,11 @@
 import { test } from 'node:test';
 import * as assert from 'node:assert';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { rmTempDir } from './rm-temp.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const cliRoot = join(here, '..');
@@ -75,7 +76,6 @@ test('the built vite plugin actually stamps (not just the TypeScript source)', a
     );
     assert.ok(verdict.stamped, 'the built plugin did not stamp data-component-source');
   } finally {
-    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
-    rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    rmTempDir(scratch);
   }
 });

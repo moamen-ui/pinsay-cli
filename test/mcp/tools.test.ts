@@ -1,6 +1,6 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
@@ -16,6 +16,7 @@ import {
   handleResolveSource,
   type McpContext,
 } from '../../src/mcp/tools.js';
+import { rmTempDir } from '../rm-temp.js';
 
 async function stubServer(
   handler: (req: any, res: any) => void,
@@ -48,8 +49,7 @@ describe('mcp: tools handlers and helpers', () => {
   });
 
   afterEach(() => {
-    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
-    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    rmTempDir(tmpDir);
   });
 
   test('partitionItem: untrusted has exactly body, replies, snapshot; trusted has pickedActions', () => {

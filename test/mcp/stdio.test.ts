@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { createServer, type Server } from 'node:http';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import { rmTempDir } from '../rm-temp.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -118,7 +119,6 @@ test('mcp stdio: spawn node dist/cli.js mcp, initialize, tools/list, tools/call'
   } finally {
     await client.close();
     await stub.close();
-    // Windows: a just-closed child process may still hold its cwd (EBUSY) — retry.
-    rmSync(tmpDir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+    rmTempDir(tmpDir);
   }
 });
