@@ -702,7 +702,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         // each other's files.
         const installed: string[] = [];
         for (const t of tools) {
-            installed.push(...(await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined)));
+            installed.push(...(await installSkills(server as string, t, cwd, t === tool ? skillsDir : undefined)).files);
         }
         filesMod.push(...installed);
         // Kept for the human summary below: "installed" does not tell anyone WHAT was written into

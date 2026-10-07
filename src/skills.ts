@@ -1,32 +1,76 @@
 import { promises as fs } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, posix } from 'node:path';
+import { RepoPathError, linkOrCopy, writeRepoFile } from './lib/repo-paths.js';
+
+/** A failed fetch of a served file. `reason` is short ("HTTP 404", "fetch failed") so warnings group. */
+class DownloadError extends Error {
+    readonly reason: string;
+    constructor(url: string, reason: string) {
+        super(`Failed to fetch ${url}: ${reason}`);
+        this.name = 'DownloadError';
+        this.reason = reason;
+    }
+}
 
 async function fetchText(url: string): Promise<string> {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`Failed to fetch ${url}: ${res.status}`);
+    let res: Response;
+    try {
+        res = await fetch(url);
+    } catch (err: any) {
+        throw new DownloadError(url, err?.message ?? String(err));
+    }
+    if (!res.ok) throw new DownloadError(url, `HTTP ${res.status}`);
     return res.text();
 }
 
-async function download(url: string, dest: string, chmod = false) {
-    const txt = await fetchText(url);
-    await fs.mkdir(dirname(dest), { recursive: true });
-    await fs.writeFile(dest, txt, 'utf8');
-    if (chmod) {
-        await fs.chmod(dest, 0o755).catch(() => {});
-    }
+/** One file PinSay could not install, and what to do about it. `path` is repo-relative with `/`. */
+export interface SkillWarning {
+    tool: string;
+    path: string;
+    message: string;
+    hint: string;
 }
 
-async function makeSymlink(target: string, path: string) {
-    await fs.mkdir(dirname(path), { recursive: true });
-    try {
-        await fs.symlink(target, path);
-    } catch (err: any) {
-        if (err.code === 'EPERM' && process.platform === 'win32') {
-            await fs.copyFile(target, path);
-        } else if (err.code !== 'EEXIST') {
-            throw err;
-        }
+export interface SkillInstallResult {
+    /** Repo-relative paths (always `/`) that were written. */
+    files: string[];
+    /** One per file that was not installed. Empty when everything installed. */
+    warnings: SkillWarning[];
+}
+
+function toWarning(tool: string, path: string, server: string, err: unknown): SkillWarning {
+    if (err instanceof RepoPathError) return { tool, path, message: err.message, hint: err.hint };
+    if (err instanceof DownloadError) {
+        return {
+            tool,
+            path,
+            message: `could not download the skill files from ${server} (${err.reason}).`,
+            hint: 'Check your connection. Then run "npx pinsay-cli update".',
+        };
     }
+    const msg = err instanceof Error ? err.message : String(err);
+    return { tool, path, message: `could not install it (${msg}).`, hint: 'Run "npx pinsay-cli update" to try again.' };
+}
+
+/**
+ * Human lines for skill warnings: one block per distinct problem (same tool, message and hint),
+ * listing every file it kept from installing. Callers print them to stderr.
+ */
+export function formatSkillWarnings(warnings: SkillWarning[]): string[] {
+    const groups = new Map<string, { w: SkillWarning; paths: string[] }>();
+    for (const w of warnings) {
+        const key = `${w.tool}\u0000${w.message}\u0000${w.hint}`;
+        const g = groups.get(key);
+        if (g) g.paths.push(w.path);
+        else groups.set(key, { w, paths: [w.path] });
+    }
+    const lines: string[] = [];
+    for (const { w, paths } of groups.values()) {
+        lines.push(`⚠ Skills for ${w.tool}: ${w.message}`);
+        lines.push(`  Not installed: ${paths.join(', ')}`);
+        lines.push(`  Fix: ${w.hint}`);
+    }
+    return lines;
 }
 
 /**
@@ -133,55 +177,83 @@ async function removeLegacyAgentsLayout(cwd: string): Promise<void> {
     }
 }
 
-export async function installSkills(server: string, aiTool: string, cwd: string, overrideDir?: string): Promise<string[]> {
+/**
+ * Installs pinsay.sh and the two skills for `aiTool` (or into `overrideDir`). Never throws for a
+ * file-system or download problem: each file is its own step, a failure becomes a `SkillWarning`
+ * and the remaining files still install — `init` must never die at its last step because, say,
+ * `.claude/skills` is a Git symlink checked out as a plain file on Windows (see repo-paths.ts).
+ */
+export async function installSkills(
+    server: string,
+    aiTool: string,
+    cwd: string,
+    overrideDir?: string,
+): Promise<SkillInstallResult> {
     const files: string[] = [];
+    const warnings: SkillWarning[] = [];
     server = server.replace(/\/$/, '');
 
-    await removeLegacyAgentsLayout(cwd);
+    const step = async (rel: string, work: () => Promise<void>): Promise<void> => {
+        try {
+            await work();
+        } catch (err) {
+            warnings.push(toWarning(aiTool, rel, server, err));
+        }
+    };
 
-    // Download pinsay.sh
-    const pinsayShPath = join(cwd, '.pinsay', 'pinsay.sh');
-    await download(`${server}/pinsay.sh`, pinsayShPath, true);
-    files.push('.pinsay/pinsay.sh');
+    await removeLegacyAgentsLayout(cwd).catch(() => {});
+
+    await step('.pinsay/pinsay.sh', async () => {
+        const { abs } = await writeRepoFile(cwd, '.pinsay/pinsay.sh', await fetchText(`${server}/pinsay.sh`));
+        await fs.chmod(abs, 0o755).catch(() => {});
+        files.push('.pinsay/pinsay.sh');
+    });
 
     // A flat-file tool (no folder of its own to put apply.md/translate.md/advanced.md into as
     // siblings) gets everything concatenated into the one rules file instead — see
-    // buildFlatPinSayFeedback. An `overrideDir` always writes the folder shape (see finalPath
-    // below), regardless of aiTool, so it is excluded here even for cursor/windsurf.
+    // buildFlatPinSayFeedback. An `overrideDir` always writes the folder shape, regardless of
+    // aiTool, so it is excluded here even for cursor/windsurf.
     const isFlatFileTool = !overrideDir && (aiTool === 'cursor' || aiTool === 'windsurf');
+    // Returned paths always use '/', on Windows too: they are shown to the user and compared with SKILL_FILES.
+    const overrideSlash = overrideDir ? overrideDir.replace(/\\/g, '/') : undefined;
 
     async function writeOrLink(primaryPath: string, skillName: string) {
         const url = skillName === 'pinsay-init' ? `${server}/pinsay-init.md` : `${server}/skill.md`;
+        const rel = overrideSlash ? posix.join(overrideSlash, skillName, 'SKILL.md') : primaryPath;
 
-        const finalPath = overrideDir ? join(cwd, overrideDir, skillName, 'SKILL.md') : join(cwd, primaryPath);
-
-        if (skillName === 'pinsay-feedback' && isFlatFileTool) {
-            const combined = await buildFlatPinSayFeedback(server);
-            await fs.mkdir(dirname(finalPath), { recursive: true });
-            await fs.writeFile(finalPath, combined, 'utf8');
-        } else {
-            await download(url, finalPath);
-        }
-        files.push(overrideDir ? join(overrideDir, skillName, 'SKILL.md') : primaryPath);
+        let primaryAbs = null as string | null;
+        await step(rel, async () => {
+            const body =
+                skillName === 'pinsay-feedback' && isFlatFileTool
+                    ? await buildFlatPinSayFeedback(server)
+                    : await fetchText(url);
+            primaryAbs = (await writeRepoFile(cwd, rel, body)).abs;
+            files.push(rel);
+        });
+        // Not written: nothing to mirror or to put siblings next to. The warning already says why.
+        if (primaryAbs === null) return;
+        const source: string = primaryAbs;
 
         if (!overrideDir && (aiTool === 'claude-code' || aiTool === 'cursor' || aiTool === 'windsurf')) {
-            // The standard Agent Skills location, three levels deep (.agents/skills/<name>/SKILL.md)
-            // — one deeper than the pre-2026-09-16 layout (.agents/<name>/SKILL.md), so the relative
-            // symlink target needs one more `..` to still land back at the repo root.
-            const symDest = join(cwd, '.agents', 'skills', skillName, 'SKILL.md');
-            await makeSymlink(join('..', '..', '..', primaryPath), symDest);
-            files.push(`.agents/skills/${skillName}/SKILL.md`);
+            // The standard Agent Skills location, so any tool that reads it finds the skill. A relative
+            // symlink to the primary file, or a copy where links can't be made (see linkOrCopy).
+            const mirrorRel = `.agents/skills/${skillName}/SKILL.md`;
+            await step(mirrorRel, async () => {
+                await linkOrCopy(cwd, source, mirrorRel);
+                files.push(mirrorRel);
+            });
         }
 
         // Folder-capable install (native or overrideDir): apply.md/translate.md/advanced.md land as
-        // siblings of SKILL.md in the same folder. A flat-file tool already has all four sections
-        // in the one file written above, so there is nothing more to write here.
+        // siblings of SKILL.md. A flat-file tool already has all four sections in the one file.
         if (skillName === 'pinsay-feedback' && !isFlatFileTool) {
-            const siblingDir = dirname(finalPath);
-            const relDir = overrideDir ? join(overrideDir, skillName) : dirname(primaryPath);
+            const relDir = posix.dirname(rel);
             for (const name of SUB_SKILLS) {
-                await download(`${server}/skills/${name}.md`, join(siblingDir, `${name}.md`));
-                files.push(join(relDir, `${name}.md`));
+                const subRel = posix.join(relDir, `${name}.md`);
+                await step(subRel, async () => {
+                    await writeRepoFile(cwd, subRel, await fetchText(`${server}/skills/${name}.md`));
+                    files.push(subRel);
+                });
             }
         }
     }
@@ -190,5 +262,5 @@ export async function installSkills(server: string, aiTool: string, cwd: string,
     await writeOrLink(layout[0], 'pinsay-init');
     await writeOrLink(layout[1], 'pinsay-feedback');
 
-    return files;
+    return { files, warnings };
 }
