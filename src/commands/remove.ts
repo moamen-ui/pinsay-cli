@@ -1,5 +1,5 @@
 import { promises as fs } from 'node:fs';
-import { dirname, join, relative, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import {
     PINSAY_SKILL_PATHS,
     excludeBlockStatus,
@@ -15,10 +15,10 @@ import { isInteractive } from '../ui/interactive.js';
 import { confirm, closePrompts } from '../prompt.js';
 import { dim, green, sym } from '../ui/style.js';
 
-export interface Removal {
+export type Removal = {
     kind: 'path' | 'exclude-block' | 'html-block' | 'env-lines' | 'global-key';
     target: string;
-}
+};
 
 /** Config filenames Vite honours, in the order Vite itself resolves them (same list as source-map.ts). */
 const VITE_CONFIGS = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts'];
@@ -44,12 +44,23 @@ function cleanRel(p: string): string {
 function joinRel(root: string, rel: string): string | null {
     const abs = resolve(root, rel);
     const back = relative(resolve(root), abs);
-    if (back === '' || back.startsWith('..')) return null;
+    // isAbsolute: on Windows a cross-drive relative() result is an absolute path ('D:\x') — outside root.
+    if (back === '' || back.startsWith('..') || isAbsolute(back)) return null;
     return abs;
 }
 
 async function readIfExists(p: string): Promise<string | null> {
     return fs.readFile(p, 'utf8').catch(() => null);
+}
+
+/** True when `abs`'s realpath stays strictly inside `root` — never write through a symlink that points out of the repo. */
+async function writableInsideRoot(root: string, abs: string): Promise<boolean> {
+    try {
+        const back = relative(resolve(root), await fs.realpath(abs));
+        return back !== '' && !back.startsWith('..') && !isAbsolute(back);
+    } catch {
+        return false;
+    }
 }
 
 /** Everything PinSay could remove here, without writing anything. Reads config first — it lives in the `.pinsay/` this plans to delete. */
@@ -67,7 +78,8 @@ export async function collectRemovals(
         if (await pathExists(join(root, p))) removals.push({ kind: 'path', target: p });
     }
     for (const p of skillsDirExtra(config.skillsDir)) {
-        if (await pathExists(join(root, p))) removals.push({ kind: 'path', target: p });
+        const abs = joinRel(root, p);
+        if (abs !== null && (await pathExists(abs))) removals.push({ kind: 'path', target: p });
     }
 
     if ((await excludeBlockStatus(root)) === 'ok') {
@@ -80,7 +92,9 @@ export async function collectRemovals(
         if (entry.htmlPath) htmlPaths.add(cleanRel(entry.htmlPath));
     }
     for (const rel of htmlPaths) {
-        const content = await readIfExists(join(root, rel));
+        const abs = joinRel(root, rel);
+        if (!abs) continue;
+        const content = await readIfExists(abs);
         if (content !== null && content.includes(HTML_BLOCK_START)) {
             removals.push({ kind: 'html-block', target: rel });
         }
@@ -88,7 +102,7 @@ export async function collectRemovals(
 
     const multi = !!config.projects && Object.keys(config.projects).length > 0;
     const appDirs = (multi ? Object.values(config.projects!).map((p) => cleanRel(p.path)) : ['.']).filter(
-        (d) => d !== '' && d !== '..' && !d.startsWith('../'),
+        (d) => d === '.' || joinRel(root, d) !== null,
     );
     for (const appDir of appDirs) {
         for (const envName of ENV_FILES) {
@@ -122,7 +136,8 @@ function stripHtmlBlock(content: string): string | null {
     const m = content.match(/<!-- pinsay-feedback:start -->[\s\S]*?<!-- pinsay-feedback:end -->/);
     if (!m || m.index === undefined) return null;
     const rest = content.slice(m.index + m[0].length);
-    if (/^\n<\/body>/i.test(rest)) return content.slice(0, m.index) + rest.slice(1);
+    const bodyMatch = rest.match(/^(\r?\n)<\/body>/i);
+    if (bodyMatch) return content.slice(0, m.index) + rest.slice(bodyMatch[1].length);
     if (rest === '' && m.index > 0 && content[m.index - 1] === '\n') return content.slice(0, m.index - 1);
     return content.slice(0, m.index) + rest;
 }
@@ -204,7 +219,8 @@ export async function removeCommand(cwd: string, options: Record<string, string 
         const content = await readIfExists(abs);
         if (content === null) continue;
         const next = stripHtmlBlock(content);
-        if (next !== null && next !== content) await fs.writeFile(abs, next, 'utf8');
+        if (next === null || next === content) continue;
+        if (await writableInsideRoot(root, abs)) await fs.writeFile(abs, next, 'utf8');
     }
 
     for (const r of removals) {
@@ -213,9 +229,9 @@ export async function removeCommand(cwd: string, options: Record<string, string 
         if (!abs) continue;
         const content = await readIfExists(abs);
         if (content === null) continue;
-        const next = content.replace(/^VITE_PINSAY_[A-Z_]*=.*\n?/gm, '');
+        const next = content.replace(/^VITE_PINSAY_[A-Z_]*=.*(?:\r?\n)?/gm, '');
         if (next === '') await fs.rm(abs, { force: true });
-        else if (next !== content) await fs.writeFile(abs, next, 'utf8');
+        else if (next !== content && (await writableInsideRoot(root, abs))) await fs.writeFile(abs, next, 'utf8');
     }
 
     for (const r of removals) {

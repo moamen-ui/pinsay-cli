@@ -204,3 +204,68 @@ test('removeExcludeBlock: dry run reports without writing; not a repo returns fa
         rm(plain);
     }
 });
+
+test('config with htmlPath/skillsDir outside the repo: neither is listed nor touched', async () => {
+    const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'pinsay-remove-esc-'));
+    const dir = path.join(parent, 'repo');
+    const configDir = tmp();
+    fs.mkdirSync(dir);
+    try {
+        git(dir, 'init', '-q');
+        write(
+            dir,
+            '.pinsay/config.json',
+            JSON.stringify(
+                { project: 'my-app', aiTool: 'claude-code', delivery: 'embed', htmlPath: '../outside.html', skillsDir: '../x' },
+                null,
+                2,
+            ) + '\n',
+        );
+        const outsideHtml = '<html><body>\n<!-- pinsay-feedback:start -->\n<script>1</script>\n<!-- pinsay-feedback:end -->\n</body></html>\n';
+        fs.writeFileSync(path.join(parent, 'outside.html'), outsideHtml, 'utf8');
+        write(parent, 'x/pinsay-init/SKILL.md', '# skill\n');
+        write(parent, 'x/pinsay-feedback/SKILL.md', '# skill\n');
+        const r = run(dir, configDir, ['--yes']);
+        assert.strictEqual(r.code, 0, r.err);
+        assert.strictEqual(fs.readFileSync(path.join(parent, 'outside.html'), 'utf8'), outsideHtml);
+        assert.ok(fs.existsSync(path.join(parent, 'x', 'pinsay-init', 'SKILL.md')));
+        assert.ok(fs.existsSync(path.join(parent, 'x', 'pinsay-feedback', 'SKILL.md')));
+        assert.ok(!r.out.includes('../outside.html'));
+        assert.ok(!r.out.includes('../x'));
+    } finally {
+        fs.rmSync(parent, { recursive: true, force: true });
+        rm(configDir);
+    }
+});
+
+test('CRLF index.html and .env.development round-trip byte-identical', async () => {
+    const dir = tmp();
+    const configDir = tmp();
+    try {
+        git(dir, 'init', '-q');
+        write(dir, 'index.html', '<html><head></head><body></body></html>\n');
+        write(dir, '.env.development', 'USER_LINE=1\n');
+        process.env.PINSAY_CONFIG_DIR = configDir;
+        write(
+            dir,
+            '.pinsay/config.json',
+            JSON.stringify({ project: 'my-app', aiTool: 'claude-code', delivery: 'embed', htmlPath: 'index.html' }, null, 2) + '\n',
+        );
+        await injectVite(dir, { server: SERVER, key: 'my-app', environment: 'local', pin: null, environmentPinned: false });
+        // A Windows checkout (git autocrlf) or a CRLF editor save turns every LF into CRLF —
+        // including the ones inside and after PinSay's block and lines.
+        const toCRLF = (rel: string): void => {
+            const p = path.join(dir, rel);
+            fs.writeFileSync(p, fs.readFileSync(p, 'utf8').replace(/\n/g, '\r\n'), 'utf8');
+        };
+        toCRLF('index.html');
+        toCRLF('.env.development');
+        const r = run(dir, configDir, ['--yes']);
+        assert.strictEqual(r.code, 0, r.err);
+        assert.strictEqual(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), '<html><head></head><body></body></html>\r\n');
+        assert.strictEqual(fs.readFileSync(path.join(dir, '.env.development'), 'utf8'), 'USER_LINE=1\r\n');
+    } finally {
+        rm(dir);
+        rm(configDir);
+    }
+});
