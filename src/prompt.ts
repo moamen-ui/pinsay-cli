@@ -58,15 +58,20 @@ function iface(): readline.Interface {
 /**
  * The colour-off interface. `terminal: false` keeps readline from writing any escape codes of its
  * own, so a no-colour run stays byte-for-byte escape-free.
+ *
+ * A fresh interface per question: bytes typed during a raw-mode step (confirm, hidden input) land
+ * in the old interface's line buffer, and a reused interface would hand them over as the next
+ * answer.
  */
 function plainIface(): readline.Interface {
-    if (!plain) {
-        plain = readline.createInterface({
-            input: process.stdin,
-            output: process.stdout,
-            terminal: false,
-        });
-    }
+    plain?.close();
+    plain = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout,
+        terminal: false,
+    });
+    // Same behaviour as the shared interface if SIGINT is ever emitted on it.
+    plain.on('SIGINT', () => cancelExit());
     return plain;
 }
 
@@ -136,6 +141,11 @@ export async function ask(
 async function readSecret(): Promise<string> {
     emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw ?? false;
+    // Every other keypress reader — above all the shared readline's line editor — must step aside
+    // while the secret is typed: it would echo each character to stdout and leave it sitting in
+    // the line buffer, so the next prompt would start with the password in it.
+    const existingKeypress = process.stdin.listeners('keypress') as ((...args: unknown[]) => void)[];
+    existingKeypress.forEach((fn) => process.stdin.removeListener('keypress', fn));
     if (process.stdin.setRawMode) process.stdin.setRawMode(true);
     process.stdin.resume();
     let value = '';
@@ -158,6 +168,13 @@ async function readSecret(): Promise<string> {
         });
     } finally {
         if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw);
+        if (shared) {
+            // Characters typed in raw mode may have reached the line editor before it was
+            // detached; drop them so they never surface as the next answer.
+            (shared as any).line = '';
+            (shared as any).cursor = 0;
+        }
+        existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
     }
 }
 
@@ -351,26 +368,30 @@ export async function confirm(
         ? `Enter = Yes ${sym.dot} n = No`
         : `Enter = No ${sym.dot} y = Yes`)));
 
-    // readline is holding stdin for line editing; it must let go while we read raw keys.
+    // readline is holding stdin for line editing; it must let go while we read raw keys — and
+    // stepping aside entirely is not enough, so its keypress editor is detached for the duration:
+    // left attached it echoes the pressed key to stdout and leaves it in the line buffer.
     shared?.pause();
     emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw ?? false;
+    const existingKeypress = process.stdin.listeners('keypress') as ((...args: unknown[]) => void)[];
+    existingKeypress.forEach((fn) => process.stdin.removeListener('keypress', fn));
     if (process.stdin.setRawMode) process.stdin.setRawMode(true);
     process.stdin.resume();
 
     let answer: boolean;
     try {
         answer = await new Promise<boolean>((resolve) => {
-            const onKey = (_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean }) => {
+            const onKey = (_str: string, key: { name?: string; ctrl?: boolean; meta?: boolean; sequence?: string }) => {
                 if (key.ctrl && (key.name === 'c' || key.name === 'd')) {
                     cancelExit(wasRaw);
                 } else if (!key.ctrl && !key.meta && (key.name === 'return' || key.name === 'enter')) {
                     cleanup();
                     resolve(defaultYes);
-                } else if (!key.ctrl && !key.meta && key.name === 'y') {
+                } else if (!key.ctrl && !key.meta && (key.name?.toLowerCase() === 'y' || key.sequence?.toLowerCase() === 'y')) {
                     cleanup();
                     resolve(true);
-                } else if (!key.ctrl && !key.meta && key.name === 'n') {
+                } else if (!key.ctrl && !key.meta && (key.name?.toLowerCase() === 'n' || key.sequence?.toLowerCase() === 'n')) {
                     cleanup();
                     resolve(false);
                 }
@@ -386,6 +407,12 @@ export async function confirm(
         });
     } finally {
         if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw);
+        if (shared) {
+            // The pressed key must not survive in the line editor as the next answer.
+            (shared as any).line = '';
+            (shared as any).cursor = 0;
+        }
+        existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
         shared?.resume();
     }
 
