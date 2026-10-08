@@ -175,7 +175,7 @@ test('apply --mark: same check, same exit 2, before marking anything', () =>
     touchedQueueOrWrite = false;
 
     await assert.rejects(
-      execAsync(`node ${cliPath} apply --mark 5 --reply "done"`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
+      execAsync(`node ${cliPath} apply --mark 5 --reply "done" --models "m=implementer"`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
       (err: any) => {
         assert.strictEqual(err.code, 2);
         assert.match(err.stderr, /is paused — apply is disabled until a workspace admin resumes it\./);
@@ -209,7 +209,10 @@ test('apply --json: a mid-run freeze (queue 423s after /me said "not frozen") st
         execAsync(`node ${cliPath} apply --json`, { cwd: dir, env: { ...process.env, PINSAY_SERVER: serverUrl } }),
         (err: any) => {
           assert.strictEqual(err.code, 2, `expected exit 2, got ${err.code}: ${err.stderr}`);
-          assert.match(err.stderr, /This workspace is paused\./);
+          assert.deepStrictEqual(JSON.parse(err.stdout.trim().split('\n').pop()), {
+            ok: false,
+            error: { code: 2, message: 'This workspace is paused. Ask its admin to resume it in the dashboard.' },
+          });
           return true;
         },
       );

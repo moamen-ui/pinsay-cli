@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
 import { api, ApiError } from './api.js';
+import { isOutage } from './errors.js';
 import { resolveApiKey, tokenCacheFile, removeStaleRepoTokenCache, type ApiKeySource } from './credentials.js';
 
 /**
@@ -88,6 +89,7 @@ export async function resolveToken(
       return login.token;
     }
   } catch (err: any) {
+    if (isOutage(err)) throw err;
     if (err instanceof ApiError && err.code === 401) {
       // invalid key
       return undefined;
