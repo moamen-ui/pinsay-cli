@@ -148,7 +148,6 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
     '.claude/skills/pinsay-feedback/apply.md',
     '.claude/skills/pinsay-feedback/translate.md',
     '.claude/skills/pinsay-feedback/advanced.md',
-    '.pinsay/pinsay.sh',
   ]);
 
   // cursor/windsurf have no folder for siblings — their pinsay-feedback entry stays one flat
@@ -156,7 +155,6 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
   assert.deepEqual(skillFilesFor({ aiTool: 'cursor' }), [
     '.cursor/rules/pinsay-init.md',
     '.cursor/rules/pinsay-feedback.md',
-    '.pinsay/pinsay.sh',
   ]);
 
   // An unknown or absent tool falls back to the same layout installSkills uses: the standard
@@ -167,7 +165,6 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
     '.agents/skills/pinsay-feedback/apply.md',
     '.agents/skills/pinsay-feedback/translate.md',
     '.agents/skills/pinsay-feedback/advanced.md',
-    '.pinsay/pinsay.sh',
   ]);
   assert.deepEqual(skillFilesFor({}), [
     '.agents/skills/pinsay-init/SKILL.md',
@@ -175,7 +172,6 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
     '.agents/skills/pinsay-feedback/apply.md',
     '.agents/skills/pinsay-feedback/translate.md',
     '.agents/skills/pinsay-feedback/advanced.md',
-    '.pinsay/pinsay.sh',
   ]);
   assert.deepEqual(skillFilesFor({ aiTool: 'antigravity' }), [
     '.agents/skills/pinsay-init/SKILL.md',
@@ -183,7 +179,6 @@ test('skillFilesFor maps each AI tool to the paths init actually wrote', () => {
     '.agents/skills/pinsay-feedback/apply.md',
     '.agents/skills/pinsay-feedback/translate.md',
     '.agents/skills/pinsay-feedback/advanced.md',
-    '.pinsay/pinsay.sh',
   ]);
 });
 
@@ -196,6 +191,5 @@ test('a recorded skillsDir overrides the tool mapping', () => {
     'custom/skills/pinsay-feedback/apply.md',
     'custom/skills/pinsay-feedback/translate.md',
     'custom/skills/pinsay-feedback/advanced.md',
-    '.pinsay/pinsay.sh',
   ]);
 });

@@ -75,6 +75,12 @@ export interface PinSayConfig {
    */
   delivery?: 'embed' | 'extension';
   /**
+   * The answer to "Share your project's framework names with PinSay?" (SPEC A2). `false` = send no stack and no
+   * usage events (init still sends one bare "setup done" signal). Missing = yes (CEO, 2026-10-08): 0.8.x repos,
+   * CI and AI agents share unless `--no-share-stack` was passed.
+   */
+  shareStack?: boolean;
+  /**
    * Whether the apply skill may hand mechanical edits to a cheaper worker model when the AI tool
    * running it supports sub-agents. `auto` (the default — a config without the field means `auto`)
    * lets the orchestrating agent decide per run under the guardrails spelled out in the served
@@ -272,8 +278,7 @@ export async function writeConfigFull(cwd: string, config: PinSayConfig): Promis
 }
 
 /**
- * Writes `.pinsay/credentials.env`: the key, plus PINSAY_PROJECT when known (`.pinsay/pinsay.sh`, the no-Node
- * fallback, reads the project from here in repos with no `.env`). No PINSAY_SERVER line since 0.8.0: there is one
+ * Writes `.pinsay/credentials.env`: the key, plus PINSAY_PROJECT when known. No PINSAY_SERVER line since 0.8.0: there is one
  * server.
  *
  * Called only when `init` writes the key locally — a `--local-credentials` install, or the answer

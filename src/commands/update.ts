@@ -4,11 +4,13 @@ import { api } from '../api.js';
 import { isOutage } from '../errors.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
+import { pinsayShNote } from '../lib/legacy.js';
 import { installSkills, buildFlatPinSayFeedback, formatSkillWarnings } from '../skills.js';
 import { resolveRepoPath } from '../lib/repo-paths.js';
 import type { MetaResponse } from '../checks.js';
 import { resolveServer } from '../server.js';
 import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
+import { dim } from '../ui/style.js';
 
 export interface UpdateOptions {
   server?: string;
@@ -22,7 +24,6 @@ export interface UpdateOptions {
  * (skill.md + the three skills/*.md sub-files), not overwritten with just `/skill.md`'s body.
  */
 function sourceFor(path: string): string | null {
-  if (path.endsWith('pinsay.sh')) return '/pinsay.sh';
   if (path.includes('pinsay-init')) return '/pinsay-init.md';
   if (path.endsWith('/apply.md')) return '/skills/apply.md';
   if (path.endsWith('/translate.md')) return '/skills/translate.md';
@@ -39,12 +40,11 @@ function isFlatPinSayFeedbackFile(path: string, aiTool: string | undefined, skil
 }
 
 /**
- * Refreshes the served skills and pinsay.sh in place, and installs them when they are missing
- * entirely.
+ * Refreshes the served skills in place, and installs them when they are missing entirely.
  *
  * A skill file installed months ago is frozen prose describing an API that has moved on — the
  * problem the version stamp exists to make visible and this command exists to fix. Since skills
- * and pinsay.sh are gitignored (derived, per-machine state — see `config.ts`'s
+ * are gitignored (derived, per-machine state — see `config.ts`'s
  * `lib/git-exclude.ts`), a fresh clone of a repo that already has PinSay set up has NEITHER: there
  * is nothing to refresh, only something to install, which used to be silently skipped here.
  *
@@ -57,7 +57,9 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   // longer does — see `removeLegacyRepoFiles`. Unconditional: this must happen whether or not the
   // rest of the command finds anything to update.
   const removedLegacyFiles = await removeLegacyRepoFiles(cwd);
-  for (const f of removedLegacyFiles) console.log(`\x1b[2mremoved legacy ${f}\x1b[0m`);
+  for (const f of removedLegacyFiles) console.log(dim(`removed legacy ${f}`));
+  const note = pinsayShNote(cwd);
+  if (note) console.log(dim(note));
 
   const config = await readConfig(cwd);
   const server = (options.server || resolveServer()).replace(/\/$/, '');
@@ -167,7 +169,6 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
       const abs = (await resolveRepoPath(cwd, f.path, { create: true })).abs;
       // Writing through the path (not unlink+create) is what preserves a symlink.
       await fs.writeFile(abs, body, 'utf8');
-      if (abs.endsWith('.sh')) await fs.chmod(abs, 0o755).catch(() => {});
       updated++;
     } catch (err: any) {
       console.error(`  failed to update ${f.path}: ${err?.message ?? err}`);

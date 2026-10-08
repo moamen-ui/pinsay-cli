@@ -4,11 +4,14 @@ import { readConfig, isMultiProject, listProjects } from '../config.js';
 import { runInitChecks, type CheckResult } from '../checks.js';
 import { installSkills, formatSkillWarnings } from '../skills.js';
 import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
-import { detectStack } from '../detect.js';
+import { extractTokens } from '../detect.js';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { detectDesignTokens } from '../stack/design.js';
-import { readStackFile, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
+import { readStackFile, mergeStack, writeStackFile, stackFileRelPath, buildRequestBody } from '../stack/stackfile.js';
+import { shareAllowed } from '../consent.js';
+import { pinsayShNote } from '../lib/legacy.js';
+import { dim } from '../ui/style.js';
 import { resolveApiKey } from '../credentials.js';
 import { resolveServer } from '../server.js';
 
@@ -84,6 +87,8 @@ export async function doctorCommand(cwd: string, options: DoctorOptions, cliVers
   if (options.json) {
     console.log(JSON.stringify({ ok, checks }, null, 2));
   } else {
+    const note = pinsayShNote(cwd);
+    if (note) console.log(dim(note));
     for (const check of checks) {
       console.log(`${ICON[check.status]} ${check.id.padEnd(14)} ${check.message}`);
       if (check.hint && check.status !== 'ok') console.log(`  ${' '.repeat(14)} → ${check.hint}`);
@@ -120,11 +125,7 @@ async function reportRun(cwd: string, options: DoctorOptions, checks: CheckResul
     const login = await api<{ token?: string }>(server, '/api/auth/login-with-key', { method: 'POST', body: { apiKey } });
     if (!login?.token) return;
 
-    await postEvent(server, login.token, {
-      type: 'doctor_run',
-      projectKey: options.project || config.project,
-      meta: { ok, failed: checks.filter((c) => c.status === 'error').map((c) => c.id) },
-    });
+    await postEvent(server, login.token, { type: 'doctor_run', projectKey: options.project || config.project, meta: { ok, failed: checks.filter((c) => c.status === 'error').map((c) => c.id) } }, cwd);
   } catch {
     // Deliberately silent.
   }
@@ -188,19 +189,21 @@ async function applyFixes(cwd: string, checks: CheckResult[], server: string): P
     for (const t of targets) {
       try {
         const appCwd = multi ? join(cwd, t.path) : cwd;
-        const detection = await detectStack(appCwd);
-        const stackToken = await tokenFor();
-        const stack = stackToken
-          ? await api<any>(server, `/api/projects/${t.key}/stack`, {
-              method: 'POST',
-              token: stackToken,
-              body: { kind: detection.kind, evidence: detection.evidence },
-            }).catch(() => null)
-          : null;
-        if (stack) {
-          await fs.writeFile(join(cwd, stackFileRelPath(multi ? t.key : undefined)), JSON.stringify(stack, null, 2) + '\n', 'utf8');
-          any = true;
+        const pkg = JSON.parse(await fs.readFile(join(appCwd, 'package.json'), 'utf8').catch(() => '{}') || '{}');
+        const names = extractTokens(pkg);
+        const stackMeta = { frontend: names.frontend, backend: names.backend, aiTool: config.aiTool };
+        const design = await detectDesignTokens(appCwd, { root: cwd }).catch(() => null);
+        let serverStack: any = null;
+        if (await shareAllowed(cwd)) {
+          const stackToken = await tokenFor();
+          if (stackToken) {
+            serverStack = await api<any>(server, `/api/projects/${t.key}/stack`, {
+              method: 'POST', token: stackToken, body: buildRequestBody(stackMeta),
+            }).catch(() => null);
+          }
         }
+        await writeStackFile(cwd, mergeStack(stackMeta, serverStack, design), multi ? t.key : undefined);
+        any = true;
       } catch {
         // Same as every other repair: a failure here just leaves that project's check failing.
       }

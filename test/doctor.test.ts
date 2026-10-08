@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
 import { compareSemver, runInitChecks } from '../src/checks.js';
-import { exitCodeFor } from '../src/commands/doctor.js';
+import { doctorCommand, exitCodeFor } from '../src/commands/doctor.js';
 import { saveGlobalCredential } from '../src/credentials.js';
 
 async function scratch(config?: Record<string, unknown>, apiKey?: string): Promise<string> {
@@ -403,4 +403,58 @@ test('multi-project: --project narrows every per-project check to that one app',
 
   assert.equal(checks.filter((c) => c.id === 'widget').length, 1);
   assert.equal(checks.filter((c) => c.id === 'stack').length, 1);
+});
+
+// -----------------------------------------------------------------------------------------------
+// Consent: `doctor --fix` in a repo that said shareStack false repairs the LOCAL stack file only
+// -----------------------------------------------------------------------------------------------
+
+test('doctor --fix with shareStack:false rewrites the local stack file and POSTs no stack', async (t) => {
+  const stackPosts: string[] = [];
+  const now = new Date().toISOString();
+  const server = createServer((req, res) => {
+    const key = `${req.method} ${req.url?.split('?')[0]}`;
+    if (key.endsWith('/stack')) stackPosts.push(key);
+    const routes: Record<string, [number, unknown]> = {
+      'GET /api/branding': [200, { productName: 'PinSay' }],
+      'GET /api/meta': [200, { minCliVersion: '0.0.1', serverTime: now }],
+      'POST /api/auth/login-with-key': [200, { status: 'ok', token: 'jwt' }],
+      'GET /api/admin/projects': [200, [{ key: 'demo', isActiveLocal: true }]],
+      'GET /widget.js': [200, 'console.log(1)'],
+    };
+    const hit = routes[key];
+    if (!hit) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+      return;
+    }
+    const [status, body] = hit;
+    const isScript = key.endsWith('/widget.js');
+    res.writeHead(status, { 'content-type': isScript ? 'application/javascript' : 'application/json' });
+    res.end(isScript ? String(body) : JSON.stringify({ isSuccess: status < 400, data: body }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const stubUrl = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+
+  const dir = await scratch({ server: stubUrl, project: 'demo', shareStack: false }, 'ptr_good');
+  const log = t.mock.method(console, 'log', () => {});
+  try {
+    const code = await doctorCommand(dir, { fix: true, server: stubUrl, json: true }, '1.0.0');
+    assert.equal(code, 0);
+
+    assert.deepEqual(stackPosts, [], 'no stack POST may leave the machine when the repo said No');
+
+    const jsonLine = log.mock.calls.map((c) => String(c.arguments[0])).find((l) => l.startsWith('{'));
+    assert.ok(jsonLine, 'expected the --json result on stdout');
+    const result = JSON.parse(jsonLine) as { ok: boolean; checks: { id: string; status: string }[] };
+    const stack = result.checks.find((c) => c.id === 'stack');
+    assert.equal(stack?.status, 'ok', 'the stack check passes from the local file alone');
+
+    const stackFile = JSON.parse(await fs.readFile(join(dir, '.pinsay/stack.json'), 'utf8'));
+    assert.ok(Array.isArray(stackFile.frontend), 'the local stack file was written');
+  } finally {
+    log.mock.restore();
+    await fs.rm(dir, { recursive: true, force: true });
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
 });

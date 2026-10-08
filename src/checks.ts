@@ -466,8 +466,8 @@ async function skillsCheck(cwd: string, config: PinSayConfig): Promise<CheckResu
   const tool = config.aiTool;
   if (!tool) return { id: 'skills', status: 'warn', message: 'No AI tool configured' };
 
-  // skillFilesFor = exactly the paths installSkills writes (a --skills-dir install included) plus
-  // .pinsay/pinsay.sh. Looked up through resolveRepoPath, so an install that went through a link
+  // skillFilesFor = exactly the paths installSkills writes (a --skills-dir install included).
+  // Looked up through resolveRepoPath, so an install that went through a link
   // stub (a Git symlink checked out as a plain file on Windows) is found where it really is.
   const missing: string[] = [];
   for (const rel of skillFilesFor(config)) {

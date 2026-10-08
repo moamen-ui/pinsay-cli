@@ -48,7 +48,7 @@ async function stubServer(skillVersion: string): Promise<{ url: string; close: (
   };
 }
 
-test('update installs pinsay.sh and the skill files when they are entirely missing', async () => {
+test('update installs the skill files when they are entirely missing', async () => {
   const stub = await stubServer('2026.09.16');
   const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', aiTool: 'claude-code' });
   try {
@@ -61,11 +61,11 @@ test('update installs pinsay.sh and the skill files when they are entirely missi
       '.claude/skills/pinsay-feedback/apply.md',
       '.claude/skills/pinsay-feedback/translate.md',
       '.claude/skills/pinsay-feedback/advanced.md',
-      '.pinsay/pinsay.sh',
     ]) {
       const stat = await fs.stat(join(dir, rel));
       assert.ok(stat.isFile() || stat.isSymbolicLink(), `${rel} should exist`);
     }
+    await assert.rejects(fs.access(join(dir, '.pinsay/pinsay.sh')), 'pinsay.sh is no longer installed');
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();
@@ -231,7 +231,29 @@ test('update returns 1 and warns, without throwing, when .claude/skills is a pla
     assert.equal(code, 1);
     const lines = err.mock.calls.map((c) => String(c.arguments[0]));
     assert.ok(lines.some((l) => /is a file, not a folder/.test(l)), `got: ${lines.join(' | ')}`);
-    await fs.access(join(dir, '.pinsay/pinsay.sh'));
+    await assert.rejects(fs.access(join(dir, '.pinsay/pinsay.sh')), 'pinsay.sh is no longer installed');
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+    await stub.close();
+  }
+});
+
+test('update leaves an old .pinsay/pinsay.sh untouched and notes it is no longer used, once', async (t) => {
+  const stub = await stubServer('2026.09.16');
+  const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local', aiTool: 'claude-code' });
+  try {
+    const shPath = join(dir, '.pinsay/pinsay.sh');
+    await fs.writeFile(shPath, 'old', 'utf8');
+
+    const log = t.mock.method(console, 'log', () => {});
+    const code = await updateCommand(dir, { server: stub.url });
+    assert.equal(code, 0);
+
+    assert.equal(await fs.readFile(shPath, 'utf8'), 'old', 'update must never touch an existing pinsay.sh');
+    const lines = log.mock.calls.map((c) => String(c.arguments[0]));
+    const notes = lines.filter((l) => l.includes('no longer used'));
+    assert.equal(notes.length, 1, `expected exactly one note, got: ${lines.join(' | ')}`);
+    assert.match(notes[0], /npx pinsay-cli remove/);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();

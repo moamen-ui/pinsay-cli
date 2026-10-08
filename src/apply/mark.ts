@@ -147,11 +147,7 @@ export async function markApplied(
         token: ctx.token,
       });
       patchedIds.push(item.id);
-      await postEvent(ctx.server, ctx.token, {
-        type: 'first_apply',
-        projectKey: ctx.project,
-        meta: { commentId: item.id },
-      });
+      await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: item.id } }, ctx.cwd);
     }
   } else {
     // Separate commit style: commit single comment
@@ -199,11 +195,7 @@ export async function markApplied(
       token: ctx.token,
     });
     patchedIds.push(id);
-    await postEvent(ctx.server, ctx.token, {
-      type: 'first_apply',
-      projectKey: ctx.project,
-      meta: { commentId: id },
-    });
+    await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
   }
 
   return {
@@ -229,11 +221,7 @@ export async function markFailed(
     token: ctx.token,
   });
 
-  await postEvent(ctx.server, ctx.token, {
-    type: 'apply_failed',
-    projectKey: ctx.project,
-    meta: { commentId: id, reason },
-  });
+  await postEvent(ctx.server, ctx.token, { type: 'apply_failed', projectKey: ctx.project, meta: { commentId: id, reason } }, ctx.cwd);
 }
 
 function describeFilter(filter?: QueueFilter): string {
