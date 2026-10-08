@@ -5,7 +5,8 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { planEmbed } from '../src/embed/embed.js';
+import { injectVite } from '../src/inject/vite.js';
+import { planEmbed, findExistingWidget } from '../src/embed/embed.js';
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/cli.js');
 const START = '<!-- pinsay-feedback:start -->';
@@ -125,4 +126,13 @@ test('planEmbed forInit: a marked block counts as already embedded', async () =>
     assert.strictEqual(plan.kind, 'already');
     assert.strictEqual(plan.htmlPath, 'index.html');
     assert.deepStrictEqual(plan.files, []);
+});
+
+test('a Vite-injected block (marker only) is found and counts as already for init', async () => {
+    const dir = viteFixture();
+    await injectVite(dir, { server: 'http://127.0.0.1:9', key: 'my-app', environment: 'local', pin: null, environmentPinned: false }, path.join(dir, 'index.html'));
+    const found = await findExistingWidget(dir);
+    assert.strictEqual(found?.marked, true);
+    const plan = await planEmbed(dir, { forInit: true });
+    assert.strictEqual(plan.kind, 'already');
 });

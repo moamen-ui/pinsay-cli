@@ -26,7 +26,7 @@ function toRepoRelative(root: string, p: string): string {
 
 /**
  * Is the widget already in this app's HTML? Tried in order (first match wins): the recorded HTML
- * path, `index.html`, `src/index.html`, `public/index.html`. `marked` is true when the block is
+ * path, `index.html`, `src/index.html`, `public/index.html`. A file also matches on the start marker alone (the Vite form has no literal tag). `marked` is true when the block is
  * one `pinsay-cli` wrote (it carries the start marker), false for a hand-placed snippet.
  */
 export async function findExistingWidget(
@@ -36,7 +36,7 @@ export async function findExistingWidget(
     const candidates = [...(recordedHtml ? [recordedHtml] : []), 'index.html', 'src/index.html', 'public/index.html'];
     for (const rel of candidates) {
         const content = await fs.readFile(join(appCwd, rel), 'utf8').catch(() => null);
-        if (content !== null && content.includes('<pinsay-feedback')) {
+        if (content !== null && (content.includes('<pinsay-feedback') || content.includes(START_MARKER))) {
             return { file: posix(rel), marked: content.includes(START_MARKER) };
         }
     }
