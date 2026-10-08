@@ -383,6 +383,27 @@ Options:
             process.exit(0);
         }
         await mcpCommand(cwd(), parsed);
+    } else if (command === 'embed') {
+        if (parsed['help']) {
+            console.log(`
+Usage: npx pinsay-cli embed [options]
+
+Put the feedback widget into your app's code. No sign-in needed.
+
+Options:
+  --html <file>      The HTML file to inject into (outranks detection)
+  --pin              Pin the widget to the build the server is serving now
+  --path <app>       The app folder, in a repo with several apps
+  --project <key>    The PinSay project key to embed
+  --dry-run          Show the plan; write and send nothing
+  -y, --yes          Do not ask for confirmation
+  --json             Machine-readable output
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        const { embedCommand } = await import('./commands/embed.js');
+        await embedCommand(cwd(), parsed);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);
