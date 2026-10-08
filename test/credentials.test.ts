@@ -595,9 +595,6 @@ async function gitInit(dir: string): Promise<void> {
   await execAsync('git init -q', { cwd: dir });
 }
 
-async function exists(p: string): Promise<boolean> {
-  return fs.access(p).then(() => true, () => false);
-}
 
 test('login in a git repo saves the key in the repo (0600) and not on the machine', () =>
   withTempDir(async (repo) =>
