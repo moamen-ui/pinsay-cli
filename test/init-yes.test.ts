@@ -18,10 +18,24 @@ const execAsync = promisify(exec);
 let server: http.Server;
 let serverUrl: string;
 
+/** Every request the stub saw, in order (tests clear it with `requests.length = 0` before the run they check). */
+const requests: Array<{ method: string; path: string; body: any }> = [];
+
 before(async () => {
     server = http.createServer((req, res) => {
         res.setHeader('Content-Type', 'application/json');
-        
+        const entry = { method: req.method ?? 'GET', path: req.url ?? '', body: undefined as any };
+        requests.push(entry);
+        let raw = '';
+        req.on('data', (c) => (raw += c));
+        req.on('end', () => {
+            try {
+                entry.body = raw ? JSON.parse(raw) : undefined;
+            } catch {
+                entry.body = raw;
+            }
+        });
+
         if (req.url === '/api/branding') {
             res.end(JSON.stringify({
                 productName: 'PinSay Test',
@@ -43,7 +57,14 @@ before(async () => {
                     }
                 })();
 
-                if (apiKey === 'ptr_good') {
+                if (apiKey === 'ptr_member') {
+                    res.end(
+                        JSON.stringify({
+                            data: { status: 'ok', token: 'jwt-for-member', user: { displayName: 'Member User', roleName: 'Member' } },
+                            isSuccess: true,
+                        }),
+                    );
+                } else if (apiKey === 'ptr_good') {
                     res.end(
                         JSON.stringify({
                             data: { status: 'ok', token: 'jwt-for-test', user: { displayName: 'Test User', roleName: 'Developer' } },
@@ -58,11 +79,15 @@ before(async () => {
             return;
         } else if (req.url === '/api/auth/me') {
             if (req.headers.authorization === 'Bearer jwt-for-test') {
-                res.end(JSON.stringify({ data: { displayName: 'Test User', roleName: 'Developer' }, isSuccess: true }));
+                res.end(JSON.stringify({ data: { displayName: 'Test User', roleName: 'Developer', isAdmin: true }, isSuccess: true }));
+            } else if (req.headers.authorization === 'Bearer jwt-for-member') {
+                res.end(JSON.stringify({ data: { displayName: 'Member User', roleName: 'Member', isAdmin: false }, isSuccess: true }));
             } else {
                 res.writeHead(401);
                 res.end(JSON.stringify({ message: 'Unauthorized' }));
             }
+        } else if (req.url === '/pinsay.version.json') {
+            res.end(JSON.stringify({ hash: 'abc123', files: { 'widget.js': { integrity: 'sha384-test' } } }));
         } else if (req.url === '/api/admin/projects') {
             if (req.method === 'POST') {
                 res.end(JSON.stringify({ key: 'my-app', name: 'My App' }));
@@ -133,28 +158,21 @@ test('init --yes without --key exits 2', () => withTempDir(async (dir) => {
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 2);
-    assert.match(err.stdout + err.stderr, /--key is required/);
+    assert.match(err.stdout + err.stderr, /No API key/);
   }
 }));
 
-// `exec` gives the child a pipe for stdin, never a TTY — which is exactly the condition under test,
-// and the same one a user hits from CI, a pipe, or an editor-embedded shell.
-//
-// Before the guard this exited 0 having written nothing: readline's question() never resolves on
-// EOF, so the event loop drained and node reported success. A silent no-op that claims to have
-// worked is worse than any crash, because there is nothing to search for when it happens.
-test('interactive init without a TTY refuses loudly instead of exiting 0', () => withTempDir(async (dir) => {
+// `exec` gives the child a pipe for stdin, never a TTY — the condition a user hits from CI, a pipe, or an
+// editor-embedded shell. SPEC "Interactive": no TTY means no prompts, so with no key anywhere init stops
+// at sign-in with the "No API key" line (exit 2) instead of waiting on a prompt that can never be answered.
+test('init without a terminal and without a key exits 2 with the No API key line and writes nothing', () => withTempDir(async (dir) => {
   try {
-    await execAsync(`node ${cliPath} init`, { cwd: dir, env: envFor(dir) });
-    assert.fail('a non-interactive init must not report success');
+    await execAsync(`node ${cliPath} init --project my-app`, { cwd: dir, env: envFor(dir) });
+    assert.fail('a non-interactive init with no key must not report success');
   } catch (err: any) {
     assert.strictEqual(err.code, 2, 'must exit 2 (usage error), not 0');
-    const out = err.stdout + err.stderr;
-    assert.match(out, /stdin is not a terminal/i, 'must say why it cannot continue');
-    assert.match(out, /--yes/, 'must point at the non-interactive escape hatch');
+    assert.match(err.stdout + err.stderr, /No API key/);
   }
-
-  // And it must not have half-written an install on its way out.
   await assert.rejects(fs.stat(path.join(dir, '.pinsay')), 'a refused init must leave no .pinsay/');
 }));
 
@@ -179,18 +197,19 @@ test('init --json prints JSON and nothing else', () => withTempDir(async (dir) =
   assert.strictEqual(json.mode, 'install');
 }));
 
-test('a default --yes run records delivery: embed', () => withTempDir(async (dir) => {
+test('a default --yes run records delivery: extension (the widget is not put in the code unless asked)', () => withTempDir(async (dir) => {
   const { stdout } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App"`, { cwd: dir, env: envFor(dir) });
-  assert.match(stdout, /is set up/);
+  assert.match(stdout, /Here's the plan/);
+  assert.match(stdout, /Next: install the PinSay Test Chrome extension/);
   const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
-  assert.strictEqual(config.delivery, 'embed');
+  assert.strictEqual(config.delivery, 'extension');
 }));
 
 test('init --yes finishes when .claude/skills is a plain file (Windows Git symlink stub): warns, keeps the file', () => withTempDir(async (dir) => {
   await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
   await fs.writeFile(path.join(dir, '.claude/skills'), 'notes about skills\nsecond line\n', 'utf8');
   const { stdout, stderr } = await execAsync(`node ${cliPath} init --yes --key ptr_good --create "My App" --tool claude-code`, { cwd: dir, env: envFor(dir) });
-  assert.match(stdout, /is set up/);
+  assert.match(stdout, /Here's the plan/);
   assert.match(stderr, /⚠ Skills for claude-code: \.claude\/skills is a file, not a folder/);
   assert.match(stderr, /git config core\.symlinks true/);
   assert.doesNotMatch(stderr, /Fatal error/);
@@ -207,7 +226,7 @@ test('init --yes on a repo whose .claude/skills is a Git symlink stub (Windows c
     `node ${cliPath} init --yes --key ptr_good --create "My App" --tool claude-code`,
     { cwd: dir, env: envFor(dir) },
   );
-  assert.match(stdout, /is set up/);
+  assert.match(stdout, /Here's the plan/);
   assert.doesNotMatch(stderr, /Fatal error|⚠ Skills/);
 
   await fs.access(path.join(dir, 'docs/skills/pinsay-init/SKILL.md'));
@@ -266,7 +285,7 @@ test('init --yes joins an already-configured repo, asking only for the key', () 
     `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
-  assert.match(stdout, /Joined/);
+  assert.match(stdout, /Next: tell your AI agent/);
 
   const html = await fs.readFile(indexPath, 'utf8');
   assert.strictEqual(html, original, 'a join must never inject into the app');
@@ -327,7 +346,8 @@ test('a join with a recorded htmlPath says the widget is already embedded', () =
     `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
-  assert.match(stdout, /already embedded in this app's committed source/);
+  assert.match(stdout, /Already in your code \(index\.html\)/);
+  assert.match(stdout, /Next: tell your AI agent/);
 }));
 
 /**
@@ -336,7 +356,7 @@ test('a join with a recorded htmlPath says the widget is already embedded', () =
  * join "the widget is already embedded ... the button should appear", which is false here: the
  * pinsay-init skill still has to run. Regression test for that bug.
  */
-test('a join whose first install was skill-routed points at /pinsay-init instead of claiming the widget is embedded', () => withTempDir(async (dir) => {
+test('a join whose first install was skill-routed ends with the join Next line (a join never mounts the widget)', () => withTempDir(async (dir) => {
   await fs.mkdir(path.join(dir, '.pinsay'), { recursive: true });
   await fs.writeFile(
     path.join(dir, '.pinsay/config.json'),
@@ -360,9 +380,7 @@ test('a join whose first install was skill-routed points at /pinsay-init instead
     `node ${cliPath} init --yes --key ptr_good --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
-  assert.doesNotMatch(stdout, /already embedded in this app's committed source/);
-  assert.match(stdout, /widget is not mounted yet/);
-  assert.match(stdout, /\/pinsay-init/);
+  assert.match(stdout, /Next: tell your AI agent/);
 }));
 
 test('--delivery bogus exits 2', () => withTempDir(async (dir) => {
@@ -442,11 +460,11 @@ test('init --yes --path adds a second app to a multi-project config (real Nx-app
   await fs.writeFile(path.join(dir, 'apps/b/src/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a`,
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --embed`,
     { cwd: dir, env: envFor(dir) },
   );
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b`,
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --embed`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -491,7 +509,7 @@ test('init --yes --path migrates an existing single-project config into `project
   await fs.writeFile(path.join(dir, 'apps/landing/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-landing --path apps/landing`,
+    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-landing --path apps/landing --embed`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -525,7 +543,7 @@ test('init --yes --path migrating the SAME project this run configures does not 
   await fs.writeFile(path.join(dir, 'apps/profile/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-profile --path apps/profile`,
+    `node ${cliPath} init --yes --key ptr_good --project tuwaiq-profile --path apps/profile --embed`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -541,14 +559,14 @@ test('init --yes --path migrating the SAME project this run configures does not 
 // Global credential store — `init` saves a freshly-authenticated key globally by default
 // -----------------------------------------------------------------------------------------------
 
-test('first install with --key saves the key to the global store and writes no repo credentials.env', () => withTempDir(async (dir) => {
+test('init --global saves the key to the global store and writes no repo credentials.env', () => withTempDir(async (dir) => {
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --create "My App"`,
+    `node ${cliPath} init --yes --global --key ptr_good --create "My App"`,
     { cwd: dir, env: envFor(dir) },
   );
-  assert.match(stdout, /this machine's global store/);
+  assert.match(stdout, /key saved on this machine/);
 
   await assert.rejects(
     fs.access(path.join(dir, '.pinsay/credentials.env')),
@@ -569,7 +587,7 @@ test('first install with --key saves the key to the global store and writes no r
   }
 }));
 
-test('--local-credentials writes the repo file instead of the global store', () => withTempDir(async (dir) => {
+test('--local-credentials (alias of --scope repo) writes the repo file and not the global store', () => withTempDir(async (dir) => {
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
@@ -622,7 +640,7 @@ test('a join needs no --key at all when a key is already saved in the global sto
     cwd: dir,
     env: envFor(dir),
   });
-  assert.match(stdout, /Joined/);
+  assert.match(stdout, /Next: tell your AI agent/);
 
   const html = await fs.readFile(indexPath, 'utf8');
   assert.strictEqual(html, original, 'a join must never inject into the app');
@@ -662,8 +680,7 @@ test('init --yes removes legacy .pinsay/credentials.env.example and .pinsay/.tok
     { cwd: dir, env: envFor(dir) },
   );
 
-  assert.match(stdout, /removed legacy \.pinsay\/credentials\.env\.example/);
-  assert.match(stdout, /removed legacy \.pinsay\/\.token_cache/);
+  assert.doesNotMatch(stdout, /removed legacy/, 'the cleanup is silent');
 
   await assert.rejects(fs.access(path.join(dir, '.pinsay/credentials.env.example')));
   await assert.rejects(fs.access(path.join(dir, '.pinsay/.token_cache')));
@@ -691,9 +708,8 @@ test('a join also removes legacy .pinsay files, without touching credentials.env
     { cwd: dir, env: envFor(dir) },
   );
 
-  assert.match(stdout, /Joined/);
-  assert.match(stdout, /removed legacy \.pinsay\/credentials\.env\.example/);
-  assert.match(stdout, /removed legacy \.pinsay\/\.token_cache/);
+  assert.match(stdout, /Next: tell your AI agent/);
+  assert.doesNotMatch(stdout, /removed legacy/, 'the cleanup is silent');
 
   await assert.rejects(fs.access(path.join(dir, '.pinsay/credentials.env.example')));
   await assert.rejects(fs.access(path.join(dir, '.pinsay/.token_cache')));
@@ -709,11 +725,11 @@ test('init --yes --path twice with --local-credentials: credentials.env has neit
   await fs.writeFile(path.join(dir, 'apps/b/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --embed --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
   await execAsync(
-    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --local-credentials`,
+    `node ${cliPath} init --yes --key ptr_good --project p2 --path apps/b --embed --local-credentials`,
     { cwd: dir, env: envFor(dir) },
   );
 
@@ -760,4 +776,195 @@ test('a config with a project and no server is a join', () => withTempDir(async 
   );
   const { stdout } = await execAsync(`node ${cliPath} init --json --key ptr_good`, { cwd: dir, env: envFor(dir) });
   assert.strictEqual(JSON.parse(stdout).mode, 'join');
+}));
+
+// -----------------------------------------------------------------------------------------------
+// The 0.9.0 init journey (SPEC B0): plan, one confirm, share question, key in the repo
+// -----------------------------------------------------------------------------------------------
+
+type CliResult = { code: number; stdout: string; stderr: string };
+
+async function runCli(dir: string, args: string, env: NodeJS.ProcessEnv = envFor(dir)): Promise<CliResult> {
+  try {
+    const { stdout, stderr } = await execAsync(`node ${cliPath} ${args}`, { cwd: dir, env });
+    return { code: 0, stdout, stderr };
+  } catch (err: any) {
+    return { code: err.code, stdout: err.stdout ?? '', stderr: err.stderr ?? '' };
+  }
+}
+
+const viteFixture = async (dir: string) => {
+  await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { vite: '^5.0.0', react: '^18.0.0' } }), 'utf8');
+  await fs.writeFile(path.join(dir, 'vite.config.ts'), 'export default {};\n', 'utf8');
+  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
+};
+
+const posts = (path_: RegExp) => requests.filter((r) => r.method === 'POST' && path_.test(r.path));
+const exists = (p: string) => fs.access(p).then(() => true, () => false);
+
+test('a fresh --yes init saves the key in the repo, shares the stack once and ends with one Next line', () => withTempDir(async (dir) => {
+  requests.length = 0;
+  const r = await runCli(dir, 'init --key ptr_good --project my-app --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.delivery, 'extension');
+  assert.strictEqual(config.shareStack, true);
+
+  const keyFile = path.join(dir, '.pinsay/credentials.env');
+  assert.match(await fs.readFile(keyFile, 'utf8'), /PINSAY_API_KEY=ptr_good/);
+  if (process.platform !== 'win32') assert.strictEqual((await fs.stat(keyFile)).mode & 0o777, 0o600);
+  assert.strictEqual(await exists(path.join(globalDirFor(dir), 'credentials.json')), false, 'nothing in the machine store');
+
+  const stack = posts(/^\/api\/projects\/my-app\/stack$/);
+  assert.strictEqual(stack.length, 1);
+  const allowedStack = new Set(['frontend', 'backend', 'aiTool', 'aiTools']);
+  for (const k of Object.keys(stack[0].body)) assert.ok(allowedStack.has(k), `unexpected stack key ${k}`);
+
+  const events = posts(/^\/api\/events$/);
+  assert.strictEqual(events.length, 1);
+  assert.strictEqual(events[0].body.type, 'installed');
+  const allowedMeta = new Set(['stack', 'aiTool', 'injected', 'mode', 'cliVersion']);
+  for (const k of Object.keys(events[0].body.meta)) assert.ok(allowedMeta.has(k), `unexpected event meta key ${k}`);
+
+  assert.match(r.stdout, /Here's the plan/);
+  assert.strictEqual(r.stdout.split('\n').filter((l) => l.startsWith('Next:')).length, 1);
+  assert.strictEqual(await exists(path.join(dir, '.pinsay/pinsay.sh')), false, 'pinsay.sh is never written');
+}));
+
+test('--no-share-stack: no stack POST, one bare setup-done event, stack.json still written, and nothing later sends more', () => withTempDir(async (dir) => {
+  requests.length = 0;
+  const r = await runCli(dir, 'init --key ptr_good --project my-app --yes --no-share-stack');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.shareStack, false);
+  assert.strictEqual(posts(/\/stack$/).length, 0);
+  const events = posts(/^\/api\/events$/);
+  assert.strictEqual(events.length, 1);
+  assert.deepStrictEqual(events[0].body, { type: 'installed', projectKey: 'my-app' });
+  await fs.access(path.join(dir, '.pinsay/stack.json'));
+
+  // doctor --fix and apply --mark go through the saved answer: still no stack POST and no new event.
+  const before = requests.length;
+  await runCli(dir, 'doctor --fix');
+  await runCli(dir, 'apply --mark 1 --reply "Changed the button color in Header.tsx" --models m=implementer --no-commit');
+  const later = requests.slice(before);
+  assert.strictEqual(later.filter((q) => q.method === 'POST' && /\/stack$/.test(q.path)).length, 0);
+  assert.strictEqual(later.filter((q) => q.method === 'POST' && q.path === '/api/events').length, 0);
+}));
+
+test('init --global saves the key on the machine and writes no repo key file', () => withTempDir(async (dir) => {
+  const r = await runCli(dir, 'init --global --key ptr_good --project my-app --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  const store = JSON.parse(await fs.readFile(path.join(globalDirFor(dir), 'credentials.json'), 'utf8'));
+  assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
+  assert.strictEqual(await exists(path.join(dir, '.pinsay/credentials.env')), false);
+}));
+
+test('a key already in the machine store is used as is: no repo key file, keySaved existing', () => withTempDir(async (dir) => {
+  await fs.mkdir(globalDirFor(dir), { recursive: true });
+  await fs.writeFile(
+    path.join(globalDirFor(dir), 'credentials.json'),
+    JSON.stringify({ [new URL(serverUrl).origin]: { apiKey: 'ptr_good', displayName: 'Test User', savedAt: new Date().toISOString() } }),
+    'utf8',
+  );
+  const r = await runCli(dir, 'init --project my-app --yes --json');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(JSON.parse(r.stdout.trim()).keySaved, 'existing');
+  assert.strictEqual(await exists(path.join(dir, '.pinsay/credentials.env')), false);
+}));
+
+test('init --project with no key anywhere exits 2 with the No API key line and creates no .pinsay/', () => withTempDir(async (dir) => {
+  const r = await runCli(dir, 'init --project my-app --yes');
+  assert.strictEqual(r.code, 2);
+  assert.match(r.stdout + r.stderr, /No API key/);
+  assert.strictEqual(await exists(path.join(dir, '.pinsay')), false);
+}));
+
+for (const flags of ['--delivery embed', '--html index.html', '--pin']) {
+  test(`init ${flags} on a Vite app puts the widget in the code once and records delivery: embed`, () => withTempDir(async (dir) => {
+    await viteFixture(dir);
+    const r = await runCli(dir, `init --key ptr_good --project my-app --yes ${flags}`);
+    assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+    const html = await fs.readFile(path.join(dir, 'index.html'), 'utf8');
+    assert.strictEqual(html.split('pinsay-feedback:start').length - 1, 1, 'the widget block is in index.html exactly once');
+    const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(config.delivery, 'embed');
+    assert.match(r.stdout, /Next: start your app and click the/);
+  }));
+}
+
+test('a repo whose index.html already has the widget is left untouched and recorded as embed', () => withTempDir(async (dir) => {
+  const html = '<html><head></head><body><pinsay-feedback project="my-app"></pinsay-feedback></body></html>';
+  await fs.writeFile(path.join(dir, 'index.html'), html, 'utf8');
+  const r = await runCli(dir, 'init --key ptr_good --project my-app --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(await fs.readFile(path.join(dir, 'index.html'), 'utf8'), html);
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.delivery, 'embed');
+  assert.match(r.stdout, /start your app and click the/);
+}));
+
+for (const withKey of [false, true]) {
+  test(`init --dry-run ${withKey ? 'with' : 'without'} a saved key writes and sends nothing`, () => withTempDir(async (dir) => {
+    if (withKey) {
+      await fs.mkdir(globalDirFor(dir), { recursive: true });
+      await fs.writeFile(
+        path.join(globalDirFor(dir), 'credentials.json'),
+        JSON.stringify({ [new URL(serverUrl).origin]: { apiKey: 'ptr_good', savedAt: new Date().toISOString() } }),
+        'utf8',
+      );
+    }
+    const globalBefore = await fs.readdir(globalDirFor(dir)).catch(() => []);
+    requests.length = 0;
+    const r = await runCli(dir, 'init --dry-run --project my-app');
+    assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+    assert.deepStrictEqual(await fs.readdir(dir), [], 'no file created in the repo');
+    assert.deepStrictEqual(await fs.readdir(globalDirFor(dir)).catch(() => []), globalBefore, 'global dir untouched');
+    assert.strictEqual(requests.filter((q) => q.method !== 'GET').length, 0, 'no POST/PATCH/PUT');
+    assert.strictEqual(r.stdout.trim().split('\n').pop(), 'Dry run: nothing was written or sent.');
+  }));
+}
+
+test('init --dry-run --json prints { ok, dryRun, plan }', () => withTempDir(async (dir) => {
+  const r = await runCli(dir, 'init --dry-run --json --project my-app');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  const out = JSON.parse(r.stdout.trim());
+  assert.strictEqual(out.ok, true);
+  assert.strictEqual(out.dryRun, true);
+  assert.strictEqual(out.plan.project.key, 'my-app');
+  assert.deepStrictEqual(await fs.readdir(dir), []);
+}));
+
+test('init --json adds shareStack, keySaved and nextStep to the old fields', () => withTempDir(async (dir) => {
+  const r = await runCli(dir, 'init --json --key ptr_good --project my-app');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(r.stdout.trim().split('\n').length, 1);
+  const out = JSON.parse(r.stdout.trim());
+  assert.strictEqual(out.shareStack, true);
+  assert.strictEqual(out.keySaved, 'repo');
+  assert.match(out.nextStep, /^Next: /);
+  for (const k of ['ok', 'mode', 'product', 'server', 'project', 'delivery', 'extension', 'appUrl', 'appUrlSource', 'aiTool', 'stack', 'injected', 'routedToSkill', 'files', 'skillWarnings', 'hiddenFromGit', 'trackedPinsayFiles', 'checks', 'cliVersion']) {
+    assert.ok(k in out, `missing ${k}`);
+  }
+}));
+
+test('non-interactive init installs skills for every AI tool the repo shows', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.claude'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.claude/settings.json'), '{}', 'utf8');
+  await fs.mkdir(path.join(dir, '.cursor'), { recursive: true });
+  await fs.writeFile(path.join(dir, '.cursor/rules.mdc'), 'x', 'utf8');
+  const r = await runCli(dir, 'init --key ptr_good --project my-app --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  await fs.access(path.join(dir, '.claude/skills/pinsay-feedback/SKILL.md'));
+  const cursorDir = await fs.readdir(path.join(dir, '.cursor'), { recursive: true } as any);
+  assert.ok((cursorDir as string[]).some((f) => f.includes('pinsay')), 'cursor skills were installed');
+}));
+
+test('a member account cannot create a project: exit 3 and no POST to /api/admin/projects', () => withTempDir(async (dir) => {
+  requests.length = 0;
+  const r = await runCli(dir, 'init --key ptr_member --project missing --yes');
+  assert.strictEqual(r.code, 3, r.stdout + r.stderr);
+  assert.strictEqual(posts(/^\/api\/admin\/projects$/).length, 0);
 }));

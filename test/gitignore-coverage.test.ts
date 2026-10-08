@@ -27,7 +27,7 @@ before(async () => {
       req.on('end', () => {
         res.end(
           JSON.stringify({
-            data: { status: 'ok', token: 'jwt-for-test', user: { displayName: 'Test User', roleName: 'Developer' } },
+            data: { status: 'ok', token: 'jwt-for-test', user: { displayName: 'Test User', roleName: 'Developer', isAdmin: true } },
             isSuccess: true,
           }),
         );
@@ -125,7 +125,7 @@ for (const tool of ['claude-code', 'cursor', 'windsurf', 'other', 'antigravity']
       await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
       await execAsync(
-        `node ${cliPath} init --yes --key ptr_good --create "My App" --tool ${tool}`,
+        `node ${cliPath} init --yes --key ptr_good --create "My App" --tool ${tool} --embed`,
         { cwd: dir, env: envFor(dir) },
       );
 
@@ -143,7 +143,7 @@ test('init --yes --skills-dir custom/skills: git status shows only the committed
     await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
-      `node ${cliPath} init --yes --key ptr_good --create "My App" --skills-dir custom/skills`,
+      `node ${cliPath} init --yes --key ptr_good --create "My App" --skills-dir custom/skills --embed`,
       { cwd: dir, env: envFor(dir) },
     );
 
@@ -166,7 +166,7 @@ test('init --yes --path apps/a (multi-project): git status shows only the inject
     await fs.writeFile(path.join(dir, 'apps/a/index.html'), '<html><head></head><body></body></html>', 'utf8');
 
     await execAsync(
-      `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a`,
+      `node ${cliPath} init --yes --key ptr_good --project p1 --path apps/a --embed`,
       { cwd: dir, env: envFor(dir) },
     );
 
