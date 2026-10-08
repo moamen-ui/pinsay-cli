@@ -36,7 +36,7 @@ export type DeviceLoginOutcome =
  * failure (no display, sandboxed shell, missing binary) is swallowed: the URL and code are already
  * printed, so a browser that didn't open is an inconvenience, not a failure.
  */
-function openBrowser(url: string): void {
+export function openBrowser(url: string): void {
   try {
     let child;
     if (process.platform === 'darwin') {

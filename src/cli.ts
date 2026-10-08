@@ -340,10 +340,12 @@ Options:
     } else if (command === 'status') {
         if (parsed['help']) {
             console.log(`
-Usage: npx pinsay-cli status <id> <open|ready|applied|archived>
+Usage: npx pinsay-cli status
+       npx pinsay-cli status <id> <open|ready|applied|archived>
        npx pinsay-cli status --deployed [sha]
 
-Update comment status, or report a deployed build.
+Show an overview of signed-in account and pending comments,
+update comment status, or report a deployed build.
 
 --deployed [sha]   Mark every applied comment this build contains as live. Defaults to HEAD.
                    Ancestry is computed here, in the repository, and sent to the server as a
@@ -351,7 +353,10 @@ Update comment status, or report a deployed build.
 `);
             process.exit(0);
         }
-        if (parsed['deployed'] !== undefined) {
+        if (positionals.length === 1 && parsed['deployed'] === undefined) {
+            const { overviewCommand } = await import('./commands/overview.js');
+            await overviewCommand(cwd(), parsed);
+        } else if (parsed['deployed'] !== undefined) {
             const { deployedCommand } = await import('./commands/deployed.js');
             await deployedCommand(cwd(), parsed);
         } else {
@@ -404,6 +409,22 @@ Options:
         }
         const { embedCommand } = await import('./commands/embed.js');
         await embedCommand(cwd(), parsed);
+    } else if (command === 'open') {
+        if (parsed['help']) {
+            console.log(`
+Usage: npx pinsay-cli open [options]
+
+Open the project's dashboard in your browser.
+
+Options:
+  --project <key>    Project to open (defaults to configured project)
+  --print            Print the dashboard URL instead of opening the browser
+  -h, --help         Show this help
+`);
+            process.exit(0);
+        }
+        const { openCommand } = await import('./commands/open.js');
+        await openCommand(cwd(), parsed);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);
