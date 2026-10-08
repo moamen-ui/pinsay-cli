@@ -1,102 +1,124 @@
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 import { findRepoRoot, writeCredentials } from '../config.js';
 import { hidePinsayFiles, formatHideWarnings } from '../lib/git-exclude.js';
-import { api } from '../api.js';
 import { getBranding } from '../branding.js';
-import { saveGlobalCredential } from '../credentials.js';
-import { runDeviceLogin } from '../device-login.js';
-import { closePrompts } from '../prompt.js';
-import { askKeyScope, decideKeyScope, scopeFromFlags } from '../key-scope.js';
+import {
+  saveGlobalCredential,
+  readRepoApiKey,
+  removeRepoCredentials,
+  globalCredentialsPath,
+} from '../credentials.js';
+import { ask, closePrompts } from '../prompt.js';
+import { scopeFromFlags } from '../key-scope.js';
 import { resolveServer } from '../server.js';
+import { exchangeKey, InvalidKeyError, NO_KEY_MESSAGE } from '../init/session.js';
+import { runDeviceLogin } from '../device-login.js';
+import { exitWithError } from '../errors.js';
+import { green, sym } from '../ui/style.js';
+
+/** True when `dir` is inside a git work tree. */
+function inGitRepo(dir: string): boolean {
+  try {
+    execFileSync('git', ['rev-parse', '--is-inside-work-tree'], { cwd: dir, stdio: 'ignore', windowsHide: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
- * Signs in and saves the API key — in the global per-machine store (see `credentials.ts`), which
- * every repo on this machine then resolves without asking again, or in this repo's gitignored
- * `.pinsay/credentials.env` only.
+ * Signs in and saves the API key (SPEC B2/C2, lead-only).
  *
- * Where it is saved: `--scope global|repo` / `--local-credentials` decide without asking; otherwise
- * on a terminal it asks the same question `init` asks (`key-scope.ts`); with no terminal, or with
- * `--yes`, it saves globally.
- *
- * Two paths to a key:
- *   - No `--key` on a real terminal: the browser ("device code") flow in `device-login.ts` —
- *     mirrors `gh auth login`. This is the default because pasting a long-lived key is the more
- *     error-prone, more copy-pasteable-into-the-wrong-place option.
- *   - `--key <key>`: exchanges the pasted key for the account it belongs to via
- *     `/api/auth/login-with-key` + `/api/auth/me`.
- * No `--key` and no TTY (CI, a pipe) has no one to open a browser for or prompt — hard exit 2.
+ *   login                 → this repo's `.pinsay/credentials.env` (0600, hidden from git). Outside any git repo and
+ *                           any folder with `.pinsay/`, the machine store instead (no stray `.pinsay/` in a home folder).
+ *   login --global        → the machine store. In a repo whose own key is valid (and no --key): MOVE that key there
+ *                           (no browser) and delete the repo file.
+ *   login --key <key>     → validate a pasted key instead of the browser.
+ *   --scope global|repo, --local-credentials → old spellings, still accepted.
  */
 export async function loginCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
-  // Checked before signing in: a typo in --scope must not cost a browser round trip.
+  const json = options['json'] === true;
   const flags = scopeFromFlags(options);
-  if (flags.error) {
-    console.error(flags.error);
-    process.exit(2);
-  }
+  if (flags.error) exitWithError(2, flags.error, json);
 
   const root = await findRepoRoot(cwd);
   const server = resolveServer();
+  await getBranding(server); // fails fast (exit 4) when the server can't be reached
 
-  const branding = await getBranding(server);
-  const product = branding.productName;
+  const inRepo = existsSync(join(root, '.pinsay')) || inGitRepo(root);
+  const scope = flags.scope ?? (inRepo ? 'repo' : 'global');
+  let flagKey = typeof options['key'] === 'string' ? options['key'].trim() : '';
+  if (options['key'] === true) {
+    // `--key` with no value: ask with hidden input (keeps the key out of shell history), never the browser.
+    if (!process.stdin.isTTY) exitWithError(2, NO_KEY_MESSAGE, json);
+    flagKey = (await ask('API key (from PinSay → Profile → API key; input hidden)', { secret: true })).trim();
+    if (!flagKey) exitWithError(2, NO_KEY_MESSAGE, json);
+  }
 
-  const flagKey = typeof options['key'] === 'string' ? (options['key'] as string) : undefined;
-  let key = flagKey;
-  let me: any;
+  // Move: `login --global` in a repo that already holds a valid key — no browser, no new key.
+  if (scope === 'global' && !flagKey) {
+    const repoKey = await readRepoApiKey(root);
+    if (repoKey) {
+      try {
+        const { me } = await exchangeKey(server, repoKey);
+        await saveGlobalCredential(server, { apiKey: repoKey, email: me.email, displayName: me.displayName });
+        await removeRepoCredentials(root);
+        done(json, { server, scope: 'global', moved: true, displayName: me.displayName, email: me.email },
+          `${green(sym.check)} Moved your key to this machine's store (${globalCredentialsPath()}). Every repo on this machine can use it now.`);
+      } catch (err) {
+        if (!(err instanceof InvalidKeyError)) throw err;
+        // An invalid repo key: sign in fresh below and save the new key to the machine store.
+      }
+    }
+  }
+
+  let key: string;
+  let displayName: string | undefined;
+  let email: string | undefined;
 
   if (flagKey) {
-    // A key handed on the command line is validated exactly once — there is no one to re-prompt
-    // when it fails non-interactively, so a bad --key is a hard exit 3, same as `init --yes`.
     try {
-      const login = await api<any>(server, '/api/auth/login-with-key', {
-        method: 'POST',
-        body: { apiKey: flagKey },
-      });
-      if (login?.status !== 'ok' || !login?.token) throw new Error(login?.status || 'invalid');
-      me = login.user ?? (await api(server, '/api/auth/me', { token: login.token }));
-    } catch {
-      console.error('Invalid API key.');
-      process.exit(3);
+      const { me } = await exchangeKey(server, flagKey);
+      key = flagKey;
+      displayName = me.displayName;
+      email = me.email;
+    } catch (err) {
+      if (!(err instanceof InvalidKeyError)) throw err;
+      exitWithError(3, 'That API key is not valid. Check it in PinSay → Profile → API key.', json);
     }
   } else if (process.stdin.isTTY || options['no-browser'] === true) {
-    // The device flow never reads stdin — it only prints a link/code and polls over HTTP — so a
-    // real terminal is not actually required to run it safely, only to make opening a browser make
-    // sense. `--no-browser` is the explicit "I'll handle the link myself" signal that lets this run
-    // without a TTY at all (a script, or a CI step whose log a human is watching); with neither a
-    // TTY nor that flag, there is no reasonable way to hand someone a link and no key to fall back
-    // to, so this exits fast instead of opening a browser no one asked for.
+    // The device flow never reads stdin, so `--no-browser` lets it run without a TTY (the link is printed).
     const outcome = await runDeviceLogin(server, { noBrowser: options['no-browser'] === true });
     if (!outcome.ok) {
-      if (outcome.reason === 'denied') {
-        console.error('Sign-in was denied.');
-      } else {
-        console.error('The sign-in code expired. Run `npx pinsay-cli login` again.');
-      }
-      process.exit(3);
+      exitWithError(3, outcome.reason === 'denied' ? 'Sign-in was denied.' : 'The sign-in code expired. Run npx pinsay-cli login again.', json);
     }
     key = outcome.result.apiKey;
-    me = { displayName: outcome.result.displayName, email: outcome.result.email };
+    displayName = outcome.result.displayName;
+    email = outcome.result.email;
   } else {
-    console.error('No key provided and no terminal to sign in from — run `npx pinsay-cli login --key <key>` or set PINSAY_API_KEY.');
-    process.exit(2);
+    exitWithError(2, NO_KEY_MESSAGE, json);
   }
-
-  // Asked after a successful sign-in, as `init` does: a failed sign-in asks nothing.
-  const interactive = Boolean(process.stdin.isTTY) && options['yes'] !== true;
-  const decided = decideKeyScope(flags.scope, interactive);
-  const scope = decided === 'ask' ? await askKeyScope() : decided;
   closePrompts();
 
-  const who = me?.displayName ? `${me.displayName}${me?.email ? ` (${me.email})` : ''}` : me?.email ?? 'you';
+  const who = displayName ? `${displayName}${email ? ` (${email})` : ''}` : (email ?? 'you');
   if (scope === 'repo') {
-    // Repo scope: also the multi-account case (a second identity for one repo). The repo file wins
-    // over the global store in resolveApiKey, so this overrides a machine-wide key here. The
-    // PinSay's files are hidden from git (.git/info/exclude) too: this repo may never have run `init`, and the file is a secret.
-    await writeCredentials(root, key!);
-    for (const line of formatHideWarnings(await hidePinsayFiles(root))) console.error(line);
-    console.log(`✔ Signed in to ${server} as ${who} — saved to .pinsay/credentials.env (this repo only; overrides the global store here)`);
-    process.exit(0);
+    await writeCredentials(root, key);
+    const hideWarnings = formatHideWarnings(await hidePinsayFiles(root));
+    if (!json) for (const line of hideWarnings) console.error(line);
+    done(json, { server, scope: 'repo', moved: false, displayName, email },
+      `${green(sym.check)} Signed in as ${who}. Key saved in this repo (.pinsay/credentials.env, hidden from git).`);
   }
-  await saveGlobalCredential(server, { apiKey: key!, email: me?.email, displayName: me?.displayName });
-  console.log(`✔ Signed in to ${server} as ${who} — saved for all repos on this machine`);
+  await saveGlobalCredential(server, { apiKey: key, email, displayName });
+  done(json, { server, scope: 'global', moved: false, displayName, email },
+    inRepo || flags.scope === 'global'
+      ? `${green(sym.check)} Signed in as ${who}. Key saved on this machine (${globalCredentialsPath()}) for every repo.`
+      : `${green(sym.check)} Signed in as ${who}. No repo here, so the key is saved on this machine (${globalCredentialsPath()}) for every repo.`);
+}
+
+function done(json: boolean, payload: Record<string, unknown>, message: string): never {
+  if (json) console.log(JSON.stringify({ ok: true, ...payload }));
+  else console.log(message);
   process.exit(0);
 }

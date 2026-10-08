@@ -2,7 +2,6 @@ import { test } from 'node:test';
 import * as assert from 'node:assert';
 import {
   scopeFromFlags,
-  decideKeyScope,
   KEY_SCOPE_QUESTION,
   KEY_SCOPE_GLOBAL,
   KEY_SCOPE_REPO,
@@ -22,11 +21,9 @@ test('scopeFromFlags: an unknown --scope is an error naming the valid values', (
   assert.match(scopeFromFlags({ scope: 'machine' }).error ?? '', /Invalid --scope "machine". Valid values: global, repo\./);
 });
 
-test('decideKeyScope: a flag wins, a terminal asks, otherwise global', () => {
-  assert.strictEqual(decideKeyScope('repo', true), 'repo');
-  assert.strictEqual(decideKeyScope('global', true), 'global');
-  assert.strictEqual(decideKeyScope(undefined, true), 'ask');
-  assert.strictEqual(decideKeyScope(undefined, false), 'global');
+test('scopeFromFlags: --global means global (0.9.0)', () => {
+  assert.deepStrictEqual(scopeFromFlags({ global: true }), { scope: 'global' });
+  assert.deepStrictEqual(scopeFromFlags({ global: true, scope: 'repo' }), { scope: 'repo' }, 'an explicit --scope wins');
 });
 
 test('the shared question names the pinsay folder, never pointer', () => {

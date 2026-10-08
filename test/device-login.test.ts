@@ -129,8 +129,8 @@ test('login --no-browser: prints the link and code, then saves the key globally 
         assert.match(stdout, /http:\/\/cli-login\.test\/cli-login\?code=ABCD-EFGH/);
         assert.match(stdout, /Code: ABCD-EFGH/);
         assert.match(stdout, /Waiting for approval/);
-        assert.match(stdout, /Signed in to .* as Device User \(device@example\.test\)/);
-        assert.match(stdout, /saved for all repos on this machine/);
+        assert.match(stdout, /Signed in as Device User \(device@example\.test\)/);
+        assert.match(stdout, /saved on this machine/);
 
         const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
         assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_from_device_flow');
@@ -182,7 +182,7 @@ test('login: no --key and no TTY (and no --no-browser) exits 2 with the fallback
           execAsync(`node ${cliPath} login`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
             assert.strictEqual(err.code, 2);
-            assert.match(err.stderr, /npx pinsay-cli login --key <key>/);
+            assert.match(err.stderr, /Pass --key <key> or set PINSAY_API_KEY/);
             assert.match(err.stderr, /PINSAY_API_KEY/);
             return true;
           },
