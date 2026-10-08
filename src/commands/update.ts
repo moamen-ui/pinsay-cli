@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { readConfig, isMultiProject, removeLegacyRepoFiles } from '../config.js';
 import { api } from '../api.js';
+import { isOutage } from '../errors.js';
 import { readStamp } from '../lib/skill-stamp.js';
 import { skillFilesFor } from '../lib/skill-paths.js';
 import { installSkills, buildFlatPinSayFeedback, formatSkillWarnings } from '../skills.js';
@@ -70,7 +71,8 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   try {
     const meta = await api<MetaResponse>(server, '/api/meta');
     served = meta?.skillVersion ?? null;
-  } catch {
+  } catch (err) {
+    if (isOutage(err)) throw err;
     console.error(`Could not reach ${server}.`);
     return 1;
   }

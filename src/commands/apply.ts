@@ -66,6 +66,28 @@ async function checkMetaAndNotify(
   }
 }
 
+/** `--mark` needs `--models "<model>=<role>"`; checked before any network call so a typo never waits on one. */
+function requireMarkModels(parsed: Record<string, string | boolean>): AiModelEntry[] {
+  const models = parseModelFlags(parsed);
+  if (models.length === 0) {
+    console.error(
+      '--models "<model>=<role>" is mandatory when marking a comment as applied.\n' +
+        'Specify your actual active runtime model and role (e.g. --models "<active-model>=implementer").\n' +
+        'If multiple models or subagents participated (planner, implementer, reviewer), list all of them separated by commas.\n' +
+        'Never guess or hardcode model names from memory.',
+    );
+    process.exit(2);
+  }
+  const missingRole = models.find((m) => !m.role);
+  if (missingRole) {
+    console.error(
+      `Invalid --models entry "${missingRole.model}": explicit role is required. Expected "<model>=<role>" where role is one of: planner, implementer, reviewer (e.g. "${missingRole.model}=implementer").`,
+    );
+    process.exit(2);
+  }
+  return models;
+}
+
 function parseModelFlags(parsed: Record<string, string | boolean>): AiModelEntry[] {
   try {
     return resolveModels({
@@ -89,6 +111,7 @@ export async function applyCommand(
   const root = await findRepoRoot(cwd);
   const config = await readConfig(root);
   const server = resolveServer();
+  const markModels = parsed['mark'] !== undefined ? requireMarkModels(parsed) : [];
 
   const projectFlag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
   const resolved = resolveProject(config, cwd, root, projectFlag);
@@ -192,23 +215,7 @@ export async function applyCommand(
           `Pass --tool <your-tool-name> explicitly if you are not that tool.`,
       );
     }
-    const models = parseModelFlags(parsed);
-    if (models.length === 0) {
-      console.error(
-        '--models "<model>=<role>" is mandatory when marking a comment as applied.\n' +
-          'Specify your actual active runtime model and role (e.g. --models "<active-model>=implementer").\n' +
-          'If multiple models or subagents participated (planner, implementer, reviewer), list all of them separated by commas.\n' +
-          'Never guess or hardcode model names from memory.',
-      );
-      process.exit(2);
-    }
-    const missingRole = models.find((m) => !m.role);
-    if (missingRole) {
-      console.error(
-        `Invalid --models entry "${missingRole.model}": explicit role is required. Expected "<model>=<role>" where role is one of: planner, implementer, reviewer (e.g. "${missingRole.model}=implementer").`,
-      );
-      process.exit(2);
-    }
+    const models = markModels;
 
     const markStatus = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
     const markEnv = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
