@@ -34,7 +34,6 @@ export async function embedCommand(cwd: string, options: Record<string, string |
             project = keys.find((k) => entries[k].path === pathFlag);
         } else if (isInteractive(options)) {
             project = await select('Which app should get the widget?', keys);
-            closePrompts();
         } else {
             exitWithError(
                 2,

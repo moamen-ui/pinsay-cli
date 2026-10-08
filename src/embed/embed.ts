@@ -4,14 +4,14 @@ import { detectStack, type AppType } from '../detect.js';
 import { injectVite, injectStatic } from '../inject/index.js';
 import { api } from '../api.js';
 
-export interface EmbedPlan {
+export type EmbedPlan = {
     kind: 'inject' | 'skill' | 'already';
     appDir: string;
     htmlPath?: string;
     files: string[];
     stackKind: AppType;
     vite: boolean;
-}
+};
 
 const START_MARKER = '<!-- pinsay-feedback:start -->';
 
@@ -126,7 +126,8 @@ export async function planEmbed(
     const stack = await detectStack(appCwd);
     const vite = stack.kind === 'vite' || (await hasViteConfig(appCwd));
 
-    const existing = await findExistingWidget(appCwd, opts.recordedHtml);
+    const recordedRel = opts.recordedHtml ? posix(relative(appCwd, resolve(root, opts.recordedHtml))) : undefined;
+    const existing = await findExistingWidget(appCwd, recordedRel);
     if (existing && (!existing.marked || opts.forInit)) {
         return {
             kind: 'already',

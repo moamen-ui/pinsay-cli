@@ -136,3 +136,11 @@ test('a Vite-injected block (marker only) is found and counts as already for ini
     const plan = await planEmbed(dir, { forInit: true });
     assert.strictEqual(plan.kind, 'already');
 });
+
+test('planEmbed: a repo-relative recordedHtml in a multi-project app is found without a doubled prefix', async () => {
+    const dir = tmp();
+    write(dir, 'apps/web/custom.html', `<body>\n${START}\n</body>\n`);
+    const plan = await planEmbed(dir, { appDir: 'apps/web', recordedHtml: 'apps/web/custom.html', forInit: true });
+    assert.strictEqual(plan.kind, 'already');
+    assert.strictEqual(plan.htmlPath, 'apps/web/custom.html');
+});
