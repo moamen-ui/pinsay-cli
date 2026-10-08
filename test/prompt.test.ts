@@ -10,19 +10,26 @@ import { select, multiSelect, closePrompts } from '../src/prompt.js';
 
 let realIsTTY: unknown;
 let realSetRawMode: unknown;
+let realForceColor: string | undefined;
 
 before(() => {
   realIsTTY = (process.stdin as any).isTTY;
   realSetRawMode = (process.stdin as any).setRawMode;
+  realForceColor = process.env.FORCE_COLOR;
   // The prompts refuse to run without a TTY (by design — see assertInteractive), and the test
   // runner gives them a pipe.
   (process.stdin as any).isTTY = true;
   (process.stdin as any).setRawMode = () => process.stdin;
+  // These tests drive the arrow-key menu, which exists only when colour is on; the runner's stdout
+  // is a pipe, so force the colour switch instead of relying on the environment.
+  process.env.FORCE_COLOR = '1';
 });
 
 after(() => {
   (process.stdin as any).isTTY = realIsTTY;
   (process.stdin as any).setRawMode = realSetRawMode;
+  if (realForceColor === undefined) delete process.env.FORCE_COLOR;
+  else process.env.FORCE_COLOR = realForceColor;
   closePrompts();
 });
 

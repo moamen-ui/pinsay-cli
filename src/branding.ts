@@ -1,4 +1,5 @@
 import { api } from './api.js';
+import { isOutage } from './errors.js';
 
 /**
  * Resolves the server's product name and app URL.
@@ -22,7 +23,8 @@ export async function getBranding(server: string): Promise<{
     let branding: { productName?: string, urls?: { app?: string }, extension?: { storeUrl?: string, zipUrl?: string } };
     try {
         branding = await api(server, '/api/branding');
-    } catch {
+    } catch (err) {
+        if (isOutage(err)) throw err;
         console.error(`Could not reach ${server} — check the URL.`);
         process.exit(1);
     }

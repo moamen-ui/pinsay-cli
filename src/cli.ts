@@ -9,8 +9,8 @@ import { logoutCommand } from './commands/logout.js';
 import { whoamiCommand } from './commands/whoami.js';
 import { argv, cwd } from 'node:process';
 import { BUILD_CLI_VERSION } from './build-constants.js';
-import { ApiError } from './api.js';
-import { serverSettingError } from './server.js';
+import { reportFatal } from './errors.js';
+import { resolveServer, serverSettingError } from './server.js';
 
 function parseArgs(args: string[]) {
     const parsed: Record<string, string | boolean> = {};
@@ -389,16 +389,6 @@ Options:
     }
 }
 
-main().catch(err => {
-    // DB-18 (Opus MEDIUM): a mid-run freeze (the workspace paused/scheduled for deletion between
-    // the /me pre-check in apply.ts and a later downstream call) surfaces here as an unhandled
-    // ApiError(423) — without this, every such case fell through to the generic exit code 1 instead
-    // of the exit 2 reserved for a frozen workspace, and a caller (CI, a wrapper script) could not
-    // tell "workspace is paused, stop" apart from "the CLI itself broke".
-    if (err instanceof ApiError && err.code === 423) {
-        console.error(err.message || 'Workspace is paused or scheduled for deletion.');
-        process.exit(2);
-    }
-    console.error('Fatal error:', err);
-    process.exit(1);
+main().catch((err) => {
+    reportFatal(err, { json: argv.includes('--json'), server: resolveServer() });
 });
