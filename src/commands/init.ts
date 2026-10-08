@@ -30,7 +30,7 @@ import { scopeFromFlags } from '../key-scope.js';
 import { shareFromFlags } from '../consent.js';
 import { resolveServer } from '../server.js';
 import { exitWithError, isOutage } from '../errors.js';
-import { bold, dim, green, sym } from '../ui/style.js';
+import { bold, dim, green, yellow, sym } from '../ui/style.js';
 import { isInteractive } from '../ui/interactive.js';
 import { signIn, type Session } from '../init/session.js';
 import { chooseProject, createProject, slugifyKey, type ProjectChoice } from '../init/project.js';
@@ -236,6 +236,13 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     const flagTool = typeof options['tool'] === 'string' ? (options['tool'] as string) : undefined;
 
+    if (dryRun && (isAddProject || configIsMulti)) {
+        await multiDryRun({
+            cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti, saveGlobal,
+            share: shareResult.share, wantEmbed, notes,
+        });
+    }
+
     if (dryRun) {
         const createName = typeof options['create'] === 'string' ? (options['create'] as string).trim() : '';
         const projectFlag = typeof options['project'] === 'string' ? (options['project'] as string).trim() : '';
@@ -309,8 +316,10 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     // Multi-project join: the repo already has apps configured under `projects`; this is another
     // clone or machine. See `handleMultiJoin`.
     if (isJoin && configIsMulti) {
-        const { share } = await decideShare(shareResult.share, config, interactive, product);
-        await handleMultiJoin(cwd, config, server, product, json, options, session, share, keySaved);
+        await handleMultiJoin({
+            cwd, config, server, product, json, interactive, options, session,
+            shareFlag: shareResult.share, keySaved,
+        });
         return;
     }
 
@@ -325,7 +334,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
 
     if (isAddProject || nxApps.length > 0) {
-        const { share } = await decideShare(shareResult.share, config, interactive, product);
         await handleMultiProjectSetup({
             cwd,
             config,
@@ -338,9 +346,10 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             pathFlag,
             nxApps,
             configIsMulti,
-            share,
+            shareFlag: shareResult.share,
             keySaved,
             wantEmbed,
+            storeUrl: branding.extension.storeUrl,
         });
         return;
     }
@@ -639,7 +648,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
  * The app-identifying phrase used in every question asked once per app during multi-project setup
  * — e.g. `apps/tuwaiq-clubs` — so a run that selected several Nx apps never asks an ambiguous
  * "this app?" once app 2 (or 3, ...)'s questions begin. One place, so both questions
- * (`projectQuestion` and the delivery select in `setupOneProject`) agree on the wording if it ever
+ * (`projectQuestion` and `chooseProject`'s own prompt) agree on the wording if it ever
  * changes.
  */
 export function appLabel(appDir: string): string {
@@ -690,33 +699,241 @@ function resolveDeliveryDefault(
     return wantEmbed ? 'embed' : 'extension';
 }
 
-/**
- * Sets up ONE app inside a multi-project repo: picks/creates its PinSay project, its delivery
- * (defaulting to the repo default), injects the widget into that app's own directory, detects/
- * registers its stack, and writes `.pinsay/projects/<key>.stack.json`. Environments are never
- * asked — `presetEnvironments` (from `--environment`) only activates the project, and nothing is
- * recorded to config either way (see `ProjectEntry`'s `@deprecated` docs in config.ts).
- *
- * Shared by both multi-project entry points: `--path` (exactly one app, presets from flags) and
- * the interactive Nx picker (one call per selected app, nothing preset — everything asked).
- */
-async function setupOneProject(ctx: {
+type AppSpec = {
+    dir: string;
+    presetKey?: string;
+    presetCreate?: string;
+    presetEnvironments?: string;
+    presetDelivery?: 'embed' | 'extension';
+    explicitHtml?: string;
+};
+
+/** What one app will get, decided without writing anything (SPEC B4: decide first, one confirm, then write). */
+type AppDecision = {
+    spec: AppSpec;
+    choice: ProjectChoice;
+    /** This app's delivery: its own override, else the repo default. */
+    delivery: 'embed' | 'extension';
+    envs: string[];
+    environmentPinned: boolean;
+    /** Set when delivery is embed and `--no-inject` was not given. */
+    embedPlan?: EmbedPlan;
+};
+
+/** The embed plan for one app, or none when it gets the extension (or `--no-inject`). Writes nothing. */
+async function planAppEmbed(
+    cwd: string,
+    appDir: string,
+    delivery: 'embed' | 'extension',
+    noInject: boolean,
+    explicitHtml?: string,
+    recordedHtml?: string,
+): Promise<EmbedPlan | undefined> {
+    if (noInject || delivery === 'extension') return undefined;
+    return planEmbed(cwd, { appDir, html: explicitHtml, recordedHtml, forInit: true });
+}
+
+/** The plan's Widget line for a run that touches several apps. */
+function widgetForApps(repoDefault: 'embed' | 'extension', plans: Array<EmbedPlan | undefined>, tool: string): Widget {
+    const injectFiles = plans.flatMap((p) => (p?.kind === 'inject' ? p.files : []));
+    if (injectFiles.length > 0) return { kind: 'embed', files: injectFiles };
+    if (repoDefault === 'extension') return { kind: 'extension' };
+    if (plans.some((p) => p?.kind === 'skill')) return { kind: 'embed-skill', tool };
+    const already = plans.find((p) => p?.kind === 'already');
+    return already ? { kind: 'already', file: already.htmlPath ?? 'your app' } : { kind: 'extension' };
+}
+
+function skillsFor(tools: string[], tool: string, options: Record<string, string | boolean>): InitPlan['skills'] {
+    if (options['no-skills']) return [];
+    return tools.map((t) => ({
+        tool: t,
+        paths: skillFilesFor({ aiTool: t, skillsDir: t === tool ? (options['skills-dir'] as string) : undefined }),
+    }));
+}
+
+/** `renderPlan` with its Project line replaced (a join names several projects). */
+function renderMultiPlan(plan: InitPlan, projectLine?: string): string[] {
+    const lines = renderPlan(plan);
+    if (projectLine === undefined) return lines;
+    return lines.map((l) => (l.startsWith('  Project ') ? `  ${'Project'.padEnd(10)}${projectLine}` : l));
+}
+
+function printPlan(plan: InitPlan, json: boolean, projectLine?: string): void {
+    if (json) return;
+    console.log('');
+    for (const line of renderMultiPlan(plan, projectLine)) console.log(line);
+    console.log('');
+}
+
+function planAccount(session: Session, keySaved: KeySaved): InitPlan['account'] {
+    return {
+        kind: 'signed-in',
+        displayName: session.me.displayName,
+        keySaved,
+        existingSource:
+            session.origin === 'env' || session.origin === 'repo' || session.origin === 'global' ? session.origin : undefined,
+        globalPath: globalCredentialsPath(),
+    };
+}
+
+/** The `--dry-run` of `--path` or a multi-project config: the plan from flags and config only, no sign-in. */
+async function multiDryRun(args: {
     cwd: string;
-    appDir: string;
+    config: any;
+    options: Record<string, string | boolean>;
+    server: string;
+    json: boolean;
+    interactive: boolean;
+    product: string;
+    pathFlag?: string;
+    configIsMulti: boolean;
+    saveGlobal: boolean;
+    share: boolean | undefined;
+    wantEmbed: boolean;
+    notes: string[];
+}): Promise<never> {
+    const { cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti, saveGlobal, wantEmbed } = args;
+    const flagTool = typeof options['tool'] === 'string' ? (options['tool'] as string) : undefined;
+    const resolved = await resolveApiKey(cwd, server);
+    const account: InitPlan['account'] =
+        resolved.key && resolved.source ? { kind: 'found', source: resolved.source } : { kind: 'pending' };
+    const tools = decideTools(await detectRepoTools(cwd), { flagTool, savedTool: config.aiTool, interactive: false }).tools;
+    const tool = tools[0];
+    const names = await readStackNames(cwd);
+    const shared: InitPlan['shared'] =
+        args.share !== undefined
+            ? { decided: true, share: args.share, saved: false, ...names, aiTool: tool }
+            : typeof config.shareStack === 'boolean'
+              ? { decided: true, share: config.shareStack, saved: true, ...names, aiTool: tool }
+              : interactive
+                ? { decided: false, share: true, saved: false, ...names, aiTool: tool }
+                : { decided: true, share: true, saved: false, ...names, aiTool: tool };
+    const keyFile = account.kind === 'pending' && !saveGlobal ? ['.pinsay/credentials.env'] : [];
+
+    let plan: InitPlan;
+    let projectLine: string | undefined;
+    if (pathFlag) {
+        const createName = typeof options['create'] === 'string' ? (options['create'] as string).trim() : '';
+        const projectFlag = typeof options['project'] === 'string' ? (options['project'] as string).trim() : '';
+        const key = createName ? projectFlag || slugifyKey(createName) : projectFlag;
+        const repoDefault = resolveDeliveryDefault(options, config, wantEmbed);
+        const delivery =
+            options['delivery'] === 'extension' || options['delivery'] === 'embed'
+                ? (options['delivery'] as 'embed' | 'extension')
+                : repoDefault;
+        const embedPlan = await planAppEmbed(
+            cwd, pathFlag, delivery, Boolean(options['no-inject']),
+            options['html'] as string | undefined, config.projects?.[key]?.htmlPath,
+        );
+        const widget = widgetForApps(repoDefault, [embedPlan], tool);
+        plan = {
+            product,
+            project: key ? { key, name: createName || key, create: Boolean(createName) } : null,
+            account,
+            widget,
+            skills: skillsFor(tools, tool, options),
+            files: [
+                '.pinsay/config.json',
+                ...(key ? [stackFileRelPath(key)] : []),
+                ...keyFile,
+                ...(widget.kind === 'embed' ? widget.files : []),
+                '.git/info/exclude (PinSay block)',
+            ],
+            shared,
+            notes: args.notes,
+        };
+    } else {
+        const projects = listProjects(config);
+        const missing: string[] = [];
+        for (const p of projects) {
+            if (!existsSync(join(cwd, stackFileRelPath(p.key)))) missing.push(stackFileRelPath(p.key));
+        }
+        const { widget } = await decideWidget(cwd, options, config, { isJoin: true, wantEmbed, tool });
+        plan = {
+            product,
+            project: projects[0] ? { key: projects[0].key, name: projects[0].key, create: false } : null,
+            account,
+            widget,
+            skills: skillsFor([(options['tool'] as string) || config.aiTool || 'other'], tool, options),
+            files: ['.pinsay/config.json', ...missing, ...keyFile, '.git/info/exclude (PinSay block)'],
+            shared,
+            notes: args.notes,
+        };
+        projectLine = `${projects.length} projects: ${projects.map((p) => p.key).join(', ')}`;
+    }
+    if (json) {
+        console.log(JSON.stringify({ ok: true, dryRun: true, plan: planToJson(plan) }));
+    } else {
+        printPlan(plan, false, projectLine);
+        console.log('Dry run: nothing was written or sent.');
+    }
+    process.exit(0);
+}
+
+/**
+ * Decides ONE app inside a multi-project repo, writing nothing: picks/creates its PinSay project (asks
+ * only on a terminal), its delivery (its own override, else the repo default) and what embedding would
+ * change. Environments are never asked — `presetEnvironments` (from `--environment`) only activates the
+ * project, and nothing is recorded to config either way (see `ProjectEntry`'s `@deprecated` docs).
+ *
+ * Shared by both multi-project entry points: `--path` (exactly one app, presets from flags) and the
+ * interactive Nx picker (one call per selected app, nothing preset).
+ */
+async function decideApp(ctx: {
+    cwd: string;
+    config: any;
+    spec: AppSpec;
+    server: string;
+    session: Session;
+    json: boolean;
+    interactive: boolean;
+    repoDefaultDelivery: 'embed' | 'extension';
+    noInject: boolean;
+}): Promise<AppDecision> {
+    const { cwd, spec, server, session } = ctx;
+    const choice = await chooseProject(server, session.token, session.me, {
+        projectFlag: spec.presetKey,
+        createFlag: spec.presetCreate,
+        interactive: ctx.interactive,
+        json: ctx.json,
+        label: appLabel(spec.dir),
+    });
+
+    let envs: string[];
+    let environmentPinned: boolean;
+    if (spec.presetEnvironments !== undefined) {
+        envs = spec.presetEnvironments.split(',').map((e) => e.trim()).filter(Boolean);
+        const bad = envs.find((e) => !ALL_ENVS.includes(e));
+        if (bad) exitWithError(2, `Unknown environment "${bad}". Valid values: ${ALL_ENVS.join(', ')}.`, ctx.json);
+        environmentPinned = envs.length > 0;
+        if (envs.length === 0) envs = ['local'];
+    } else {
+        envs = ['local'];
+        environmentPinned = false;
+    }
+
+    const delivery: 'embed' | 'extension' = spec.presetDelivery ?? ctx.repoDefaultDelivery;
+    const embedPlan = await planAppEmbed(
+        cwd, spec.dir, delivery, ctx.noInject, spec.explicitHtml, ctx.config.projects?.[choice.key]?.htmlPath,
+    );
+    return { spec, choice, delivery, envs, environmentPinned, embedPlan };
+}
+
+/**
+ * Writes what `decideApp` decided for ONE app: creates its project, activates the environments named by
+ * `--environment`, injects the widget when the plan says `inject`, registers its stack (only when the
+ * user shares) and writes `.pinsay/projects/<key>.stack.json`.
+ */
+async function applyApp(ctx: {
+    cwd: string;
     server: string;
     session: Session;
     json: boolean;
     share: boolean;
-    presetKey?: string;
-    presetCreate?: string;
-    presetEnvironments?: string;
+    decision: AppDecision;
     repoDefaultDelivery: 'embed' | 'extension';
-    presetDelivery?: 'embed' | 'extension';
     noDesign: boolean;
-    noInject: boolean;
-    explicitHtml?: string;
     pin: { version: string; integrity: string } | null;
-    interactive: boolean;
     aiTool: string;
 }): Promise<{
     key: string;
@@ -727,48 +944,19 @@ async function setupOneProject(ctx: {
     filesModified: string[];
     /** The delivery actually used for this app (repo default, or this app's own override). */
     effectiveDelivery: 'embed' | 'extension';
-    /** Set when injection was attempted (delivery !== 'extension', --no-inject not given) but no
-     *  HTML candidate existed to inject into — the caller surfaces this as a heads-up. */
+    /** Delivery is embed but no HTML file could be found to inject into: the caller surfaces a heads-up. */
     noHtmlFound: boolean;
 }> {
-    const { cwd, appDir, server, session } = ctx;
+    const { cwd, server, session, decision } = ctx;
+    const { choice, delivery, envs, embedPlan } = decision;
+    const appDir = decision.spec.dir;
     const token = session.token;
     const targetCwd = join(cwd, appDir);
-    const label = appLabel(appDir);
-
-    const choice = await chooseProject(server, token, session.me, {
-        projectFlag: ctx.presetKey,
-        createFlag: ctx.presetCreate,
-        interactive: ctx.interactive,
-        json: ctx.json,
-        label,
-    });
-    await createProject(server, token, choice, ctx.json);
     const { key, name } = choice;
-    const created = choice.create;
 
-    // No "Which environment(s) does this app run in?" prompt — same product decision as the
-    // single-project flow above: environments and their activation live in the dashboard now.
-    // `--environment` (via `--path`'s preset) is the only opt-in, and it activates without asking.
-    const ALL_ENVS = ['local', 'staging', 'production'];
-    let envs: string[];
-    let environmentPinned: boolean;
-    if (ctx.presetEnvironments !== undefined) {
-        envs = ctx.presetEnvironments.split(',').map((e) => e.trim()).filter(Boolean);
-        const bad = envs.find((e) => !ALL_ENVS.includes(e));
-        if (bad) {
-            console.error(`Unknown environment "${bad}". Valid values: ${ALL_ENVS.join(', ')}.`);
-            process.exit(2);
-        }
-        environmentPinned = envs.length > 0;
-        if (envs.length === 0) envs = ['local'];
-    } else {
-        envs = ['local'];
-        environmentPinned = false;
-    }
-    const env = ALL_ENVS.filter((e) => envs.includes(e))[0] ?? 'local';
+    await createProject(server, token, choice, ctx.json);
 
-    if (environmentPinned) {
+    if (decision.environmentPinned) {
         const projectRow = await api<any[]>(server, '/api/admin/projects', { token })
             .then((rows) => rows.find((p) => p.key === key))
             .catch(() => null);
@@ -783,34 +971,16 @@ async function setupOneProject(ctx: {
         }
     }
 
-    const delivery: 'embed' | 'extension' = ctx.presetDelivery ?? ctx.repoDefaultDelivery;
-
     let injected = false;
     let filesModified: string[] = [];
-    let injectedHtmlPath: string | undefined;
-    let noHtmlFound = false;
-
-    if (!ctx.noInject && delivery !== 'extension') {
-        const htmlCandidate = await resolveHtmlCandidate(cwd, appDir, ctx.explicitHtml);
-        if (htmlCandidate) {
-            const isVite = await hasViteConfig(targetCwd);
-            if (isVite) {
-                filesModified = await injectVite(
-                    targetCwd,
-                    { server, key, environment: env, pin: ctx.pin, environmentPinned },
-                    htmlCandidate,
-                );
-            } else {
-                const p = await injectStatic(targetCwd, htmlCandidate, {
-                    server, key, environment: env, pin: ctx.pin, environments: envs, environmentPinned,
-                });
-                filesModified = [p];
-            }
-            injected = true;
-            injectedHtmlPath = toRootRelative(cwd, htmlCandidate);
-        } else {
-            noHtmlFound = true;
-        }
+    let htmlPath: string | undefined;
+    if (embedPlan?.kind === 'inject') {
+        const r = await runEmbed(cwd, embedPlan, { server, key, pin: ctx.pin });
+        injected = r.files.length > 0;
+        filesModified = r.files;
+        htmlPath = r.htmlPath;
+    } else if (embedPlan?.kind === 'already') {
+        htmlPath = embedPlan.htmlPath;
     }
 
     let pkgStr = await fs.readFile(join(targetCwd, 'package.json'), 'utf8').catch(() => '');
@@ -831,39 +1001,100 @@ async function setupOneProject(ctx: {
     const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
     await writeStackFile(cwd, merged, key);
 
-    // No `environment`/`environments` recorded — see `ProjectEntry`'s `@deprecated` docs in
-    // config.ts. `env`/`envs` above exist only to drive this call's injection and activation.
+    // No `environment`/`environments` recorded — see `ProjectEntry`'s `@deprecated` docs in config.ts.
     const entry: ProjectEntry = { path: appDir };
-    if (injectedHtmlPath !== undefined) entry.htmlPath = injectedHtmlPath;
+    if (htmlPath !== undefined) entry.htmlPath = htmlPath;
     if (delivery !== ctx.repoDefaultDelivery) entry.delivery = delivery;
 
-    return { key, name, created, entry, injected, filesModified, effectiveDelivery: delivery, noHtmlFound };
+    return {
+        key,
+        name,
+        created: choice.create,
+        entry,
+        injected,
+        filesModified,
+        effectiveDelivery: delivery,
+        noHtmlFound: embedPlan?.kind === 'skill',
+    };
+}
+
+/** Asks "Go ahead?" on a terminal; No ends the run with nothing written. */
+async function confirmPlan(interactive: boolean): Promise<void> {
+    if (interactive && !(await confirm('Go ahead?', { defaultYes: true }))) {
+        closePrompts();
+        console.log('Cancelled. Nothing was written.');
+        process.exit(0);
+    }
+    closePrompts();
 }
 
 /**
  * Handles `init` in an already-configured multi-project repo with nothing new to add: installs
  * skills once at the root (they're gitignored, so a fresh clone/machine has none) and refreshes
  * only the per-app stack files that are missing — mirrors the single-project join, scaled to N
- * projects. Never returns.
+ * projects. Decides and prints the plan first, asks once, then writes. Never returns.
  */
-async function handleMultiJoin(
-    cwd: string,
-    config: PinSayConfig,
-    server: string,
-    product: string,
-    isJson: boolean,
-    options: Record<string, string | boolean>,
-    session: Session,
-    share: boolean,
-    keySaved: KeySaved,
-): Promise<never> {
-    closePrompts();
+async function handleMultiJoin(args: {
+    cwd: string;
+    config: PinSayConfig;
+    server: string;
+    product: string;
+    json: boolean;
+    interactive: boolean;
+    options: Record<string, string | boolean>;
+    session: Session;
+    shareFlag: boolean | undefined;
+    keySaved: KeySaved;
+}): Promise<never> {
+    const { cwd, config, server, product, options, session, keySaved, interactive } = args;
+    const isJson = args.json;
     const token = session.token;
-    await saveKey(cwd, server, session, keySaved);
     const tool = (options['tool'] as string) || config.aiTool || 'other';
+    const noSkills = Boolean(options['no-skills']);
+    const projects = listProjects(config);
+
+    // ---- Decisions ----
+    const { share, saved: shareSaved } = await decideShare(args.shareFlag, config, interactive, product);
+    const missing = projects.filter((p) => !existsSync(join(cwd, stackFileRelPath(p.key))));
+    const { widget } = await decideWidget(cwd, options, config, { isJoin: true, wantEmbed: false, tool });
+    const names = await readStackNames(cwd);
+    const plan: InitPlan = {
+        product,
+        project: projects[0] ? { key: projects[0].key, name: projects[0].key, create: false } : null,
+        account: planAccount(session, keySaved),
+        widget,
+        skills: skillsFor([tool], tool, options),
+        files: [
+            '.pinsay/config.json',
+            ...(keySaved === 'repo' ? ['.pinsay/credentials.env'] : []),
+            ...missing.map((p) => stackFileRelPath(p.key)),
+            '.git/info/exclude (PinSay block)',
+        ],
+        shared: { decided: true, share, saved: shareSaved, ...names, aiTool: tool },
+        notes: [],
+    };
+    printPlan(plan, isJson, `${projects.length} projects: ${projects.map((p) => p.key).join(', ')}`);
+    await confirmPlan(interactive);
+
+    // ---- Execute ----
+    const labels = [
+        ...(keySaved !== 'existing' ? ['Saving your key'] : []),
+        ...(noSkills ? [] : [`Installing skills for ${tool}`]),
+        'Hiding PinSay files from git',
+        ...missing.map((p) => `Setting up ${p.key}`),
+        'Writing .pinsay/config.json',
+        'Quick check',
+    ];
+    const progress = createProgress(labels.length, progressMode(isJson));
+
+    if (keySaved !== 'existing') {
+        progress.step('Saving your key');
+        await saveKey(cwd, server, session, keySaved);
+    }
     const skillWarnings: SkillWarning[] = [];
     const hide: string[] = [];
-    if (!options['no-skills']) {
+    if (!noSkills) {
+        progress.step(`Installing skills for ${tool}`);
         try {
             const r = await installSkills(server, tool, cwd, options['skills-dir'] as string);
             skillWarnings.push(...r.warnings);
@@ -871,22 +1102,12 @@ async function handleMultiJoin(
         } catch (err: any) {
             skillWarnings.push({ tool, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
         }
-        if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
+    progress.step('Hiding PinSay files from git');
     const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(options['skills-dir'] as string), ...hide]);
-    if (!isJson) for (const line of formatHideWarnings(hidden)) console.error(line);
 
-    const projects = listProjects(config);
-    for (const p of projects) {
-        const relStack = stackFileRelPath(p.key);
-        let exists = true;
-        try {
-            await fs.access(join(cwd, relStack));
-        } catch {
-            exists = false;
-        }
-        if (exists) continue;
-
+    for (const p of missing) {
+        progress.step(`Setting up ${p.key}`);
         const appCwd = join(cwd, p.path);
         let pkgStr = await fs.readFile(join(appCwd, 'package.json'), 'utf8').catch(() => '');
         if (!pkgStr) pkgStr = await fs.readFile(join(cwd, 'package.json'), 'utf8').catch(() => '{}');
@@ -906,6 +1127,7 @@ async function handleMultiJoin(
         await writeStackFile(cwd, merged, p.key);
     }
 
+    progress.step('Writing .pinsay/config.json');
     await writeConfig(cwd, { cliVersion: BUILD_CLI_VERSION, shareStack: share });
 
     if (share) {
@@ -914,6 +1136,11 @@ async function handleMultiJoin(
         await postSetupDone(server, token, projects[0]?.key);
     }
 
+    progress.step('Quick check');
+    const checks = await runInitChecks(cwd, { server, project: projects[0]?.key }, BUILD_CLI_VERSION);
+    progress.done();
+
+    const nextStep = nextStepText({ kind: 'join' }, product);
     if (isJson) {
         console.log(JSON.stringify({
             ok: true,
@@ -930,23 +1157,30 @@ async function handleMultiJoin(
             skillWarnings,
             hiddenFromGit: hidden.status,
             trackedPinsayFiles: hidden.tracked,
+            checks,
             cliVersion: BUILD_CLI_VERSION,
+            shareStack: share,
+            keySaved,
+            nextStep,
         }));
     } else {
-        console.log(`
-✔ Joined ${product} (${projects.length} project${projects.length === 1 ? '' : 's'}) as ${session.me.displayName}
-  Projects: ${projects.map((p) => `${p.key} (${p.path})`).join(', ')}
-  Server: ${server}`);
+        for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
+        for (const line of formatHideWarnings(hidden)) console.error(line);
+        console.log(`${green(sym.check)} Joined ${product} (${projects.length} project${projects.length === 1 ? '' : 's'}) as ${session.me.displayName}`);
+        console.log(`  Projects: ${projects.map((p) => `${p.key} (${p.path})`).join(', ')}`);
+        for (const line of quickCheckLines(checks)) console.log(line);
+        console.log('');
+        for (const line of renderNext(nextStep)) console.log(line);
     }
     process.exit(0);
 }
 
 /**
  * Adds one or more app(s) to a multi-project (monorepo) config: either the single app named by
- * `--path` (presets taken from flags, nothing else asked beyond what `--yes` already requires), or
- * — interactively, in a detected Nx workspace — every app the user picks from a multi-select,
- * asked individually. Migrates an existing single-project config into `projects` the first time
- * this runs against one. Never returns.
+ * `--path` (presets taken from flags), or — interactively, in a detected Nx workspace — every app the
+ * user picks from a multi-select. Decides everything first (tools, apps, a project per app, the share
+ * answer), prints the plan, asks "Go ahead?" once, and only then writes. Migrates an existing
+ * single-project config into `projects` the first time this runs against one. Never returns.
  */
 async function handleMultiProjectSetup(args: {
     cwd: string;
@@ -960,32 +1194,24 @@ async function handleMultiProjectSetup(args: {
     pathFlag?: string;
     nxApps: DiscoveredApp[];
     configIsMulti: boolean;
-    share: boolean;
+    shareFlag: boolean | undefined;
     /** Where this run's key goes; `existing` = it already resolves from env, the repo or the machine. */
     keySaved: KeySaved;
     wantEmbed: boolean;
+    storeUrl: string;
 }): Promise<never> {
-    const { cwd, config, options, server, session, interactive, product, pathFlag, nxApps, configIsMulti, share, keySaved, wantEmbed } = args;
+    const { cwd, config, options, server, session, interactive, product, pathFlag, nxApps, configIsMulti, keySaved, wantEmbed } = args;
     const isJson = args.json;
     const token = session.token;
+    const noSkills = Boolean(options['no-skills']);
 
-    await saveKey(cwd, server, session, keySaved);
+    // ---- Decisions (nothing is written or sent until "Go ahead?") ----
     const { tool, tools } = await pickTools(cwd, options, config, interactive);
     const repoDefaultDelivery = resolveDeliveryDefault(options, config, wantEmbed);
-    const pin = await resolvePin(server, options['pin'] === true);
     const noDesign = Boolean(options['no-design']);
     const noInject = Boolean(options['no-inject']);
 
-    type AppSpec = {
-        dir: string;
-        presetKey?: string;
-        presetCreate?: string;
-        presetEnvironments?: string;
-        presetDelivery?: 'embed' | 'extension';
-        explicitHtml?: string;
-    };
     let apps: AppSpec[];
-
     if (pathFlag) {
         apps = [
             {
@@ -1018,70 +1244,58 @@ async function handleMultiProjectSetup(args: {
         }
     }
 
-    const results: Array<{
-        key: string;
-        name: string;
-        created: boolean;
-        entry: ProjectEntry;
-        injected: boolean;
-        filesModified: string[];
-        effectiveDelivery: 'embed' | 'extension';
-        noHtmlFound: boolean;
-    }> = [];
-    for (const app of apps) {
-        // A visible header per app: the questions below (`selectOrCreateProject`, environment,
-        // delivery) already run strictly one app at a time (this loop is sequential), but with
-        // several apps selected from the Nx multi-select, nothing on screen said WHICH app's
-        // questions were currently being asked — every one read as a bare "Which project is this
-        // app?" no matter how many had already gone by. Interactive only: --yes/--json presets
-        // everything and asks nothing, so there is nothing to head.
-        if (interactive) {
-            console.log(`\n── ${appLabel(app.dir)} ──`);
-        }
-        const result = await setupOneProject({
-            cwd,
-            appDir: app.dir,
-            server,
-            session,
-            json: isJson,
-            share,
-            presetKey: app.presetKey,
-            presetCreate: app.presetCreate,
-            presetEnvironments: app.presetEnvironments,
-            repoDefaultDelivery,
-            presetDelivery: app.presetDelivery,
-            noDesign,
-            noInject,
-            explicitHtml: app.explicitHtml,
-            pin,
-            interactive,
-            aiTool: tool,
-        });
-        results.push(result);
-        if (!isJson) {
-            if (result.effectiveDelivery === 'extension') {
-                console.log(`✔ ${result.key} (${app.dir}) — nothing injected (extension)`);
-            } else if (result.injected && result.entry.htmlPath) {
-                console.log(`✔ ${result.key} (${app.dir}) — injected into ${result.entry.htmlPath}`);
-            } else {
-                console.log(`✔ ${result.key} (${app.dir})`);
-                if (result.noHtmlFound) {
-                    console.log(
-                        `\x1b[33mHeads up:\x1b[0m automatic widget injection isn't supported for ${app.dir} yet — ` +
-                        `no index.html found (checked index.html, src/index.html, public/index.html). ` +
-                        `The project is still registered; run \`npx pinsay-cli init --path ${app.dir} --project ${result.key} --html <path>\` ` +
-                        `once you know the file, or mount the widget by hand.`,
-                    );
-                }
-            }
-        }
+    const decisions: AppDecision[] = [];
+    for (const spec of apps) {
+        // A visible header per app: with several apps picked, the project question below names which
+        // app it is about. Interactive only: flags preset everything and nothing is asked.
+        if (interactive) console.log(`\n── ${appLabel(spec.dir)} ──`);
+        decisions.push(
+            await decideApp({ cwd, config, spec, server, session, json: isJson, interactive, repoDefaultDelivery, noInject }),
+        );
     }
 
-    closePrompts();
+    const { share, saved: shareSaved } = await decideShare(args.shareFlag, config, interactive, product);
+    const names = await readStackNames(cwd);
+    const widget = widgetForApps(repoDefaultDelivery, decisions.map((d) => d.embedPlan), tool);
+    const plan: InitPlan = {
+        product,
+        project: decisions[0].choice,
+        account: planAccount(session, keySaved),
+        widget,
+        skills: skillsFor(tools, tool, options),
+        files: [
+            '.pinsay/config.json',
+            ...decisions.map((d) => stackFileRelPath(d.choice.key)),
+            ...(keySaved === 'repo' ? ['.pinsay/credentials.env'] : []),
+            ...decisions.flatMap((d) => (d.embedPlan?.kind === 'inject' ? d.embedPlan.files : [])),
+            '.git/info/exclude (PinSay block)',
+        ],
+        shared: { decided: true, share, saved: shareSaved, ...names, aiTool: tool },
+        notes: decisions.slice(1).map((d) => `${d.choice.key} (${d.spec.dir})${d.choice.create ? ' (new)' : ''}`),
+    };
+    printPlan(plan, isJson);
+    await confirmPlan(interactive);
+
+    // ---- Execute ----
+    const labels = [
+        ...(keySaved !== 'existing' ? ['Saving your key'] : []),
+        ...(noSkills ? [] : [`Installing skills for ${tools.join(', ')}`]),
+        'Hiding PinSay files from git',
+        ...decisions.map((d) => `Setting up ${d.choice.key}`),
+        'Writing .pinsay/config.json',
+        'Quick check',
+    ];
+    const progress = createProgress(labels.length, progressMode(isJson));
+
+    if (keySaved !== 'existing') {
+        progress.step('Saving your key');
+        await saveKey(cwd, server, session, keySaved);
+    }
 
     const skillWarnings: SkillWarning[] = [];
     const hide: string[] = [];
-    if (!options['no-skills']) {
+    if (!noSkills) {
+        progress.step(`Installing skills for ${tools.join(', ')}`);
         for (const t of tools) {
             try {
                 const r = await installSkills(server, t, cwd, t === tool ? (options['skills-dir'] as string) : undefined);
@@ -1091,11 +1305,21 @@ async function handleMultiProjectSetup(args: {
                 skillWarnings.push({ tool: t, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
             }
         }
-        if (!isJson) for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
     }
+    progress.step('Hiding PinSay files from git');
     const hidden = await hidePinsayFiles(cwd, [...skillsDirExtra(options['skills-dir'] as string), ...hide]);
-    if (!isJson) for (const line of formatHideWarnings(hidden)) console.error(line);
 
+    const needsPin = decisions.some((d) => d.embedPlan?.kind === 'inject');
+    const pin = needsPin ? await resolvePin(server, options['pin'] === true) : null;
+    const results: Awaited<ReturnType<typeof applyApp>>[] = [];
+    for (const decision of decisions) {
+        progress.step(`Setting up ${decision.choice.key}`);
+        results.push(
+            await applyApp({ cwd, server, session, json: isJson, share, decision, repoDefaultDelivery, noDesign, pin, aiTool: tool }),
+        );
+    }
+
+    progress.step('Writing .pinsay/config.json');
     const projectsMap: Record<string, ProjectEntry> = { ...(config.projects ?? {}) };
     let migrationNote: string | null = null;
     let migrationOk: string | null = null;
@@ -1140,6 +1364,15 @@ async function handleMultiProjectSetup(args: {
         await postSetupDone(server, token, results[0]?.key);
     }
 
+    progress.step('Quick check');
+    const checks = await runInitChecks(cwd, { server, project: results[0]?.key }, BUILD_CLI_VERSION);
+    progress.done();
+
+    const next: NextCase = results.some((r) => r.effectiveDelivery === 'embed')
+        ? { kind: 'embedded' }
+        : { kind: 'extension', storeUrl: args.storeUrl };
+    const nextStep = nextStepText(next, product);
+
     if (isJson) {
         console.log(JSON.stringify({
             ok: true,
@@ -1153,18 +1386,48 @@ async function handleMultiProjectSetup(args: {
             skillWarnings,
             hiddenFromGit: hidden.status,
             trackedPinsayFiles: hidden.tracked,
+            checks,
             cliVersion: BUILD_CLI_VERSION,
+            shareStack: share,
+            keySaved,
+            nextStep,
         }));
-    } else {
-        const migrationLine = migrationNote
-            ? `⚠ ${migrationNote}\n`
-            : migrationOk
-              ? `✔ migrated "${migrationOk}" → projects map (${projectsMap[migrationOk]?.path})\n`
-              : '';
-        console.log(`
-✔ ${product}: added ${results.length} project${results.length === 1 ? '' : 's'} — ${results.map((r) => r.key).join(', ')}
-${migrationLine}  Config: .pinsay/config.json (projects map)
-  Stack files: ${results.map((r) => `.pinsay/projects/${r.key}.stack.json`).join(', ')}`);
+        process.exit(0);
     }
+
+    for (const line of formatSkillWarnings(skillWarnings)) console.error(line);
+    for (const line of formatHideWarnings(hidden)) console.error(line);
+    for (const r of results) {
+        const dir = r.entry.path;
+        if (r.effectiveDelivery === 'extension') {
+            console.log(`${green(sym.check)} ${r.key} (${dir}) — nothing injected (extension)`);
+        } else if (r.injected && r.entry.htmlPath) {
+            console.log(`${green(sym.check)} ${r.key} (${dir}) — injected into ${r.entry.htmlPath}`);
+        } else {
+            console.log(`${green(sym.check)} ${r.key} (${dir})`);
+            if (r.noHtmlFound) {
+                console.log(
+                    `${yellow('Heads up:')} automatic widget injection isn't supported for ${dir} yet — ` +
+                    `no index.html found (checked index.html, src/index.html, public/index.html). ` +
+                    `The project is still registered; run \`npx pinsay-cli init --path ${dir} --project ${r.key} --html <path>\` ` +
+                    `once you know the file, or mount the widget by hand.`,
+                );
+            }
+        }
+    }
+    const migrationLine = migrationNote
+        ? `${sym.warn} ${migrationNote}\n`
+        : migrationOk
+          ? `${green(sym.check)} migrated "${migrationOk}" → projects map (${projectsMap[migrationOk]?.path})\n`
+          : '';
+    console.log(`
+${green(sym.check)} ${product}: added ${results.length} project${results.length === 1 ? '' : 's'} — ${results.map((r) => r.key).join(', ')}
+${migrationLine}  Config: .pinsay/config.json (projects map)
+  Stack files: ${results.map((r) => stackFileRelPath(r.key)).join(', ')}`);
+    for (const line of quickCheckLines(checks)) console.log(line);
+    const shNote = pinsayShNote(cwd);
+    if (shNote) console.log(dim(shNote));
+    console.log('');
+    for (const line of renderNext(nextStep)) console.log(line);
     process.exit(0);
 }

@@ -968,3 +968,70 @@ test('a member account cannot create a project: exit 3 and no POST to /api/admin
   assert.strictEqual(r.code, 3, r.stdout + r.stderr);
   assert.strictEqual(posts(/^\/api\/admin\/projects$/).length, 0);
 }));
+
+// ---- Multi-project init (--path, multi join) gets the plan and one confirm ----
+
+const nxFixture = async (dir: string) => {
+  await fs.writeFile(path.join(dir, 'package.json'), JSON.stringify({ devDependencies: { react: '^18.0.0' } }), 'utf8');
+  await fs.writeFile(path.join(dir, 'nx.json'), '{}', 'utf8');
+  await fs.mkdir(path.join(dir, 'apps/web'), { recursive: true });
+  await fs.writeFile(path.join(dir, 'apps/web/index.html'), '<html><head></head><body></body></html>', 'utf8');
+};
+
+test('init --path --project --yes: plan, one stack POST, projects.web and shareStack true', () => withTempDir(async (dir) => {
+  await nxFixture(dir);
+  requests.length = 0;
+  const r = await runCli(dir, 'init --path apps/web --project web --key ptr_good --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Here's the plan/);
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.projects.web.path, 'apps/web');
+  assert.strictEqual(config.shareStack, true);
+  assert.strictEqual(posts(/^\/api\/projects\/web\/stack$/).length, 1);
+  await fs.access(path.join(dir, '.pinsay/projects/web.stack.json'));
+  assert.strictEqual(r.stdout.split('\n').filter((l) => l.startsWith('Next:')).length, 1);
+}));
+
+test('init --path --no-share-stack: zero stack POSTs and one bare installed event', () => withTempDir(async (dir) => {
+  await nxFixture(dir);
+  requests.length = 0;
+  const r = await runCli(dir, 'init --path apps/web --project web --key ptr_good --yes --no-share-stack');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(posts(/\/stack$/).length, 0);
+  const events = posts(/^\/api\/events$/);
+  assert.strictEqual(events.length, 1);
+  assert.deepStrictEqual(events[0].body, { type: 'installed', projectKey: 'web' });
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.shareStack, false);
+}));
+
+test('multi join --yes: missing stack files written, json mode join with shareStack', () => withTempDir(async (dir) => {
+  await nxFixture(dir);
+  await fs.mkdir(path.join(dir, 'apps/api'), { recursive: true });
+  await fs.mkdir(path.join(dir, '.pinsay'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pinsay/config.json'),
+    JSON.stringify({ aiTool: 'claude-code', delivery: 'extension', projects: { web: { path: 'apps/web' }, api: { path: 'apps/api' } } }),
+    'utf8',
+  );
+  requests.length = 0;
+  const r = await runCli(dir, 'init --key ptr_good --yes --json');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  const out = JSON.parse(r.stdout.trim().split('\n').pop()!);
+  assert.strictEqual(out.mode, 'join');
+  assert.strictEqual(typeof out.shareStack, 'boolean');
+  assert.ok(out.nextStep);
+  await fs.access(path.join(dir, '.pinsay/projects/web.stack.json'));
+  await fs.access(path.join(dir, '.pinsay/projects/api.stack.json'));
+}));
+
+test('init --path --dry-run: prints the plan, writes nothing, sends nothing', () => withTempDir(async (dir) => {
+  await nxFixture(dir);
+  requests.length = 0;
+  const r = await runCli(dir, 'init --path apps/web --project web --dry-run');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.match(r.stdout, /Here's the plan/);
+  assert.match(r.stdout, /Dry run: nothing was written or sent\./);
+  assert.strictEqual(await exists(path.join(dir, '.pinsay')), false);
+  assert.strictEqual(requests.filter((q) => q.method !== 'GET').length, 0);
+}));
