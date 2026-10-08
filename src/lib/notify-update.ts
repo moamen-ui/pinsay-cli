@@ -4,6 +4,7 @@ import { readStamp } from './skill-stamp.js';
 import { skillFilesFor } from './skill-paths.js';
 import { compareSemver } from '../checks.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
+import { yellow } from '../ui/style.js';
 import type { MetaResponse } from '../checks.js';
 import type { PinSayConfig } from '../config.js';
 
@@ -38,8 +39,8 @@ export async function checkAndNotifyUpdates(
   if (meta.latestCliVersion && compareSemver(BUILD_CLI_VERSION, meta.latestCliVersion) < 0) {
     result.cliUpdateAvailable = true;
     console.error(
-      `\x1b[33m💡 Update available for pinsay-cli: ${BUILD_CLI_VERSION} → ${meta.latestCliVersion}\x1b[0m\n` +
-      `\x1b[33m   Run 'npx -y pinsay@latest' to update.\x1b[0m\n`,
+      `${yellow(`💡 Update available for pinsay-cli: ${BUILD_CLI_VERSION} → ${meta.latestCliVersion}`)}\n` +
+      `${yellow("   Run 'npx -y pinsay@latest' to update.")}\n`,
     );
   }
 
@@ -65,8 +66,8 @@ export async function checkAndNotifyUpdates(
       if (hasStale) {
         result.skillsUpdateAvailable = true;
         console.error(
-          `\x1b[33m💡 Local AI skills are out of date with the server.\x1b[0m\n` +
-          `\x1b[33m   Run 'npx pinsay-cli update' to refresh your prompt skills.\x1b[0m\n`,
+          `${yellow('💡 Local AI skills are out of date with the server.')}\n` +
+          `${yellow("   Run 'npx pinsay-cli update' to refresh your prompt skills.")}\n`,
         );
       }
     } catch {
