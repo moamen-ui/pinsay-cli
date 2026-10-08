@@ -14,7 +14,7 @@ function run(args: string[], cwd: string, env: Record<string, string>) {
   return new Promise<{ code: number | null; stdout: string; stderr: string }>((resolve) => {
     const child = spawn(process.execPath, [cliPath, ...args], {
       cwd,
-      env: { ...process.env, ...env },
+      env: { ...process.env, PINSAY_API_KEY: '', ...env },
     });
     let stdout = '';
     let stderr = '';
@@ -217,3 +217,76 @@ test('open --print with PINSAY_SERVER=http://127.0.0.1:9 and config project my-a
     assert.strictEqual(r.stdout.trim(), 'http://127.0.0.1:9/comments?project=my-app');
   });
 });
+
+test('status --json with 403 fallback on apply-queue prints note to stderr and json parses cleanly', async () => {
+  const stubHandler: http.RequestListener = (req, res) => {
+    res.setHeader('Content-Type', 'application/json');
+    const url = req.url || '';
+
+    if (req.method === 'POST' && url === '/api/auth/login-with-key') {
+      res.end(JSON.stringify({ isSuccess: true, data: { status: 'ok', token: 'jwt-token-123' } }));
+      return;
+    }
+
+    if (req.method === 'GET' && url === '/api/auth/me') {
+      res.end(
+        JSON.stringify({
+          isSuccess: true,
+          data: { displayName: 'Member User', email: 'member@example.com' },
+        }),
+      );
+      return;
+    }
+
+    // 403 on admin projects list (e.g. non-admin key)
+    if (req.method === 'GET' && url === '/api/admin/projects') {
+      res.writeHead(403);
+      res.end(JSON.stringify({ message: 'Forbidden' }));
+      return;
+    }
+
+    // 403 on admin apply-queue -> triggers fallback to summary comments
+    if (req.method === 'GET' && url.startsWith('/api/admin/projects/my-app/apply-queue')) {
+      res.writeHead(403);
+      res.end(JSON.stringify({ message: 'Forbidden' }));
+      return;
+    }
+
+    // Fallback summary comments endpoint
+    if (req.method === 'GET' && url.startsWith('/api/projects/my-app/comments')) {
+      res.end(
+        JSON.stringify({
+          isSuccess: true,
+          data: {
+            items: [
+              { id: 10, status: 2, body: 'C1' },
+              { id: 11, status: 2, body: 'C2' },
+            ],
+          },
+        }),
+      );
+      return;
+    }
+
+    res.writeHead(404);
+    res.end();
+  };
+
+  await withProject({ project: 'my-app', key: 'ptr_member_key' }, async (dir, configDir) => {
+    await withStub(stubHandler, async (serverUrl) => {
+      const env = { PINSAY_SERVER: serverUrl, PINSAY_CONFIG_DIR: configDir };
+      const r = await run(['status', '--json'], dir, env);
+      assert.strictEqual(r.code, 0, r.stderr);
+      assert.ok(r.stderr.includes('Note: predefined-action prompts need an admin key'), r.stderr);
+
+      // stdout must be strictly valid JSON
+      const parsed = JSON.parse(r.stdout);
+      assert.strictEqual(parsed.ok, true);
+      assert.strictEqual(parsed.account.email, 'member@example.com');
+      assert.deepStrictEqual(parsed.projects, [
+        { key: 'my-app', name: 'my-app', pending: 2 },
+      ]);
+    });
+  });
+});
+

@@ -111,10 +111,10 @@ test('fetchQueue falls back to summary view on 403 and warns once', async () => 
       cwd: '/tmp',
     };
 
-    // Capture console.log
+    // Capture console.error
     const logs: string[] = [];
-    const origLog = console.log;
-    console.log = (...args: any[]) => logs.push(args.join(' '));
+    const origError = console.error;
+    console.error = (...args: any[]) => logs.push(args.join(' '));
 
     try {
       const items = await fetchQueue(ctx);
@@ -126,7 +126,7 @@ test('fetchQueue falls back to summary view on 403 and warns once', async () => 
       // Second call in same run
       await fetchQueue(ctx);
     } finally {
-      console.log = origLog;
+      console.error = origError;
     }
 
     // Verify warning was logged exactly once

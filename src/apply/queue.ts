@@ -137,7 +137,7 @@ export async function fetchQueue(
   } catch (err: any) {
     if (err instanceof ApiError && err.code === 403) {
       if (!warnedNonAdminFallback) {
-        console.log('Note: predefined-action prompts need an admin key');
+        console.error('Note: predefined-action prompts need an admin key');
         warnedNonAdminFallback = true;
       }
 

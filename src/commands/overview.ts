@@ -4,7 +4,7 @@ import { resolveApiKey, type ApiKeySource } from '../credentials.js';
 import { resolveToken } from '../auth.js';
 import { api } from '../api.js';
 import { fetchQueue } from '../apply/queue.js';
-import { exitWithError } from '../errors.js';
+import { exitWithError, isOutage } from '../errors.js';
 import { sym } from '../ui/style.js';
 
 export async function overviewCommand(
@@ -47,7 +47,8 @@ export async function overviewCommand(
           }
         }
       }
-    } catch {
+    } catch (err) {
+      if (isOutage(err)) throw err;
       // Fall back to key if GET /api/admin/projects fails
     }
   }
