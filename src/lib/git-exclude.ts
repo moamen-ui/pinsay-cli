@@ -213,3 +213,32 @@ export async function excludeBlockStatus(cwd: string): Promise<'ok' | 'missing' 
     const content = await fs.readFile(info.excludeFile, 'utf8').catch(() => '');
     return content.includes(EXCLUDE_END) && /^# pinsay-cli: begin/m.test(content) ? 'ok' : 'missing';
 }
+
+/**
+ * Removes PinSay's whole block (the `# pinsay-cli: begin` line through `EXCLUDE_END`, inclusive) plus
+ * the one blank line `hidePinsayFiles` inserts between the user's lines and the block — the exact
+ * inverse of its insertion, so user lines → hidePinsayFiles → removeExcludeBlock reproduces the
+ * original bytes. Lines outside the block are never touched. Returns whether a block was found;
+ * outside a git repo → false. `dryRun` reports without writing.
+ */
+export async function removeExcludeBlock(cwd: string, opts: { dryRun?: boolean } = {}): Promise<boolean> {
+    const info = await gitInfo(cwd);
+    if (!info) return false;
+    const content = await fs.readFile(info.excludeFile, 'utf8').catch(() => '');
+    const lines = content === '' ? [] : content.split(/\r?\n/);
+    const b = lines.findIndex((l) => l.startsWith('# pinsay-cli: begin'));
+    if (b < 0) return false;
+    const e = lines.indexOf(EXCLUDE_END, b + 1);
+    if (e < 0) return false;
+    if (opts.dryRun) return true;
+    const start = b > 0 && lines[b - 1] === '' ? b - 1 : b;
+    const next = [...lines.slice(0, start), ...lines.slice(e + 1)];
+    while (next.length > 0 && next[next.length - 1] === '') next.pop();
+    const eol = content.includes('\r\n') ? '\r\n' : '\n';
+    const out = next.length > 0 ? next.join(eol) + eol : '';
+    if (out !== content) {
+        await fs.mkdir(dirname(info.excludeFile), { recursive: true });
+        await fs.writeFile(info.excludeFile, out, 'utf8');
+    }
+    return true;
+}

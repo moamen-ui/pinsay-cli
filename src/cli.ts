@@ -404,6 +404,25 @@ Options:
         }
         const { embedCommand } = await import('./commands/embed.js');
         await embedCommand(cwd(), parsed);
+    } else if (command === 'remove') {
+        if (parsed['help']) {
+            console.log(`
+Usage: npx pinsay-cli remove [options]
+
+Remove everything PinSay put in this repo: the .pinsay/ folder, the installed
+skill files, the .git/info/exclude block and the embedded widget snippet.
+
+Options:
+  --global     Also remove this machine's saved key for the server
+  --dry-run    Show what would be removed; delete nothing
+  -y, --yes    Do not ask for confirmation
+  --json       Machine-readable output
+  -h, --help   Show this help
+`);
+            process.exit(0);
+        }
+        const { removeCommand } = await import('./commands/remove.js');
+        await removeCommand(cwd(), parsed);
     } else {
         console.error(`Unknown command: ${command}`);
         process.exit(2);
