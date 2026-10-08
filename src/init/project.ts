@@ -12,7 +12,7 @@ import type { Profile } from './session.js';
  * Deciding never writes or creates anything: `createProject` runs only after the plan is confirmed.
  */
 
-export interface ProjectChoice {
+export type ProjectChoice = {
   key: string;
   name: string;
   /** True when this run will create the project (admins only). */
@@ -38,7 +38,7 @@ export function slugifyKey(name: string): string {
 
 const KEY_RULE = (v: string) => (/^[a-z0-9-]+$/.test(v) ? undefined : 'Use lowercase letters, digits and dashes only.');
 
-export interface ChooseProjectOptions {
+export type ChooseProjectOptions = {
   projectFlag?: string;
   createFlag?: string;
   interactive: boolean;

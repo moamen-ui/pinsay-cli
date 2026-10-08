@@ -12,7 +12,7 @@ import { exitWithError, isOutage } from '../errors.js';
  */
 
 /** The signed-in account, read from `/api/auth/me` (`MeResponse`: `isAdmin`, `isQuickAccess`). */
-export interface Profile {
+export type Profile = {
   displayName: string;
   email?: string;
   roleName?: string;
@@ -23,7 +23,7 @@ export interface Profile {
 /** Where this run's key came from. `env`/`repo`/`global` = already saved (nothing to write); the rest are new. */
 export type KeyOrigin = 'flag' | 'typed' | 'browser' | Exclude<ApiKeySource, null>;
 
-export interface Session {
+export type Session = {
   key: string;
   token: string;
   me: Profile;
@@ -81,7 +81,7 @@ export async function exchangeKey(server: string, apiKey: string): Promise<{ tok
   return { token, me: toProfile(raw ?? login.user) };
 }
 
-export interface SignInOptions {
+export type SignInOptions = {
   /** `--key <value>` (string), `--key` with no value (true), or absent. */
   flagKey?: string | true;
   interactive: boolean;

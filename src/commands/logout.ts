@@ -24,11 +24,12 @@ export async function logoutCommand(cwd: string, options: Record<string, string 
     process.exit(0);
   };
 
-  if (options['global'] !== true && process.env.PINSAY_API_KEY?.trim()) {
+  const isGlobal = options['global'] === true || String(options['scope'] ?? '').toLowerCase() === 'global';
+  if (!isGlobal && process.env.PINSAY_API_KEY?.trim()) {
     finish('env', false, ENV_KEY_MESSAGE);
   }
 
-  if (options['global'] !== true && (await readRepoApiKey(root))) {
+  if (!isGlobal && (await readRepoApiKey(root))) {
     const removed = await removeRepoCredentials(root);
     finish('repo', removed, `${green(sym.check)} Signed out: removed this repo's key (.pinsay/credentials.env).`);
   }

@@ -10,7 +10,7 @@ import {
   removeRepoCredentials,
   globalCredentialsPath,
 } from '../credentials.js';
-import { closePrompts } from '../prompt.js';
+import { ask, closePrompts } from '../prompt.js';
 import { scopeFromFlags } from '../key-scope.js';
 import { resolveServer } from '../server.js';
 import { exchangeKey, InvalidKeyError, NO_KEY_MESSAGE } from '../init/session.js';
@@ -49,7 +49,13 @@ export async function loginCommand(cwd: string, options: Record<string, string |
 
   const inRepo = existsSync(join(root, '.pinsay')) || inGitRepo(root);
   const scope = flags.scope ?? (inRepo ? 'repo' : 'global');
-  const flagKey = typeof options['key'] === 'string' ? options['key'].trim() : '';
+  let flagKey = typeof options['key'] === 'string' ? options['key'].trim() : '';
+  if (options['key'] === true) {
+    // `--key` with no value: ask with hidden input (keeps the key out of shell history), never the browser.
+    if (!process.stdin.isTTY) exitWithError(2, NO_KEY_MESSAGE, json);
+    flagKey = (await ask('API key (from PinSay → Profile → API key; input hidden)', { secret: true })).trim();
+    if (!flagKey) exitWithError(2, NO_KEY_MESSAGE, json);
+  }
 
   // Move: `login --global` in a repo that already holds a valid key — no browser, no new key.
   if (scope === 'global' && !flagKey) {

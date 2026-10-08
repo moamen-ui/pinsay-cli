@@ -6,8 +6,8 @@ export type KeyScope = 'global' | 'repo';
 /**
  * The scope a flag fixed: `--global` or `--scope global` → global; `--scope repo` or `--local-credentials` → repo
  * (old flags; repo is the default anyway). `{}` when no flag decided it; `{ error }` for an unknown `--scope`.
- * `explicit` is true only when a flag was actually passed — `login` honours an explicit repo choice even outside a
- * git repo, where the default would be the machine store.
+ * A returned `scope` means a flag was passed — `login` honours an explicit repo choice even outside a git repo,
+ * where the default would be the machine store.
  */
 export function scopeFromFlags(options: Record<string, string | boolean>): { scope?: KeyScope; error?: string } {
   const raw = options['scope'];
