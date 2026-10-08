@@ -8,7 +8,7 @@ Command-line tool for [PinSay](https://pinsay.dev) — wire element-level feedba
 npx pinsay-cli init
 ```
 
-`init` walks you through everything: server, project, AI tool, and the widget/script snippet to paste into your app. It takes about a minute.
+`init` signs you in in your browser, picks the project, detects your AI tool, asks whether to share your framework names (Yes by default; `--no-share-stack` to decline), shows a short plan and sets the repo up for the PinSay Chrome extension — no change to your app's code. Want the widget in your code? `npx pinsay-cli embed`.
 
 - `npx pinsay-cli <command>` runs it without installing — but you type the full name every time.
 - `npm i -g pinsay-cli` installs a real `pinsay` command on your PATH — then plain `pinsay <command>` works everywhere the docs say `npx pinsay-cli <command>`.
@@ -17,8 +17,12 @@ npx pinsay-cli init
 
 | Command | What it does |
 |---|---|
-| `npx pinsay-cli init` | Configure a repo (project, widget snippet, skills) |
-| `npx pinsay-cli login` / `whoami` / `logout` | Sign in (asks: this machine or this repo only); check / clear credentials |
+| `npx pinsay-cli init` | Set up this repo (sign in, project, skills; Chrome extension by default) |
+| `npx pinsay-cli embed` | Put the widget in your app's code |
+| `npx pinsay-cli login` / `whoami` / `logout` | Sign in; the key is saved in this repo (`--global`: this machine); check / clear credentials |
+| `npx pinsay-cli remove` | Remove everything PinSay added to this repo |
+| `npx pinsay-cli status` | Who you are, this folder's project, comments waiting |
+| `npx pinsay-cli open` | Open this project in the dashboard |
 | `npx pinsay-cli list` / `get <id>` | List pending feedback; inspect one comment |
 | `npx pinsay-cli apply` | Generate the fix-it prompt for your AI tool, then record what changed |
 | `npx pinsay-cli apply --plan` | Preview proposed edits without touching code |
@@ -38,7 +42,7 @@ npx pinsay-cli init
 
 ## API keys
 
-Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` → the per-machine store (`~/.config/pinsay/credentials.json`, mode 0600, never committed).
+Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` → the per-machine store (`~/.config/pinsay/credentials.json`, mode 0600, never committed). `init` and `login` save the key to `.pinsay/credentials.env` (hidden from git) by default; `--global` saves to the machine store instead; `login --global` moves a repo key there.
 
 ## MCP (Claude Code / Cursor)
 
@@ -48,6 +52,24 @@ Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_
 
 User-level config, not committed. The key stays inside the CLI process.
 
+## Privacy
+
+The CLI never reads or uploads your source code. It asks before sharing your framework names and AI tool (Yes by default; without a terminal also Yes unless `--no-share-stack`); on No it sends only a "setup done" signal. Design tokens stay in `.pinsay/stack.json`.
+
 ## Docs
 
 Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pinsay-cli/issues · support@pinsay.dev
+
+## Changelog
+
+### 0.9.0
+
+- No more `.pinsay/pinsay.sh` (old copies keep working; `remove` deletes them).
+- Asks before sharing framework names / usage events (`--share-stack`, `--no-share-stack`).
+- `init` assumes the Chrome extension; `embed` / `init --embed` put the widget in code.
+- Key saved in the repo by default; `--global` / `login --global`.
+- Fewer questions, a plan with one confirm, quick check, one next step, `--dry-run`.
+- New `remove`, `status`, `open`.
+- Clearer prompts (coloured question band, `--no-color`, `NO_COLOR`).
+- Plain errors, new exit code 4 when PinSay can't be reached.
+- Shorter `--help`.
