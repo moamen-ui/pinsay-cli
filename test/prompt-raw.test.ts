@@ -1,6 +1,6 @@
-// Regression tests for the raw-mode prompt paths (review pass 1, findings 1–4): keys typed during
-// a raw-mode step — confirm, hidden input — must neither echo to stdout nor survive in a readline
-// line buffer as the next answer.
+// Regression tests for the raw-mode prompt paths (review pass 1, findings 1–4, amendment 2): keys
+// typed during a raw-mode step — confirm, hidden input, the arrow-key menu — must neither echo to
+// stdout nor survive in a readline line buffer as the next answer.
 //
 // process.stdin is faked the same way test/prompt.test.ts fakes it (isTTY on, raw mode a no-op)
 // and the tests emit the very events a real terminal produces: bytes at a readline question,
@@ -12,7 +12,7 @@
 // the prompt layer produced (an async capture would also catch the test runner's own writes).
 import { test, before, after } from 'node:test';
 import * as assert from 'node:assert';
-import { ask, confirm, closePrompts } from '../src/prompt.js';
+import { ask, confirm, select, closePrompts } from '../src/prompt.js';
 
 let realIsTTY: unknown;
 let realSetRawMode: unknown;
@@ -98,4 +98,29 @@ test('ask secret: typed characters are collected, never echoed, never buffered',
   await settle();
   type('\r');
   assert.strictEqual(await next, 'Alice', 'secret characters must not sit in the line buffer as the next answer');
+});
+
+test('select: menu keys do not leak and the next ask starts clean', async () => {
+  const first = ask('First question', { default: 'D' });
+  await settle();
+  type('\r');
+  assert.strictEqual(await first, 'D');
+
+  const picked = select('Pick one', ['Alpha', 'Beta', 'Gamma']);
+  await settle();
+  const echo = captureSync(() => {
+    press('\x1b[B', 'down');
+    press('\r', 'return');
+  });
+  assert.strictEqual(await picked, 'Beta');
+  // Left attached, the idle line editor answers the Enter itself and writes a stray `\r\n` above
+  // the collapsed answered line; detached, the only writes are the menu's own render and collapse,
+  // none of which contain a carriage return.
+  assert.ok(!echo.includes('\r'), `a stray key echo reached stdout during the menu: ${JSON.stringify(echo)}`);
+  assert.ok(visible(echo).includes('✔ Pick one · Beta'), `the answered line was not rendered: ${JSON.stringify(visible(echo))}`);
+
+  const second = ask('Name', { default: 'Alice' });
+  await settle();
+  type('\r');
+  assert.strictEqual(await second, 'Alice', 'menu keys must not sit in the line buffer as the next answer');
 });

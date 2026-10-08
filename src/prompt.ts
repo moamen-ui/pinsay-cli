@@ -222,10 +222,15 @@ async function menu(question: string, items: string[], cursorStart: number, opts
     };
 
     console.log(questionLine(question));
-    // readline is holding stdin for line editing; it must let go while we read raw keys.
+    // readline is holding stdin for line editing; it must let go while we read raw keys — and
+    // stepping aside entirely is not enough, so its keypress editor is detached for the duration
+    // (same as confirm and hidden input): left attached it answers the Enter itself, writing a
+    // stray `\r\n` above the collapse, and printable keys (space, a) would land in its buffer.
     rl.pause();
     emitKeypressEvents(process.stdin);
     const wasRaw = process.stdin.isRaw ?? false;
+    const existingKeypress = process.stdin.listeners('keypress') as ((...args: unknown[]) => void)[];
+    existingKeypress.forEach((fn) => process.stdin.removeListener('keypress', fn));
     if (process.stdin.setRawMode) process.stdin.setRawMode(true);
     process.stdin.resume();
     render(true);
@@ -276,6 +281,12 @@ async function menu(question: string, items: string[], cursorStart: number, opts
         });
     } finally {
         if (process.stdin.setRawMode) process.stdin.setRawMode(wasRaw);
+        if (shared) {
+            // Keys pressed during the menu must not survive in the line editor as the next answer.
+            (shared as any).line = '';
+            (shared as any).cursor = 0;
+        }
+        existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
         rl.resume();
     }
 }
