@@ -267,8 +267,9 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
         `node ${cliPath} login --key ptr_good`,
         { cwd: repo, env: envFor(globalDir) },
       );
-      assert.match(loginOut, /Signed in to/);
-      assert.match(loginOut, /saved for all repos on this machine/);
+      assert.match(loginOut, /Signed in as Test User/);
+      // A temp dir that is neither a git repo nor holds .pinsay/: the machine store, said out loud.
+      assert.match(loginOut, /No repo here, so the key is saved on this machine/);
 
       const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
       assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
@@ -336,7 +337,7 @@ test('login --scope repo writes .pinsay/credentials.env and leaves the global st
         `node ${cliPath} login --key ptr_good --scope repo`,
         { cwd: repo, env: envFor(globalDir) },
       );
-      assert.match(stdout, /this repo only/);
+      assert.match(stdout, /Key saved in this repo/);
       const creds = await fs.readFile(path.join(repo, '.pinsay/credentials.env'), 'utf8');
       assert.match(creds, /PINSAY_API_KEY=ptr_good/);
       assert.doesNotMatch(creds, /PINSAY_SERVER=/);
@@ -551,11 +552,11 @@ test('removeGlobalCredential(app.pinsay.dev) also removes a key saved against le
     assert.strictEqual(await getGlobalCredential('https://app.pinsay.dev'), undefined);
   }));
 
-test('login with no terminal and no --scope saves globally (the non-interactive default)', () =>
+test('login outside any repo (no git, no .pinsay/) saves on this machine', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
-      assert.match(stdout, /saved for all repos on this machine/);
+      assert.match(stdout, /saved on this machine/);
       await assert.rejects(fs.access(path.join(repo, '.pinsay', 'credentials.env')));
     }),
   ));
@@ -567,7 +568,7 @@ test('login --local-credentials writes the repo file and hides it from git', () 
         cwd: repo,
         env: envFor(globalDir),
       });
-      assert.match(stdout, /saved to \.pinsay\/credentials\.env/);
+      assert.match(stdout, /Key saved in this repo \(\.pinsay\/credentials\.env/);
       assert.match(await fs.readFile(path.join(repo, '.pinsay', 'credentials.env'), 'utf8'), /^PINSAY_API_KEY=ptr_good$/m);
       // Not a git repo here: only `.pinsay/.gitignore` is written, and no root .gitignore is created.
       await fs.access(path.join(repo, '.pinsay', '.gitignore'));
@@ -582,5 +583,122 @@ test('login --scope with an unknown value exits 2 before signing in (no --key ne
         execAsync(`node ${cliPath} login --scope machine`, { cwd: repo, env: envFor(globalDir) }),
         (err: any) => err.code === 2 && /Invalid --scope/.test(err.stderr),
       );
+    }),
+  ));
+
+// -----------------------------------------------------------------------------------------------
+// 0.9.0 key storage (SPEC B2): repo by default, --global for the machine, login --global moves a
+// repo key, logout removes the key this repo uses.
+// -----------------------------------------------------------------------------------------------
+
+async function gitInit(dir: string): Promise<void> {
+  await execAsync('git init -q', { cwd: dir });
+}
+
+async function exists(p: string): Promise<boolean> {
+  return fs.access(p).then(() => true, () => false);
+}
+
+test('login in a git repo saves the key in the repo (0600) and not on the machine', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
+      assert.match(stdout, /Key saved in this repo \(\.pinsay\/credentials\.env, hidden from git\)/);
+      const file = path.join(repo, '.pinsay', 'credentials.env');
+      assert.match(await fs.readFile(file, 'utf8'), /^PINSAY_API_KEY=ptr_good$/m);
+      if (process.platform !== 'win32') assert.strictEqual((await fs.stat(file)).mode & 0o777, 0o600);
+      assert.strictEqual(await exists(path.join(globalDir, 'credentials.json')), false);
+      const { stdout: st } = await execAsync('git status --porcelain', { cwd: repo });
+      assert.doesNotMatch(st, /credentials/);
+    }),
+  ));
+
+test('login --global (and --scope global) in a git repo saves on the machine only', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      for (const flag of ['--global', '--scope global']) {
+        const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good ${flag}`, { cwd: repo, env: envFor(globalDir) });
+        assert.match(stdout, /Key saved on this machine/);
+        assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
+        const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
+        assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
+      }
+    }),
+  ));
+
+test('login --global moves a valid repo key to the machine store without a browser', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
+      await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_good\n');
+      const { stdout } = await execAsync(`node ${cliPath} login --global`, { cwd: repo, env: envFor(globalDir) });
+      assert.match(stdout, /Moved your key to this machine's store \(.*credentials\.json\)\. Every repo on this machine can use it now\./);
+      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
+      const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
+      assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
+
+      // whoami from another folder now reports the machine store.
+      await withTempDir(async (other) => {
+        const { stdout: w } = await execAsync(`node ${cliPath} whoami --json`, { cwd: other, env: envFor(globalDir) });
+        assert.strictEqual(JSON.parse(w.trim().split('\n').pop()!).source, 'global');
+      });
+    }),
+  ));
+
+test('login --global with an invalid repo key and no terminal exits 2 (no key to move, nobody to sign in)', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
+      await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_bad\n');
+      await assert.rejects(
+        execAsync(`node ${cliPath} login --global`, { cwd: repo, env: envFor(globalDir) }),
+        (err: any) => err.code === 2 && /No API key\. Pass --key <key> or set PINSAY_API_KEY/.test(err.stderr),
+      );
+      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), true, 'repo file untouched');
+    }),
+  ));
+
+test('logout removes only the repo key when the repo has one; then the machine key', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      await execAsync(`node ${cliPath} login --key ptr_good --global`, { cwd: repo, env: envFor(globalDir) });
+      await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
+
+      const first = JSON.parse((await execAsync(`node ${cliPath} logout --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
+      assert.deepStrictEqual([first.source, first.removed], ['repo', true]);
+      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
+      const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
+      assert.ok(store[new URL(serverUrl).origin], 'machine entry kept');
+
+      const second = JSON.parse((await execAsync(`node ${cliPath} logout --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
+      assert.deepStrictEqual([second.source, second.removed], ['global', true]);
+    }),
+  ));
+
+test('logout --global removes the machine entry even when the repo has its own key', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      await execAsync(`node ${cliPath} login --key ptr_good --global`, { cwd: repo, env: envFor(globalDir) });
+      await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
+      const out = JSON.parse((await execAsync(`node ${cliPath} logout --global --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
+      assert.deepStrictEqual([out.source, out.removed], ['global', true]);
+      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), true);
+    }),
+  ));
+
+test('logout with PINSAY_API_KEY set removes nothing and says to unset it', () =>
+  withTempDir(async (repo) =>
+    withGlobalDir(async (globalDir) => {
+      await gitInit(repo);
+      await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
+      const { stdout } = await execAsync(`node ${cliPath} logout`, { cwd: repo, env: { ...envFor(globalDir), PINSAY_API_KEY: 'ptr_good' } });
+      assert.match(stdout, /Your key comes from the PINSAY_API_KEY variable\. Unset it to sign out\./);
+      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), true);
     }),
   ));

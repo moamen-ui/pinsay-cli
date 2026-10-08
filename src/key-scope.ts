@@ -1,16 +1,13 @@
 import { select } from './prompt.js';
 
-/** Where a freshly signed-in API key is saved: the per-machine store, or this repo only. */
+/** Where a freshly signed-in API key is saved: this repo (the default since 0.9.0), or this machine's store. */
 export type KeyScope = 'global' | 'repo';
 
-// One question, asked word for word by both `init` and `login`.
-export const KEY_SCOPE_QUESTION = 'Where should this API key be stored?';
-export const KEY_SCOPE_GLOBAL = 'Global — this machine, every repo (~/.config/pinsay/credentials.json)';
-export const KEY_SCOPE_REPO = 'Repo — .pinsay/credentials.env in this repo only (hidden from git)';
-
 /**
- * The scope a flag fixed: `--scope global|repo` (case-insensitive), or `--local-credentials` (an
- * alias for `--scope repo`). `{}` when no flag decided it; `{ error }` for an unknown `--scope`.
+ * The scope a flag fixed: `--global` or `--scope global` → global; `--scope repo` or `--local-credentials` → repo
+ * (old flags; repo is the default anyway). `{}` when no flag decided it; `{ error }` for an unknown `--scope`.
+ * `explicit` is true only when a flag was actually passed — `login` honours an explicit repo choice even outside a
+ * git repo, where the default would be the machine store.
  */
 export function scopeFromFlags(options: Record<string, string | boolean>): { scope?: KeyScope; error?: string } {
   const raw = options['scope'];
@@ -21,20 +18,17 @@ export function scopeFromFlags(options: Record<string, string | boolean>): { sco
     }
     return { scope: value };
   }
+  if (options['global'] === true) return { scope: 'global' };
   if (options['local-credentials'] === true) return { scope: 'repo' };
   return {};
 }
 
-/**
- * A flag wins; otherwise ask when someone is at a terminal; otherwise (no TTY, `--yes`) save
- * globally — the default `login` and `init --yes` have always had, so CI and scripts keep working.
- */
-export function decideKeyScope(flagScope: KeyScope | undefined, interactive: boolean): KeyScope | 'ask' {
-  if (flagScope) return flagScope;
-  return interactive ? 'ask' : 'global';
-}
+// --- Pre-0.9.0 question, kept only until `init` stops importing it (T07 removes both). -------------------------
+export const KEY_SCOPE_QUESTION = 'Where should this API key be stored?';
+export const KEY_SCOPE_GLOBAL = 'Global — this machine, every repo (~/.config/pinsay/credentials.json)';
+export const KEY_SCOPE_REPO = 'Repo — .pinsay/credentials.env in this repo only (hidden from git)';
 
-/** Asks `KEY_SCOPE_QUESTION` on the terminal. Call only when `decideKeyScope` returned 'ask'. */
+/** @deprecated 0.9.0 saves to the repo without asking; removed with T07. */
 export async function askKeyScope(): Promise<KeyScope> {
   const choice = await select(KEY_SCOPE_QUESTION, [KEY_SCOPE_GLOBAL, KEY_SCOPE_REPO]);
   return choice === KEY_SCOPE_REPO ? 'repo' : 'global';

@@ -34,7 +34,15 @@ function parseArgs(args: string[]) {
         'no-commit',
         'version',
         'local-credentials',
-        'no-browser'
+        'no-browser',
+        // 0.9.0
+        'embed',
+        'global',
+        'share-stack',
+        'no-share-stack',
+        'no-color',
+        'all',
+        'print'
     ]);
 
     for (let i = 0; i < args.length; i++) {

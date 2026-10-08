@@ -220,13 +220,30 @@ export async function removeGlobalCredential(server: string): Promise<boolean> {
 
 /** The same `.pinsay/credentials.env` `writeCredentials` (config.ts) writes — read here too so
  *  `resolveApiKey` is the one place every caller goes through instead of re-reading the file. */
-async function readRepoApiKey(root: string): Promise<string | undefined> {
+export async function readRepoApiKey(root: string): Promise<string | undefined> {
   try {
     const raw = await fs.readFile(join(root, '.pinsay', 'credentials.env'), 'utf8');
     return raw.match(/^PINSAY_API_KEY=(.*)$/m)?.[1]?.trim() || undefined;
   } catch {
     return undefined;
   }
+}
+
+/** `.pinsay/credentials.env` under `root` — the repo key file `writeCredentials` (config.ts) writes. */
+export function repoCredentialsPath(root: string): string {
+  return join(root, '.pinsay', 'credentials.env');
+}
+
+/** Deletes this repo's key file. True when there was one to delete. */
+export async function removeRepoCredentials(root: string): Promise<boolean> {
+  const file = repoCredentialsPath(root);
+  try {
+    await fs.access(file);
+  } catch {
+    return false;
+  }
+  await fs.rm(file, { force: true });
+  return true;
 }
 
 /**
