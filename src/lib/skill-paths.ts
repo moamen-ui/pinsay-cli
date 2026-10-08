@@ -8,9 +8,6 @@ import type { PinSayConfig } from '../config.js';
  * lives in SKILL_FILES, which `installSkills` also uses, so `doctor` and `update` check exactly
  * the paths `init` wrote. When `init` recorded a `skillsDir` override, that wins for the skill
  * files.
- *
- * `.pinsay/pinsay.sh` is always included: it is served and stamped like the skills, and it is
- * the file an AI agent actually executes.
  */
 export function skillFilesFor(config: PinSayConfig): string[] {
   const layout = SKILL_FILES[config.aiTool ?? ''] ?? SKILL_FILES.other;
@@ -26,5 +23,5 @@ export function skillFilesFor(config: PinSayConfig): string[] {
       ]
     : [...layout];
 
-  return [...skillPaths, '.pinsay/pinsay.sh'];
+  return skillPaths;
 }

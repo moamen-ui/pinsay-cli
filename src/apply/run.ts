@@ -4,6 +4,7 @@ import { join, dirname } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
+import { shareAllowed } from '../consent.js';
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import { buildApplyPrompt } from './prompt.js';
@@ -46,6 +47,7 @@ export async function ensureToolRegistered(
 
   const aiTools: string[] = Array.isArray(stackData.aiTools) ? stackData.aiTools : [];
   if (aiTools.includes(tool)) return;
+  if (!(await shareAllowed(ctx.cwd))) return;
 
   if (ctx.token) {
     try {
@@ -110,10 +112,7 @@ export async function runApply(
   options: ApplyRunOptions,
   ctx: ApplyClientContext,
 ): Promise<ApplyRunResult> {
-  await postEvent(ctx.server, ctx.token, {
-    type: 'apply_started',
-    projectKey: ctx.project,
-  });
+  await postEvent(ctx.server, ctx.token, { type: 'apply_started', projectKey: ctx.project }, ctx.cwd);
 
   const toolName = detectAiTool(options.tool);
   await ensureToolRegistered(ctx, toolName);

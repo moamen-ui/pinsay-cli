@@ -822,7 +822,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         }
     }
 
-    await postEvent(server as string, token, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION, mode } });
+    await postEvent(server as string, token, { type: 'installed', projectKey: finalProjectKey, meta: { stack: stackMeta, aiTool: tool, injected, cliVersion: BUILD_CLI_VERSION, mode } }, cwd);
 
     if (isJson) {
         console.log(JSON.stringify({
@@ -1410,11 +1410,7 @@ async function handleMultiJoin(
 
     await writeConfig(cwd, { cliVersion: BUILD_CLI_VERSION });
 
-    await postEvent(server, token, {
-        type: 'installed',
-        projectKey: projects[0]?.key,
-        meta: { mode: 'join', multiProject: true, cliVersion: BUILD_CLI_VERSION },
-    });
+    await postEvent(server, token, { type: 'installed', projectKey: projects[0]?.key, meta: { mode: 'join', multiProject: true, cliVersion: BUILD_CLI_VERSION } }, cwd);
 
     if (isJson) {
         console.log(JSON.stringify({
@@ -1640,11 +1636,7 @@ async function handleMultiProjectSetup(args: {
         await writeCredentials(cwd, key);
     }
 
-    await postEvent(server, token, {
-        type: 'installed',
-        projectKey: results[0]?.key,
-        meta: { mode: 'add-project', keys: results.map((r) => r.key), cliVersion: BUILD_CLI_VERSION },
-    });
+    await postEvent(server, token, { type: 'installed', projectKey: results[0]?.key, meta: { mode: 'add-project', keys: results.map((r) => r.key), cliVersion: BUILD_CLI_VERSION } }, cwd);
 
     if (isJson) {
         console.log(JSON.stringify({

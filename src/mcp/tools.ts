@@ -405,11 +405,7 @@ export async function handleMarkApplied(
     token: ctx.token,
   });
 
-  await postEvent(ctx.server, ctx.token, {
-    type: 'first_apply',
-    projectKey: ctx.project,
-    meta: { commentId: id },
-  });
+  await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
   return {
     id,
@@ -536,13 +532,9 @@ export async function handleCommitAndMark(
           token: ctx.token,
         });
 
-        await postEvent(ctx.server, ctx.token, {
-          type: 'first_apply',
-          projectKey: ctx.project,
-          meta: { commentId: id },
-        });
+      await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
-        results.push({ id, commitUrl });
+      results.push({ id, commitUrl });
       }
     } else {
       // Single id with Separate style
@@ -588,11 +580,7 @@ export async function handleCommitAndMark(
         token: ctx.token,
       });
 
-      await postEvent(ctx.server, ctx.token, {
-        type: 'first_apply',
-        projectKey: ctx.project,
-        meta: { commentId: id },
-      });
+      await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
       results.push({ id, commitUrl });
     }
@@ -636,11 +624,7 @@ export async function handleCommitAndMark(
         token: ctx.token,
       });
 
-      await postEvent(ctx.server, ctx.token, {
-        type: 'first_apply',
-        projectKey: ctx.project,
-        meta: { commentId: id },
-      });
+      await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
       results.push({ id, commitUrl });
     }

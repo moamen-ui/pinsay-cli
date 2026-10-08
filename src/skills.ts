@@ -180,7 +180,7 @@ async function removeLegacyAgentsLayout(cwd: string): Promise<void> {
 }
 
 /**
- * Installs pinsay.sh and the two skills for `aiTool` (or into `overrideDir`). Never throws for a
+ * Installs the two skills for `aiTool` (or into `overrideDir`). Never throws for a
  * file-system or download problem: each file is its own step, a failure becomes a `SkillWarning`
  * and the remaining files still install — `init` must never die at its last step because, say,
  * `.claude/skills` is a Git symlink checked out as a plain file on Windows (see repo-paths.ts).
@@ -213,12 +213,6 @@ export async function installSkills(
     };
 
     await removeLegacyAgentsLayout(cwd).catch(() => {});
-
-    await step('.pinsay/pinsay.sh', async () => {
-        const { abs } = await writeRepoFile(cwd, '.pinsay/pinsay.sh', await fetchText(`${server}/pinsay.sh`));
-        await fs.chmod(abs, 0o755).catch(() => {});
-        files.push('.pinsay/pinsay.sh');
-    });
 
     // A flat-file tool (no folder of its own to put apply.md/translate.md/advanced.md into as
     // siblings) gets everything concatenated into the one rules file instead — see

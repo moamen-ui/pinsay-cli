@@ -163,7 +163,8 @@ test('A: claude-code fresh install', { skip: !canSymlink && NO_SYMLINK }, async 
     const target = await fs.readlink(mirrorPath);
     assert.equal(target, join('..', '..', '..', '.claude', 'skills', 'pinsay-init', 'SKILL.md'));
     assert.ok(files.includes('.agents/skills/pinsay-init/SKILL.md'));
-    assert.ok(files.includes('.pinsay/pinsay.sh'));
+    assert.ok(!files.includes('.pinsay/pinsay.sh'), 'pinsay.sh is no longer installed');
+    await assert.rejects(fs.access(join(dir, '.pinsay/pinsay.sh')));
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();
@@ -178,7 +179,7 @@ test('B: claude-code, .claude/skills is a plain file', async () => {
     await fs.writeFile(join(dir, '.claude/skills'), 'notes\nmore notes\n', 'utf8');
 
     const { files, warnings } = await installSkills(stub.url, 'claude-code', dir);
-    assert.ok(await fs.stat(join(dir, '.pinsay/pinsay.sh')));
+    await assert.rejects(fs.access(join(dir, '.pinsay/pinsay.sh')), 'pinsay.sh is no longer installed');
     assert.equal(warnings.length, 2);
     for (const w of warnings) {
       assert.equal(w.tool, 'claude-code');
@@ -191,7 +192,7 @@ test('B: claude-code, .claude/skills is a plain file', async () => {
     const content = await fs.readFile(join(dir, '.claude/skills'), 'utf8');
     assert.equal(content, 'notes\nmore notes\n');
     await assert.rejects(fs.access(join(dir, '.agents/skills')));
-    assert.deepEqual(files, ['.pinsay/pinsay.sh']);
+    assert.deepEqual(files, []);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();
@@ -320,7 +321,7 @@ test('G: claude-code against closed port', async () => {
     const lines = formatSkillWarnings(warnings);
     assert.equal(lines.length, 3);
     assert.ok(lines[0].startsWith('⚠ Skills for claude-code:'));
-    assert.ok(lines[1].startsWith('  Not installed: .pinsay/pinsay.sh, '));
+    assert.ok(lines[1].startsWith('  Not installed: .claude/skills/pinsay-init/SKILL.md, '));
     assert.ok(lines[2].startsWith('  Fix: '));
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
@@ -347,7 +348,8 @@ test('I: cursor with .cursor/rules as a plain file', async () => {
     await fs.writeFile(join(dir, '.cursor/rules'), 'x', 'utf8');
 
     const { files, warnings } = await installSkills(stub.url, 'cursor', dir);
-    assert.ok(files.includes('.pinsay/pinsay.sh'));
+    assert.ok(!files.includes('.pinsay/pinsay.sh'), 'pinsay.sh is no longer installed');
+    await assert.rejects(fs.access(join(dir, '.pinsay/pinsay.sh')));
     const paths = warnings.map((w) => w.path).sort();
     assert.deepEqual(paths, ['.cursor/rules/pinsay-feedback.md', '.cursor/rules/pinsay-init.md'].sort());
   } finally {

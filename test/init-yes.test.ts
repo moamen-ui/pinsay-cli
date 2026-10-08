@@ -196,7 +196,7 @@ test('init --yes finishes when .claude/skills is a plain file (Windows Git symli
   assert.doesNotMatch(stderr, /Fatal error/);
   await fs.access(path.join(dir, '.pinsay/config.json'));
   assert.strictEqual(await fs.readFile(path.join(dir, '.claude/skills'), 'utf8'), 'notes about skills\nsecond line\n');
-  await fs.access(path.join(dir, '.pinsay/pinsay.sh'));
+  await assert.rejects(fs.access(path.join(dir, '.pinsay/pinsay.sh')), 'pinsay.sh is no longer installed');
 }));
 
 test('init --yes on a repo whose .claude/skills is a Git symlink stub (Windows checkout) installs and exits 0', () => withTempDir(async (dir) => {
@@ -278,9 +278,9 @@ test('init --yes joins an already-configured repo, asking only for the key', () 
   const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
   assert.strictEqual(config.project, 'existing', 'the joined project must not change');
 
-  // Skills and pinsay.sh are gitignored now, so a join is the thing that installs them.
+  // Skills are gitignored now, so a join is the thing that installs them.
   await fs.access(path.join(dir, '.claude/skills/pinsay-feedback/SKILL.md'));
-  await fs.access(path.join(dir, '.pinsay/pinsay.sh'));
+  await assert.rejects(fs.access(path.join(dir, '.pinsay/pinsay.sh')), 'pinsay.sh is no longer installed');
 }));
 
 test('init --json in join mode reports mode: join and does not ask for --project', () => withTempDir(async (dir) => {
