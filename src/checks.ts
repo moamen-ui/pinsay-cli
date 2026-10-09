@@ -297,7 +297,11 @@ export async function runInitChecks(
     // stack ------------------------------------------------------------------
     try {
       await fs.access(join(cwd, stackFileRelPath(multiProject ? target.key : undefined)));
-      checks.push({ id: 'stack', status: 'ok', message: `${prefix}Stack registered` });
+      checks.push({
+        id: 'stack',
+        status: 'ok',
+        message: `${prefix}${config.shareStack === false ? 'Stack saved locally (not shared)' : 'Stack registered'}`,
+      });
     } catch {
       checks.push({ id: 'stack', status: 'warn', message: `${prefix}Stack not registered`, fixable: true });
     }

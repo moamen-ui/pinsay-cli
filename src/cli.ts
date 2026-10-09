@@ -93,6 +93,7 @@ Tools
   whoami    Show the signed-in account and where the key came from
 
 Run npx pinsay-cli <command> --help for examples.
+Flags: --no-color  No colours or styling (also NO_COLOR=1)
 Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace · 3 key or permission · 4 can't reach PinSay · 5 CLI too old`;
 
 /** One help row: the flag or example command, its description, and whether the flag is an old spelling. */
@@ -151,6 +152,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--no-inject', 'Skip injection (use --embed or --html)', true],
             ['--scope <global|repo>', 'Where the key is saved (--global is the new spelling)', true],
             ['--local-credentials', 'Alias of --scope repo', true],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli init', 'Set up this repo (asks a few questions)'],
@@ -178,6 +180,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--dry-run', 'Show the plan; write and send nothing'],
             ['-y, --yes', "Don't ask for confirmation"],
             ['--json', 'Machine-readable output'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli embed', "Add the widget with this repo's settings"],
@@ -201,6 +204,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--json', 'Machine-readable output'],
             ['--scope <global|repo>', 'Where to save the key, without asking', true],
             ['--local-credentials', 'Alias of --scope repo', true],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli login', 'Open the browser; save the key in this repo'],
@@ -219,6 +223,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--global', "Remove this machine's saved key instead"],
             ['--json', 'Emit { ok, server, source, removed } as JSON'],
             ['--scope <global|repo>', 'Old spelling; only global changes anything', true],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli logout', "Remove this repo's key"],
@@ -239,6 +244,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['-y, --yes', 'Remove without asking'],
             ['--global', "Also remove this machine's saved key"],
             ['--json', 'Machine-readable output'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli remove --dry-run', 'Show what would be removed'],
@@ -263,6 +269,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--deployed [sha]', 'Mark applied comments live (default HEAD)'],
             ['--project <key>', 'Project for --deployed'],
             ['--key <key>', 'API key'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli status', "Who you are and what's waiting"],
@@ -281,6 +288,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--project <key>', "Project to open (default: this folder's)"],
             ['--print', "Print the URL; don't open a browser"],
             ['-y, --yes', "Non-interactive; don't open a browser"],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli open', "Open this project's dashboard"],
@@ -302,6 +310,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--project <key>', "Project (default: this folder's)"],
             ['--key <key>', 'API key'],
             ['--json', 'Comments as JSON'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli list', "Every project's comments"],
@@ -319,6 +328,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--id <id>', 'The comment id (same as the argument)'],
             ['--key <key>', 'API key'],
             ['--json', 'Full view as JSON, with the resolved source'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli get 42', 'Show comment 42'],
@@ -355,6 +365,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--key <key>', 'API key'],
             ['--project <key>', 'Project for the queue'],
             ['--json', 'Queue as JSON'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli apply', 'Print the AI apply prompt for pending feedback'],
@@ -374,6 +385,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         all: [
             ['--key <key>', 'API key'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli reply 42 "shipping in v2"', 'Reply to comment 42'],
@@ -394,6 +406,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--fix', 'Apply the idempotent repairs (gitignore, skills, stack)'],
             ['--refresh-stack', 'Refresh local design tokens without the server'],
             ['--json', 'Emit { ok, checks } as JSON'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli doctor', 'Check this install'],
@@ -412,6 +425,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         all: [
             ['--check', 'Report what is out of date; write nothing'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli update', 'Refresh the skills now'],
@@ -426,6 +440,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         all: [
             ['--from-source', 'Required: walk the sources and rebuild the map'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli map --from-source', "Fresh clone: the manifest isn't committed"],
@@ -444,6 +459,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--log <file>', 'Log MCP traffic to a file'],
             ['--project <key>', 'Project key'],
             ['--key <key>', 'API key'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli mcp', 'Start the server on stdio'],
@@ -458,6 +474,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         all: [
             ['--json', 'Emit { ok, server, displayName, email, source } as JSON'],
+            ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli whoami', 'Show the signed-in account'],

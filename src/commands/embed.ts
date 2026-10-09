@@ -89,7 +89,8 @@ export async function embedCommand(cwd: string, options: Record<string, string |
             if (htmlPath !== undefined) entry.htmlPath = htmlPath;
             await writeConfigFull(root, config);
         } else {
-            await writeConfig(root, { delivery: 'embed', ...(htmlPath !== undefined ? { htmlPath } : {}) });
+            const fromFlag = !multi && typeof options['project'] === 'string' && !config.project ? { project } : {};
+            await writeConfig(root, { ...fromFlag, delivery: 'embed', ...(htmlPath !== undefined ? { htmlPath } : {}) });
         }
     };
     const finish = (message: string, extra: { files: string[]; htmlPath?: string; nextStep: string }): void => {

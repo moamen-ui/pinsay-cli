@@ -11,7 +11,7 @@ export const TOOL_CATALOGUE = ['claude-code', 'cursor', 'windsurf', 'opencode', 
 
 export type RepoTool = (typeof TOOL_CATALOGUE)[number];
 
-/** A folder signal is skipped when it is empty, or when every file inside it (≤4 levels deep) is PinSay's own. */
+/** A folder signal is skipped only when every file inside it (≤4 levels deep) is PinSay's own. */
 const MAX_WALK_DEPTH = 4;
 
 interface ToolSignals {
@@ -91,12 +91,11 @@ async function walkFiles(dir: string, level: number, out: string[]): Promise<voi
   }
 }
 
-/** True when the folder holds no files at all, or only files with a `pinsay-` path segment (PinSay's own skills). */
-async function pinsayOnlyOrEmpty(dir: string): Promise<boolean> {
+/** True only when the folder holds files and every one of them has a `pinsay-` path segment (PinSay's own skills). */
+async function pinsayOnly(dir: string): Promise<boolean> {
   const files: string[] = [];
   await walkFiles(dir, 1, files);
-  if (files.length === 0) return true;
-  return files.every(
+  return files.length > 0 && files.every(
     (file) =>
       relative(dir, file)
         .split(/[\\/]/)
@@ -114,7 +113,7 @@ export async function detectRepoTools(root: string, env: NodeJS.ProcessEnv = pro
     for (const folder of signals.folders) {
       if (hit) break;
       const path = join(root, folder);
-      hit = (await isDir(path)) && !(await pinsayOnlyOrEmpty(path));
+      hit = (await isDir(path)) && !(await pinsayOnly(path));
     }
     for (const file of signals.files) {
       if (hit) break;
@@ -125,7 +124,7 @@ export async function detectRepoTools(root: string, env: NodeJS.ProcessEnv = pro
   if (
     found.length === 0 &&
     ((await isFile(join(root, 'AGENTS.md'))) ||
-      ((await isDir(join(root, '.agents'))) && !(await pinsayOnlyOrEmpty(join(root, '.agents')))))
+      ((await isDir(join(root, '.agents'))) && !(await pinsayOnly(join(root, '.agents')))))
   ) {
     found.push('other');
   }

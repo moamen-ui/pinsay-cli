@@ -80,7 +80,7 @@ test('embed --dry-run prints the plan and changes nothing', () => {
     assert.deepStrictEqual(snapshot(dir), before);
 });
 
-test('embed without a project exits 2; with --project it needs no key', () => {
+test('embed without a project exits 2; with --project it needs no key and records the project', () => {
     const empty = tmp();
     const r = embed(empty, []);
     assert.strictEqual(r.code, 2);
@@ -91,6 +91,27 @@ test('embed without a project exits 2; with --project it needs no key', () => {
     const ok = embed(dir, ['--project', 'k', '--yes']);
     assert.strictEqual(ok.code, 0, ok.err);
     assert.strictEqual(count(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), START), 1);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(cfg.project, 'k');
+    assert.strictEqual(cfg.delivery, 'embed');
+    assert.strictEqual(cfg.htmlPath, 'index.html');
+});
+
+test('embed --project in a multi-project repo writes no top-level project into the config', () => {
+    const dir = tmp();
+    write(dir, 'index.html', '<html><head></head><body></body></html>\n');
+    write(dir, '.pinsay/config.json', JSON.stringify({
+        aiTool: 'claude-code',
+        delivery: 'extension',
+        projects: { web: { path: 'apps/web' }, api: { path: 'apps/api' } },
+    }));
+    const r = embed(dir, ['--project', 'web', '--yes']);
+    assert.strictEqual(r.code, 0, r.err);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(cfg.project, undefined);
+    assert.deepStrictEqual(Object.keys(cfg.projects).sort(), ['api', 'web']);
+    assert.strictEqual(cfg.delivery, 'embed');
+    assert.strictEqual(cfg.htmlPath, 'index.html');
 });
 
 test('embed on Next.js changes only the config and points at /pinsay-init', () => {

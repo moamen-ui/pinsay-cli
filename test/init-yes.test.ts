@@ -1055,6 +1055,50 @@ test('multi join --yes: missing stack files written, json mode join with shareSt
   await fs.access(path.join(dir, '.pinsay/projects/api.stack.json'));
 }));
 
+test('a join with --share-stack over a saved No posts the stack once and rewrites stack.json', () => withTempDir(async (dir) => {
+  await fs.mkdir(path.join(dir, '.pinsay'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pinsay/config.json'),
+    JSON.stringify({ project: 'my-app', aiTool: 'claude-code', delivery: 'embed', shareStack: false }),
+    'utf8',
+  );
+  await fs.writeFile(
+    path.join(dir, '.pinsay/stack.json'),
+    JSON.stringify({ frontend: ['old'], backend: null, aiTools: ['claude-code'] }),
+    'utf8',
+  );
+  requests.length = 0;
+  const r = await runCli(dir, 'init --share-stack --key ptr_good --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(posts(/^\/api\/projects\/my-app\/stack$/).length, 1, 'exactly one stack POST');
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.shareStack, true);
+  const stackFile = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/stack.json'), 'utf8'));
+  assert.ok(Array.isArray(stackFile.aiTools), 'stack.json was rewritten in the canonical shape');
+}));
+
+test('a multi join with --share-stack over a saved No posts once per project', () => withTempDir(async (dir) => {
+  await nxFixture(dir);
+  await fs.mkdir(path.join(dir, 'apps/api'), { recursive: true });
+  await fs.mkdir(path.join(dir, '.pinsay/projects'), { recursive: true });
+  await fs.writeFile(
+    path.join(dir, '.pinsay/config.json'),
+    JSON.stringify({ aiTool: 'claude-code', delivery: 'extension', shareStack: false, projects: { web: { path: 'apps/web' }, api: { path: 'apps/api' } } }),
+    'utf8',
+  );
+  await fs.writeFile(path.join(dir, '.pinsay/projects/web.stack.json'), JSON.stringify({ frontend: ['old'], backend: null, aiTools: ['claude-code'] }), 'utf8');
+  await fs.writeFile(path.join(dir, '.pinsay/projects/api.stack.json'), JSON.stringify({ frontend: [], backend: null, aiTools: ['claude-code'] }), 'utf8');
+  requests.length = 0;
+  const r = await runCli(dir, 'init --share-stack --key ptr_good --yes');
+  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
+  assert.strictEqual(posts(/^\/api\/projects\/web\/stack$/).length, 1);
+  assert.strictEqual(posts(/^\/api\/projects\/api\/stack$/).length, 1);
+  const config = JSON.parse(await fs.readFile(path.join(dir, '.pinsay/config.json'), 'utf8'));
+  assert.strictEqual(config.shareStack, true);
+  await fs.access(path.join(dir, '.pinsay/projects/web.stack.json'));
+  await fs.access(path.join(dir, '.pinsay/projects/api.stack.json'));
+}));
+
 test('init --path --dry-run: prints the plan, writes nothing, sends nothing', () => withTempDir(async (dir) => {
   await nxFixture(dir);
   requests.length = 0;

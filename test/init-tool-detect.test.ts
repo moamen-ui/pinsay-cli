@@ -26,6 +26,12 @@ test('a .claude folder with a non-PinSay file is a claude-code signal', async ()
   assert.deepEqual(await detectRepoTools(root, {}), ['claude-code']);
 });
 
+test('an empty .claude folder is a claude-code signal too', async () => {
+  const root = await tmpRoot();
+  await fs.mkdir(path.join(root, '.claude'));
+  assert.deepEqual(await detectRepoTools(root, {}), ['claude-code']);
+});
+
 test("a folder holding only PinSay's own skills is not a signal", async () => {
   const root = await tmpRoot();
   await fs.mkdir(path.join(root, '.claude', 'skills', 'pinsay-init'), { recursive: true });
