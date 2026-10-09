@@ -206,7 +206,7 @@ export async function removeCommand(cwd: string, options: Record<string, string 
         closePrompts();
         if (!go) {
             console.log('Nothing was removed.');
-            return;
+            process.exit(0);
         }
     } else if (options['yes'] !== true) {
         exitWithError(2, 'Pass --yes to remove without a terminal.', json);
@@ -258,4 +258,6 @@ export async function removeCommand(cwd: string, options: Record<string, string 
 
     if (json) console.log(JSON.stringify({ ok: true, removed: removals }));
     else console.log(`${green(sym.check)} Removed ${removals.length} item(s).`);
+    closePrompts();
+    process.exit(0);
 }

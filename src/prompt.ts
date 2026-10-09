@@ -75,12 +75,22 @@ function plainIface(): readline.Interface {
     return plain;
 }
 
+/**
+ * Gives stdin back to the event loop once no readline interface holds it. The raw-key readers
+ * call `process.stdin.resume()`; left flowing, a TTY stdin keeps the process alive after the
+ * command is done.
+ */
+function releaseStdin(): void {
+    if (shared === null && plain === null) process.stdin.pause();
+}
+
 /** Releases stdin so the process can exit once prompting is done. */
 export function closePrompts(): void {
     shared?.close();
     shared = null;
     plain?.close();
     plain = null;
+    process.stdin.pause();
 }
 
 export async function ask(
@@ -90,6 +100,11 @@ export async function ask(
     assertInteractive();
     while (true) {
         console.log(questionLine(question + (options.default ? ` [${options.default}]` : '')));
+        console.log(dim('  ' + (options.secret
+            ? `Typing is hidden ${sym.dot} Enter to confirm`
+            : options.default
+                ? `Type your answer ${sym.dot} Enter keeps ${options.default}`
+                : `Type your answer ${sym.dot} Enter to confirm`)));
         let answer: string;
         if (options.secret) {
             // Hidden input never goes through readline: readline echoes what it edits, so a raw
@@ -125,9 +140,9 @@ export async function ask(
         }
 
         if (colorEnabled()) {
-            // Collapse the band and the input line (or, for hidden input, just the band) into the
+            // Collapse the band and the input line (or, for hidden input, just the band) and the hint line into the
             // answered log line, so the history reads like a log.
-            process.stdout.write(`\x1b[${options.secret ? 1 : 2}A\x1b[0J`);
+            process.stdout.write(`\x1b[${options.secret ? 2 : 3}A\x1b[0J`);
         }
         console.log(answeredLine(question, options.secret ? '(hidden)' : finalAnswer));
         return finalAnswer;
@@ -175,6 +190,7 @@ async function readSecret(): Promise<string> {
             (shared as any).cursor = 0;
         }
         existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
+        releaseStdin();
     }
 }
 
@@ -288,6 +304,7 @@ async function menu(question: string, items: string[], cursorStart: number, opts
         }
         existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
         rl.resume();
+        releaseStdin();
     }
 }
 
@@ -425,6 +442,7 @@ export async function confirm(
         }
         existingKeypress.forEach((fn) => process.stdin.on('keypress', fn));
         shared?.resume();
+        releaseStdin();
     }
 
     if (colorEnabled()) {

@@ -121,7 +121,7 @@ export async function embedCommand(cwd: string, options: Record<string, string |
         if (!go) {
             if (json) console.log(JSON.stringify({ ok: true, cancelled: true }));
             else console.log(CANCELLED_MESSAGE);
-            return;
+            process.exit(0);
         }
     }
 
@@ -140,4 +140,6 @@ export async function embedCommand(cwd: string, options: Record<string, string |
     finish(`${green(sym.check)} Widget added: ${result.files.join(', ')}\n${accent(nextStep)}`, {
         files: result.files, htmlPath: result.htmlPath, nextStep,
     });
+    closePrompts();
+    process.exit(0);
 }
