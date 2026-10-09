@@ -97,6 +97,23 @@ test('embed without a project exits 2; with --project it needs no key and record
     assert.strictEqual(cfg.htmlPath, 'index.html');
 });
 
+test('embed --project in a multi-project repo writes no top-level project into the config', () => {
+    const dir = tmp();
+    write(dir, 'index.html', '<html><head></head><body></body></html>\n');
+    write(dir, '.pinsay/config.json', JSON.stringify({
+        aiTool: 'claude-code',
+        delivery: 'extension',
+        projects: { web: { path: 'apps/web' }, api: { path: 'apps/api' } },
+    }));
+    const r = embed(dir, ['--project', 'web', '--yes']);
+    assert.strictEqual(r.code, 0, r.err);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(cfg.project, undefined);
+    assert.deepStrictEqual(Object.keys(cfg.projects).sort(), ['api', 'web']);
+    assert.strictEqual(cfg.delivery, 'embed');
+    assert.strictEqual(cfg.htmlPath, 'index.html');
+});
+
 test('embed on Next.js changes only the config and points at /pinsay-init', () => {
     const dir = tmp();
     write(dir, 'package.json', JSON.stringify({ name: 'x', dependencies: { next: '14.0.0' } }));

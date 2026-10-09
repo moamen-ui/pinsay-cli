@@ -23,8 +23,8 @@ import { postEvent, postSetupDone } from '../events.js';
 import { runInitChecks, compareSemver, tooOldMessage } from '../checks.js';
 import { promises as fs, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve, isAbsolute, sep, basename } from 'node:path';
-import { detectDesignTokens } from '../stack/design.js';
-import { buildRequestBody, mergeStack, writeStackFile, stackFileRelPath } from '../stack/stackfile.js';
+import { detectDesignTokens, type DesignBlock } from '../stack/design.js';
+import { buildRequestBody, mergeStack, writeStackFile, readStackFile, stackFileRelPath } from '../stack/stackfile.js';
 import { resolveApiKey, saveGlobalCredential, globalCredentialsPath } from '../credentials.js';
 import { scopeFromFlags } from '../key-scope.js';
 import { shareFromFlags } from '../consent.js';
@@ -156,6 +156,10 @@ async function readAppStackNames(root: string, appDirs: string[]): Promise<{ fro
         for (const name of names.backend.length > 0 ? names.backend : rootNames.backend) backend.add(name);
     }
     return { frontend: [...frontend], backend: [...backend] };
+}
+
+function designDetectionEmpty(block: DesignBlock | null): boolean {
+    return !block || (block.libraries.length === 0 && Object.keys(block.tokens).length === 0);
 }
 
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
@@ -557,7 +561,9 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     if (share) progress.step('Sharing framework names');
 
     if (hasStackWork) {
-        const design = options['no-design'] ? null : await detectDesignTokens(cwd);
+        const onDiskStack = await readStackFile(cwd);
+        const freshDesign = options['no-design'] ? null : await detectDesignTokens(cwd);
+        const design = designDetectionEmpty(freshDesign) ? onDiskStack?.design ?? null : freshDesign;
         let serverStack: any = null;
         let stackWarn = false;
         if (share) {
@@ -812,7 +818,9 @@ async function multiDryRun(args: {
         resolved.key && resolved.source ? { kind: 'found', source: resolved.source } : { kind: 'pending' };
     const tools = decideTools(await detectRepoTools(cwd), { flagTool, savedTool: config.aiTool, interactive: false }).tools;
     const tool = tools[0];
-    const names = pathFlag ? await readAppStackNames(cwd, [pathFlag]) : await readStackNames(cwd);
+    const names = pathFlag
+        ? await readAppStackNames(cwd, [pathFlag])
+        : await readAppStackNames(cwd, listProjects(config).map((p) => p.path));
     const shared: InitPlan['shared'] =
         args.share !== undefined
             ? { decided: true, share: args.share, saved: false, ...names, aiTools: tools }
@@ -1073,7 +1081,7 @@ async function handleMultiJoin(args: {
         (p) => !existsSync(join(cwd, stackFileRelPath(p.key))) || shareChanged,
     );
     const { widget } = await decideWidget(cwd, options, config, { isJoin: true, wantEmbed: false, tool });
-    const names = await readStackNames(cwd);
+    const names = await readAppStackNames(cwd, projects.map((p) => p.path));
     const plan: InitPlan = {
         product,
         project: projects[0] ? { key: projects[0].key, name: projects[0].key, create: false } : null,
@@ -1138,7 +1146,9 @@ async function handleMultiJoin(args: {
                 if (isOutage(e)) throw e;
             }
         }
-        const designBlock = await detectDesignTokens(appCwd, { root: cwd }).catch(() => null);
+        const onDiskStack = await readStackFile(cwd, p.key);
+        const freshDesign = await detectDesignTokens(appCwd, { root: cwd }).catch(() => null);
+        const designBlock = designDetectionEmpty(freshDesign) ? onDiskStack?.design ?? null : freshDesign;
         const merged = mergeStack(stackMeta, serverStackResponse?.data ?? serverStackResponse, designBlock);
         await writeStackFile(cwd, merged, p.key);
     }
