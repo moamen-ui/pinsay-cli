@@ -6,6 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { hidePinsayFiles, removeExcludeBlock } from '../src/lib/git-exclude.js';
+import { writableInsideRoot } from '../src/commands/remove.js';
 import { injectVite } from '../src/inject/vite.js';
 import { SKILL_FILES } from '../src/skills.js';
 import { saveGlobalCredential, globalCredentialsPath } from '../src/credentials.js';
@@ -269,3 +270,38 @@ test('CRLF index.html and .env.development round-trip byte-identical', async () 
         rm(configDir);
     }
 });
+
+// Windows keeps the cwd as typed: an 8.3 short name (the CI runner's C:\Users\RUNNER~1\...), a junction, a subst
+// or mapped drive. realpath() of a file then differs from the root as given; the guard must compare real paths
+// on both sides or `remove` silently skips the index.html block and the .env lines.
+test('writableInsideRoot: a root reached through a link still counts as inside', async () => {
+    const real = tmp();
+    const parent = tmp();
+    const link = path.join(parent, 'repo-link');
+    try {
+        fs.symlinkSync(real, link, 'junction');
+        write(real, 'index.html', '<html></html>\n');
+        assert.strictEqual(await writableInsideRoot(link, path.join(link, 'index.html')), true);
+        assert.strictEqual(await writableInsideRoot(real, path.join(real, 'index.html')), true);
+    } finally {
+        rm(real);
+        rm(parent);
+    }
+});
+
+test(
+    'writableInsideRoot: a file that links outside the repo is never written',
+    { skip: process.platform === 'win32' && 'file symlinks need admin rights on Windows' },
+    async () => {
+        const dir = tmp();
+        const outside = tmp();
+        try {
+            write(outside, 'index.html', 'x');
+            fs.symlinkSync(path.join(outside, 'index.html'), path.join(dir, 'index.html'));
+            assert.strictEqual(await writableInsideRoot(dir, path.join(dir, 'index.html')), false);
+        } finally {
+            rm(dir);
+            rm(outside);
+        }
+    },
+);

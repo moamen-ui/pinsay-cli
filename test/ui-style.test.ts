@@ -66,6 +66,8 @@ test('setColorOverride(false) beats FORCE_COLOR=1 (--no-color wins)', () => {
 
 test('answeredLine reads as a plain log entry with colour off', () => {
   process.env.NO_COLOR = '1';
+  // Pin a Unicode-capable console: on a Windows runner without one, sym.check is the ASCII 'OK' (tested below).
+  process.env.WT_SESSION = '1';
   assert.strictEqual(answeredLine('Share framework names', 'Yes'), '✔ Share framework names · Yes');
 });
 

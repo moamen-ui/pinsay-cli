@@ -53,10 +53,15 @@ async function readIfExists(p: string): Promise<string | null> {
     return fs.readFile(p, 'utf8').catch(() => null);
 }
 
-/** True when `abs`'s realpath stays strictly inside `root` — never write through a symlink that points out of the repo. */
-async function writableInsideRoot(root: string, abs: string): Promise<boolean> {
+/**
+ * True when `abs`'s realpath stays strictly inside `root`'s realpath — never write through a symlink that points out
+ * of the repo. Both sides are resolved: on Windows the cwd keeps the path as typed (8.3 short names, junctions, subst
+ * or mapped drives), so comparing a real path against the root as given wrongly reads "outside".
+ */
+export async function writableInsideRoot(root: string, abs: string): Promise<boolean> {
     try {
-        const back = relative(resolve(root), await fs.realpath(abs));
+        const realRoot = await fs.realpath(resolve(root));
+        const back = relative(realRoot, await fs.realpath(abs));
         return back !== '' && !back.startsWith('..') && !isAbsolute(back);
     } catch {
         return false;
