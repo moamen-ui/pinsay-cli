@@ -62,6 +62,10 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.9.1
+
+- `remove` works when the repo sits behind a linked or shortened path (Windows junctions / short paths).
+
 ### 0.9.0
 
 - No more `.pinsay/pinsay.sh` (old copies keep working; `remove` deletes them).
