@@ -75,12 +75,15 @@ export async function chooseProject(
     return { key: projectFlag, name: projectFlag, create: true };
   }
 
+  if (projects.length === 0 && !me.isAdmin) {
+    exitWithError(3, MEMBER_NO_PROJECT, opts.json);
+  }
+
   if (!opts.interactive) {
     exitWithError(2, 'Pass --project <key> (or --create <name>): there is no terminal to pick a project in.', opts.json);
   }
 
   if (projects.length === 0) {
-    if (!me.isAdmin) exitWithError(3, MEMBER_NO_PROJECT, opts.json);
     return askNewProject();
   }
 

@@ -80,7 +80,7 @@ test('embed --dry-run prints the plan and changes nothing', () => {
     assert.deepStrictEqual(snapshot(dir), before);
 });
 
-test('embed without a project exits 2; with --project it needs no key', () => {
+test('embed without a project exits 2; with --project it needs no key and records the project', () => {
     const empty = tmp();
     const r = embed(empty, []);
     assert.strictEqual(r.code, 2);
@@ -91,6 +91,10 @@ test('embed without a project exits 2; with --project it needs no key', () => {
     const ok = embed(dir, ['--project', 'k', '--yes']);
     assert.strictEqual(ok.code, 0, ok.err);
     assert.strictEqual(count(fs.readFileSync(path.join(dir, 'index.html'), 'utf8'), START), 1);
+    const cfg = JSON.parse(fs.readFileSync(path.join(dir, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(cfg.project, 'k');
+    assert.strictEqual(cfg.delivery, 'embed');
+    assert.strictEqual(cfg.htmlPath, 'index.html');
 });
 
 test('embed on Next.js changes only the config and points at /pinsay-init', () => {

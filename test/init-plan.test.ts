@@ -33,7 +33,7 @@ function signedInPlan(): InitPlan {
     widget: { kind: 'extension' },
     skills: [{ tool: 'claude-code', paths: [...CLAUDE_CODE_PATHS] }],
     files: ['.pinsay/config.json', '.pinsay/stack.json', '.pinsay/credentials.env', '.git/info/exclude'],
-    shared: { decided: true, share: true, saved: false, frontend: ['react', 'vite'], backend: [], aiTool: 'claude-code' },
+    shared: { decided: true, share: true, saved: false, frontend: ['react', 'vite'], backend: [], aiTools: ['claude-code'] },
     notes: [],
   };
 }
@@ -52,6 +52,22 @@ test('a full signed-in plan renders the B4 example', () => {
   ]);
 });
 
+test('the Shared line names every chosen tool, plural for more than one', () => {
+  const plan = signedInPlan();
+  plan.shared = { decided: true, share: true, saved: false, frontend: [], backend: [], aiTools: ['claude-code', 'cursor'] };
+  const lines = renderPlan(plan);
+  assert.equal(
+    lines[lines.length - 1],
+    '  Shared    framework names: none found · AI tools: claude-code, cursor · "setup done" signal',
+  );
+  plan.shared = { decided: true, share: true, saved: false, frontend: [], backend: [], aiTools: ['cursor'] };
+  const one = renderPlan(plan);
+  assert.equal(
+    one[one.length - 1],
+    '  Shared    framework names: none found · AI tool: cursor · "setup done" signal',
+  );
+});
+
 test('a project that will be created is marked (new)', () => {
   const plan = signedInPlan();
   plan.project = { key: 'my-app', name: 'My App', create: true };
@@ -62,7 +78,7 @@ test('dry run: unknown project and pending account', () => {
   const plan = signedInPlan();
   plan.project = null;
   plan.account = { kind: 'pending' };
-  plan.shared = { decided: false, share: false, saved: false, frontend: [], backend: [], aiTool: '' };
+  plan.shared = { decided: false, share: false, saved: false, frontend: [], backend: [], aiTools: [] };
   const lines = renderPlan(plan);
   assert.equal(lines[1], "  Project   you'll pick one after sign-in");
   assert.equal(lines[2], "  Account   you'll sign in in your browser");
@@ -72,7 +88,7 @@ test('dry run: unknown project and pending account', () => {
 test('dry run: a found key names its source and says it was not checked', () => {
   const plan = signedInPlan();
   plan.project = null;
-  plan.shared = { decided: false, share: false, saved: false, frontend: [], backend: [], aiTool: '' };
+  plan.shared = { decided: false, share: false, saved: false, frontend: [], backend: [], aiTools: [] };
   plan.account = { kind: 'found', source: 'env' };
   assert.equal(renderPlan(plan)[2], '  Account   key found (PINSAY_API_KEY), not checked in a dry run');
   plan.account = { kind: 'found', source: 'repo' };
@@ -83,7 +99,7 @@ test('dry run: a found key names its source and says it was not checked', () => 
 
 test('an undecided share with a saved answer says so', () => {
   const plan = signedInPlan();
-  plan.shared = { decided: false, share: false, saved: true, frontend: [], backend: [], aiTool: '' };
+  plan.shared = { decided: false, share: false, saved: true, frontend: [], backend: [], aiTools: [] };
   const lines = renderPlan(plan);
   assert.equal(lines[lines.length - 1], "  Shared    you'll be asked (Yes is the default) (saved answer)");
 });

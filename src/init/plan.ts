@@ -27,7 +27,7 @@ export type InitPlan = {
   skills: Array<{ tool: string; paths: string[] }>;
   /** Every repo file this run writes, repo-relative. */
   files: string[];
-  shared: { decided: boolean; share: boolean; saved: boolean; frontend: string[]; backend: string[]; aiTool: string };
+  shared: { decided: boolean; share: boolean; saved: boolean; frontend: string[]; backend: string[]; aiTools: string[] };
   notes: string[];
 };
 
@@ -64,7 +64,8 @@ export function sharedText(plan: InitPlan): string {
     text = "you'll be asked (Yes is the default)";
   } else if (shared.share) {
     const names = [...shared.frontend, ...shared.backend].join(', ');
-    text = `framework names: ${names || 'none found'} ${sym.dot} AI tool: ${shared.aiTool} ${sym.dot} "setup done" signal`;
+    const toolLabel = shared.aiTools.length === 1 ? 'AI tool' : 'AI tools';
+    text = `framework names: ${names || 'none found'} ${sym.dot} ${toolLabel}: ${shared.aiTools.join(', ')} ${sym.dot} "setup done" signal`;
   } else {
     text = 'nothing about your project (only a "setup done" signal)';
   }

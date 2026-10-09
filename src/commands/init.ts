@@ -146,6 +146,18 @@ async function readStackNames(cwd: string): Promise<{ frontend: string[]; backen
     }
 }
 
+async function readAppStackNames(root: string, appDirs: string[]): Promise<{ frontend: string[]; backend: string[] }> {
+    const rootNames = await readStackNames(root);
+    const frontend = new Set<string>();
+    const backend = new Set<string>();
+    for (const dir of appDirs) {
+        const names = await readStackNames(join(root, dir));
+        for (const name of names.frontend.length > 0 ? names.frontend : rootNames.frontend) frontend.add(name);
+        for (const name of names.backend.length > 0 ? names.backend : rootNames.backend) backend.add(name);
+    }
+    return { frontend: [...frontend], backend: [...backend] };
+}
+
 export async function initCommand(cwd: string, options: Record<string, string | boolean> = {}) {
     const json = options['json'] === true;
     const interactive = isInteractive(options);
@@ -264,12 +276,12 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         const names = await readStackNames(cwd);
         const shared: InitPlan['shared'] =
             shareResult.share !== undefined
-                ? { decided: true, share: shareResult.share, saved: false, ...names, aiTool: tool }
+                ? { decided: true, share: shareResult.share, saved: false, ...names, aiTools: tools }
                 : typeof config.shareStack === 'boolean'
-                  ? { decided: true, share: config.shareStack, saved: true, ...names, aiTool: tool }
+                  ? { decided: true, share: config.shareStack, saved: true, ...names, aiTools: tools }
                   : interactive
-                    ? { decided: false, share: true, saved: false, ...names, aiTool: tool }
-                    : { decided: true, share: true, saved: false, ...names, aiTool: tool };
+                    ? { decided: false, share: true, saved: false, ...names, aiTools: tools }
+                    : { decided: true, share: true, saved: false, ...names, aiTools: tools };
         const files = [
             '.pinsay/config.json',
             '.pinsay/stack.json',
@@ -400,7 +412,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         widget,
         skills,
         files,
-        shared: { decided: true, share, saved: shareSaved, ...names, aiTool: tool },
+        shared: { decided: true, share, saved: shareSaved, ...names, aiTools: tools },
         notes,
     };
 
@@ -417,7 +429,8 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     closePrompts();
 
     // ---- Execute ----
-    const hasStackWork = !isJoin || !existsSync(join(cwd, '.pinsay/stack.json'));
+    const hasStackWork =
+        !isJoin || !existsSync(join(cwd, '.pinsay/stack.json')) || (share && config.shareStack === false);
     const stepLabels = [
         ...(keySaved !== 'existing' ? ['Saving your key'] : []),
         'Writing .pinsay/config.json',
@@ -799,15 +812,15 @@ async function multiDryRun(args: {
         resolved.key && resolved.source ? { kind: 'found', source: resolved.source } : { kind: 'pending' };
     const tools = decideTools(await detectRepoTools(cwd), { flagTool, savedTool: config.aiTool, interactive: false }).tools;
     const tool = tools[0];
-    const names = await readStackNames(cwd);
+    const names = pathFlag ? await readAppStackNames(cwd, [pathFlag]) : await readStackNames(cwd);
     const shared: InitPlan['shared'] =
         args.share !== undefined
-            ? { decided: true, share: args.share, saved: false, ...names, aiTool: tool }
+            ? { decided: true, share: args.share, saved: false, ...names, aiTools: tools }
             : typeof config.shareStack === 'boolean'
-              ? { decided: true, share: config.shareStack, saved: true, ...names, aiTool: tool }
+              ? { decided: true, share: config.shareStack, saved: true, ...names, aiTools: tools }
               : interactive
-                ? { decided: false, share: true, saved: false, ...names, aiTool: tool }
-                : { decided: true, share: true, saved: false, ...names, aiTool: tool };
+                ? { decided: false, share: true, saved: false, ...names, aiTools: tools }
+                : { decided: true, share: true, saved: false, ...names, aiTools: tools };
     const keyFile = account.kind === 'pending' && !saveGlobal ? ['.pinsay/credentials.env'] : [];
 
     let plan: InitPlan;
@@ -1055,7 +1068,10 @@ async function handleMultiJoin(args: {
 
     // ---- Decisions ----
     const { share, saved: shareSaved } = await decideShare(args.shareFlag, config, interactive, product);
-    const missing = projects.filter((p) => !existsSync(join(cwd, stackFileRelPath(p.key))));
+    const shareChanged = share && config.shareStack === false;
+    const missing = projects.filter(
+        (p) => !existsSync(join(cwd, stackFileRelPath(p.key))) || shareChanged,
+    );
     const { widget } = await decideWidget(cwd, options, config, { isJoin: true, wantEmbed: false, tool });
     const names = await readStackNames(cwd);
     const plan: InitPlan = {
@@ -1070,7 +1086,7 @@ async function handleMultiJoin(args: {
             ...missing.map((p) => stackFileRelPath(p.key)),
             '.git/info/exclude (PinSay block)',
         ],
-        shared: { decided: true, share, saved: shareSaved, ...names, aiTool: tool },
+        shared: { decided: true, share, saved: shareSaved, ...names, aiTools: [tool] },
         notes: [],
     };
     printPlan(plan, isJson, `${projects.length} projects: ${projects.map((p) => p.key).join(', ')}`);
@@ -1257,7 +1273,7 @@ async function handleMultiProjectSetup(args: {
     }
 
     const { share, saved: shareSaved } = await decideShare(args.shareFlag, config, interactive, product);
-    const names = await readStackNames(cwd);
+    const names = await readAppStackNames(cwd, decisions.map((d) => d.spec.dir));
     const widget = widgetForApps(repoDefaultDelivery, decisions.map((d) => d.embedPlan), tool);
     const plan: InitPlan = {
         product,
@@ -1272,7 +1288,7 @@ async function handleMultiProjectSetup(args: {
             ...decisions.flatMap((d) => (d.embedPlan?.kind === 'inject' ? d.embedPlan.files : [])),
             '.git/info/exclude (PinSay block)',
         ],
-        shared: { decided: true, share, saved: shareSaved, ...names, aiTool: tool },
+        shared: { decided: true, share, saved: shareSaved, ...names, aiTools: tools },
         notes: decisions.slice(1).map((d) => `${d.choice.key} (${d.spec.dir})${d.choice.create ? ' (new)' : ''}`),
     };
     printPlan(plan, isJson);
@@ -1417,15 +1433,8 @@ async function handleMultiProjectSetup(args: {
             }
         }
     }
-    const migrationLine = migrationNote
-        ? `${sym.warn} ${migrationNote}\n`
-        : migrationOk
-          ? `${green(sym.check)} migrated "${migrationOk}" → projects map (${projectsMap[migrationOk]?.path})\n`
-          : '';
-    console.log(`
-${green(sym.check)} ${product}: added ${results.length} project${results.length === 1 ? '' : 's'} — ${results.map((r) => r.key).join(', ')}
-${migrationLine}  Config: .pinsay/config.json (projects map)
-  Stack files: ${results.map((r) => stackFileRelPath(r.key)).join(', ')}`);
+    if (migrationNote) console.log(`${sym.warn} ${migrationNote}`);
+    else if (migrationOk) console.log(`${green(sym.check)} migrated "${migrationOk}" → projects map (${projectsMap[migrationOk]?.path})`);
     for (const line of quickCheckLines(checks)) console.log(line);
     const shNote = pinsayShNote(cwd);
     if (shNote) console.log(dim(shNote));
