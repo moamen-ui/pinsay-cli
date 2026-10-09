@@ -1,4 +1,5 @@
 import { api, ApiError } from '../api.js';
+import { ProjectNotFoundError } from '../errors.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
 
 export type QueueFilter = {
@@ -135,6 +136,7 @@ export async function fetchQueue(
       };
     });
   } catch (err: any) {
+    if (err instanceof ApiError && err.code === 404) throw new ProjectNotFoundError(ctx.project, ctx.workspaceName);
     if (err instanceof ApiError && err.code === 403) {
       if (!warnedNonAdminFallback) {
         console.error('Note: predefined-action prompts need an admin key');
@@ -142,11 +144,19 @@ export async function fetchQueue(
       }
 
       const summaryQuery = `view=summary${qs ? `&${qs.slice(1)}` : ''}`;
-      const res = await api<any>(
-        ctx.server,
-        `/api/projects/${encodeURIComponent(ctx.project)}/comments?${summaryQuery}`,
-        { token: ctx.token },
-      );
+      let res: any;
+      try {
+        res = await api<any>(
+          ctx.server,
+          `/api/projects/${encodeURIComponent(ctx.project)}/comments?${summaryQuery}`,
+          { token: ctx.token },
+        );
+      } catch (fallbackErr) {
+        if (fallbackErr instanceof ApiError && fallbackErr.code === 404) {
+          throw new ProjectNotFoundError(ctx.project, ctx.workspaceName);
+        }
+        throw fallbackErr;
+      }
 
       const items: any[] = res?.items ?? [];
       return items.map((item: any): QueueItem => ({

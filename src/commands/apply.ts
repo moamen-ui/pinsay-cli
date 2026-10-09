@@ -19,9 +19,10 @@ import { resolveServer } from '../server.js';
  * confusingly deep into a run. `GET /api/auth/me` is the one endpoint that stays open for a key
  * session regardless (`AuthController.Me` carries `[AllowWhenWorkspacePaused(AllowKeySessions:
  * true)]`) precisely so this can read the state and explain it before anything else happens.
+ * Returns the workspace name (`tenantName`) for the project-not-found message, or undefined.
  */
-async function exitIfWorkspaceFrozen(server: string, token: string | undefined): Promise<void> {
-  if (!token) return; // no session to ask — the calls that follow will fail on their own terms
+async function exitIfWorkspaceFrozen(server: string, token: string | undefined): Promise<string | undefined> {
+  if (!token) return undefined; // no session to ask — the calls that follow will fail on their own terms
   try {
     const me = await api<any>(server, '/api/auth/me', { token });
     if (me?.workspaceDeletionScheduledFor) {
@@ -35,9 +36,11 @@ async function exitIfWorkspaceFrozen(server: string, token: string | undefined):
       );
       process.exit(2);
     }
+    return me?.tenantName || undefined;
   } catch {
     // Best-effort: a network hiccup reading /me must not block apply on its own — if the workspace
     // really is frozen, every subsequent write still 423s downstream.
+    return undefined;
   }
 }
 
@@ -158,7 +161,7 @@ export async function applyCommand(
 
   // DB-18: before any git/AI work — covers the default run, --plan, --mark and --fail alike (they
   // all fall through to this one point after auth resolves).
-  await exitIfWorkspaceFrozen(server, token);
+  const workspaceName = await exitIfWorkspaceFrozen(server, token);
 
   // `root`, not the original `cwd`: git operations, the stack file and the manifest all resolve
   // relative to the repo root, whichever app directory the command was actually run from.
@@ -168,6 +171,7 @@ export async function applyCommand(
     token,
     apiKey,
     cwd: root,
+    workspaceName,
   };
 
   // 1. Handling --mark <id>|all
@@ -338,7 +342,7 @@ async function applyAllProjects(
 
   // DB-18: same check as the single-project path — the multi-project default/`--plan`/`--json`
   // run reaches here without ever going through applyCommand's own check.
-  await exitIfWorkspaceFrozen(server, token);
+  const workspaceName = await exitIfWorkspaceFrozen(server, token);
 
   const projects = listProjects(config);
   const plan = parsed['plan'] === true;
@@ -348,7 +352,7 @@ async function applyAllProjects(
   if (parsed['json'] === true && !plan) {
     const all: Array<{ project: string; path: string; items: unknown[] }> = [];
     for (const p of projects) {
-      const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root };
+      const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root, workspaceName };
       const items = await fetchQueue(clientCtx, { status, environment });
       all.push({ project: p.key, path: p.path, items: items.map((item) => toAiCommentView(item)) });
     }
@@ -358,7 +362,7 @@ async function applyAllProjects(
 
   const sections: string[] = [];
   for (const p of projects) {
-    const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root };
+    const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root, workspaceName };
     const result = await runApply({ plan, status, environment }, clientCtx);
     sections.push(`# Project: ${p.key} (${p.path})\n\n${result.prompt}`);
   }

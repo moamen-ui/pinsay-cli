@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, type Server } from 'node:http';
 import { fetchQueue, resetFallbackWarning } from '../src/apply/queue.js';
+import { ProjectNotFoundError } from '../src/errors.js';
 import type { ApplyClientContext } from '../src/apply/types.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -134,6 +135,66 @@ test('fetchQueue falls back to summary view on 403 and warns once', async () => 
       l.includes('Note: predefined-action prompts need an admin key'),
     );
     assert.equal(warningLogs.length, 1, 'Note must be logged exactly once per run');
+  } finally {
+    await stub.close();
+  }
+});
+
+test('fetchQueue: a 404 on the apply queue is ProjectNotFoundError with the workspace name', async () => {
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/demo/apply-queue')) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+  });
+
+  try {
+    await assert.rejects(
+      fetchQueue({ server: stub.url, project: 'demo', token: 't', cwd: '.', workspaceName: 'PinSay' }),
+      (err: any) => {
+        assert.ok(err instanceof ProjectNotFoundError);
+        assert.equal(err.project, 'demo');
+        assert.equal(err.workspace, 'PinSay');
+        assert.equal(err.code, 'not_found');
+        return true;
+      },
+    );
+  } finally {
+    await stub.close();
+  }
+});
+
+test('fetchQueue: a 403 then a 404 on the summary fallback is ProjectNotFoundError', async () => {
+  resetFallbackWarning();
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/demo/apply-queue')) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'Forbidden' }));
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/demo/comments')) {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+  });
+
+  try {
+    await assert.rejects(
+      fetchQueue({ server: stub.url, project: 'demo', token: 't', cwd: '.', workspaceName: 'PinSay' }),
+      (err: any) => {
+        assert.ok(err instanceof ProjectNotFoundError);
+        assert.equal(err.project, 'demo');
+        assert.equal(err.workspace, 'PinSay');
+        assert.equal(err.code, 'not_found');
+        return true;
+      },
+    );
   } finally {
     await stub.close();
   }
