@@ -1,6 +1,6 @@
 import * as readline from 'node:readline/promises';
 import { emitKeypressEvents } from 'node:readline';
-import { answeredLine, colorEnabled, cyan, dim, questionLine, red, sym } from './ui/style.js';
+import { answeredLine, band, bold, colorEnabled, dim, questionLine, red, sym } from './ui/style.js';
 
 /** Written (with a leading and trailing newline) before exit 130 whenever a prompt is abandoned. */
 export const CANCELLED_MESSAGE = 'Cancelled. Nothing was written.';
@@ -231,9 +231,9 @@ async function menu(question: string, items: string[], cursorStart: number, opts
         process.stdout.write('\x1b[0J');
         process.stdout.write(`${hint}\n`);
         items.forEach((item, i) => {
-            const pointer = i === cursor ? cyan(sym.pointer) : ' ';
-            const box = multi ? (selected.has(i) ? `${cyan(sym.boxOn)} ` : `${sym.boxOff} `) : '';
-            const label = i === cursor ? cyan(item) : item;
+            const pointer = i === cursor ? bold(sym.pointer) : ' ';
+            const box = multi ? (selected.has(i) ? `${bold(sym.boxOn)} ` : `${sym.boxOff} `) : '';
+            const label = i === cursor ? band(item) : item;
             process.stdout.write(`${pointer} ${box}${label}\n`);
         });
     };

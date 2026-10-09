@@ -25,5 +25,7 @@ export function nextStepText(c: NextCase, product: string): string {
 }
 
 export function renderNext(text: string): string[] {
-  return [accent(text), dim('Check any time: npx pinsay-cli status')];
+  const m = /^(.*?) ?(?:→|->) (https?:\/\/\S+)$/.exec(text);
+  const head = m ? [accent(`${m[1]}:`), accent(`      ${m[2]}`)] : [accent(text)];
+  return [...head, dim('Check any time: npx pinsay-cli status')];
 }

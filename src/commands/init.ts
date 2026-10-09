@@ -41,7 +41,7 @@ import { createProgress, progressMode } from '../init/progress.js';
 import { quickCheckLines } from '../init/quick-check.js';
 import { planEmbed, runEmbed, resolvePin, findExistingWidget, resolveHtmlCandidate, hasViteConfig, type EmbedPlan } from '../embed/embed.js';
 import { pinsayShNote } from '../lib/legacy.js';
-import { skillFilesFor } from '../lib/skill-paths.js';
+import { planSkillPaths } from '../lib/skill-paths.js';
 
 type KeySaved = 'repo' | 'global' | 'existing';
 type Widget = InitPlan['widget'];
@@ -302,7 +302,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                 ? []
                 : tools.map((t) => ({
                       tool: t,
-                      paths: skillFilesFor({ aiTool: t, skillsDir: t === tool ? (options['skills-dir'] as string) : undefined }),
+                      paths: planSkillPaths(t, t === tool ? (options['skills-dir'] as string) : undefined),
                   })),
             files,
             shared,
@@ -393,7 +393,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         ? []
         : tools.map((t) => ({
               tool: t,
-              paths: skillFilesFor({ aiTool: t, skillsDir: t === tool ? (options['skills-dir'] as string) : undefined }),
+              paths: planSkillPaths(t, t === tool ? (options['skills-dir'] as string) : undefined),
           }));
     const files = [
         '.pinsay/config.json',
@@ -766,7 +766,7 @@ function skillsFor(tools: string[], tool: string, options: Record<string, string
     if (options['no-skills']) return [];
     return tools.map((t) => ({
         tool: t,
-        paths: skillFilesFor({ aiTool: t, skillsDir: t === tool ? (options['skills-dir'] as string) : undefined }),
+        paths: planSkillPaths(t, t === tool ? (options['skills-dir'] as string) : undefined),
     }));
 }
 

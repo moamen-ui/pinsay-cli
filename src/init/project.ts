@@ -88,12 +88,18 @@ export async function chooseProject(
   }
 
   const createRow = `${sym.plus} ${CREATE_ROW_LABEL}`;
-  const rows = projects.map((p) => `${p.name}  (${p.key})`);
+  const sorted = sortProjects(projects);
+  const rows = sorted.map((p) => `${p.name}  (${p.key})`);
   const question = opts.label ? `Which project is ${opts.label}?` : 'Which project is this app?';
   const choice = await select(question, me.isAdmin ? [...rows, createRow] : rows);
   if (choice === createRow) return askNewProject();
-  const picked = projects[rows.indexOf(choice)];
+  const picked = sorted[rows.indexOf(choice)];
   return { key: picked.key, name: picked.name, create: false };
+}
+
+/** Projects by name, case-insensitive; the create row is added after them. */
+export function sortProjects<T extends { name: string }>(projects: T[]): T[] {
+  return [...projects].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 }
 
 async function askNewProject(): Promise<ProjectChoice> {

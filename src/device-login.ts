@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { hostname } from 'node:os';
 import { api, ApiError } from './api.js';
+import { colorEnabled } from './ui/style.js';
 
 /** Shape returned by the server on POST /api/auth/device/start. */
 interface DeviceStartResponse {
@@ -92,6 +93,7 @@ export async function runDeviceLogin(
   console.log('Open this link and enter the code to sign in:');
   console.log(`  ${start.verificationUrl}`);
   console.log(`  Code: ${start.userCode}`);
+  const printedLines = 4;
   console.log('Waiting for approval… (Ctrl+C to cancel)');
 
   if (!options.noBrowser) openBrowser(start.verificationUrl);
@@ -125,6 +127,8 @@ export async function runDeviceLogin(
         // expired (a retryable "start over") rather than trusting a key-less success.
         return { ok: false, reason: 'expired' };
       }
+      // Tidy: drop the link/code/waiting lines so only the caller's "Signed in" line stays.
+      if (colorEnabled() && process.stdout.isTTY) process.stdout.write(`\x1b[${printedLines}A\x1b[0J`);
       return { ok: true, result: { apiKey: poll.apiKey, displayName: poll.displayName, email: poll.email } };
     }
     if (poll.status === 'denied') return { ok: false, reason: 'denied' };

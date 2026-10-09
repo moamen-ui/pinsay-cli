@@ -1,6 +1,6 @@
 import { after, before, test } from 'node:test';
 import * as assert from 'node:assert';
-import { nextStepText } from '../src/init/next-step.js';
+import { nextStepText, renderNext } from '../src/init/next-step.js';
 
 let prevNoColor: string | undefined;
 before(() => {
@@ -39,4 +39,14 @@ test('a stack the skill must embed', () => {
 
 test('join: the repo is already set up', () => {
   assert.equal(nextStepText({ kind: 'join' }, 'PinSay'), 'Next: tell your AI agent: Apply the new PinSay comments');
+});
+
+test('renderNext puts a URL on its own line, indented 6 spaces', () => {
+  const text = nextStepText({ kind: 'extension', storeUrl: 'https://pinsay.dev/extension' }, 'PinSay');
+  assert.deepEqual(renderNext(text), [
+    'Next: install the PinSay Chrome extension, open your app and click the PinSay icon:',
+    '      https://pinsay.dev/extension',
+    'Check any time: npx pinsay-cli status',
+  ]);
+  assert.equal(renderNext('Next: start your app and click the PinSay button.')[0], 'Next: start your app and click the PinSay button.');
 });

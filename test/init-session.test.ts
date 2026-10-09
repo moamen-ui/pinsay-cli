@@ -8,6 +8,7 @@ import { exchangeKey, signIn, InvalidKeyError, quickAccessMessage, noKeyMessage 
 import {
   chooseProject,
   createProject,
+  sortProjects,
   slugifyKey,
   MEMBER_NO_PROJECT,
   MEMBER_CANNOT_CREATE,
@@ -198,4 +199,10 @@ test('member message texts are the SPEC wording', () => {
   assert.match(MEMBER_NO_PROJECT, /^You don't have a project yet\. Ask your workspace admin to create one, or copy the ready command from the widget \(profile menu → Connect your repo\)\.$/);
   assert.strictEqual(memberMissingProject('k'), 'Project "k" isn\'t in your workspace. Check the key, or ask your admin.');
   assert.strictEqual(slugifyKey('  Hello  World--App '), 'hello-world-app');
+});
+
+test('sortProjects: by name, case-insensitive, input untouched', () => {
+  const input = [{ name: 'zeta' }, { name: 'Beta' }, { name: 'alpha' }];
+  assert.deepStrictEqual(sortProjects(input).map((p) => p.name), ['alpha', 'Beta', 'zeta']);
+  assert.deepStrictEqual(input.map((p) => p.name), ['zeta', 'Beta', 'alpha']);
 });

@@ -2,6 +2,19 @@ import { SKILL_FILES, SUB_SKILLS } from '../skills.js';
 import type { PinSayConfig } from '../config.js';
 
 /**
+ * The skill paths an `init` plan lists for `tool`: what `skillFilesFor` gives, plus the
+ * `.agents/skills/...` mirrors `installSkills` also writes for claude-code, cursor and windsurf
+ * (not with a `--skills-dir` override).
+ */
+export function planSkillPaths(tool: string, skillsDir?: string): string[] {
+  const paths = skillFilesFor({ aiTool: tool, skillsDir });
+  if (!skillsDir && (tool === 'claude-code' || tool === 'cursor' || tool === 'windsurf')) {
+    paths.push('.agents/skills/pinsay-init/SKILL.md', '.agents/skills/pinsay-feedback/SKILL.md');
+  }
+  return paths;
+}
+
+/**
  * Every file on disk that the server serves and `update` can refresh, for this install.
  *
  * config.json records the AI tool's NAME, not a directory — the mapping from one to the other

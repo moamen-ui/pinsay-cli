@@ -49,7 +49,6 @@ export const bold = wrap('1');
 export const green = wrap('32');
 export const red = wrap('31');
 export const yellow = wrap('33');
-export const cyan = wrap('36');
 /** The accent for the plan heading and the `Next` line (same blue as the question band). */
 export const accent = wrap('1;34');
 
