@@ -20,7 +20,7 @@ export type Profile = {
   isQuickAccess: boolean;
 }
 
-/** Where this run's key came from. `env`/`repo`/`global` = already saved (nothing to write); the rest are new. */
+/** Where this run's key came from. `env`/`repo` = already saved (nothing to write); the rest are new. */
 export type KeyOrigin = 'flag' | 'typed' | 'browser' | Exclude<ApiKeySource, null>;
 
 export type Session = {

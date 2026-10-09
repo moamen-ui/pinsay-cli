@@ -168,6 +168,7 @@ test('init: tools and share questions then "Go ahead?" answered with Enter exits
 
 test('login --key (no value): hidden key is typed, accepted, never echoed, and the process exits 0', { skip }, async () => {
     const dir = tmp();
+    spawnSync('git', ['init', '-q'], { cwd: dir }); // login saves the key in the repo and refuses to run outside one
     const r = await pty(dir, serverUrl, [['input hidden', 'ptr_good\r']], ['login', '--key']);
     assert.notStrictEqual(r.code, 'TIMEOUT', 'the process must exit on its own');
     assert.strictEqual(r.code, 0, r.output);

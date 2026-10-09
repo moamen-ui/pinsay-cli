@@ -25,7 +25,7 @@ import { promises as fs, existsSync } from 'node:fs';
 import { join, dirname, relative, resolve, isAbsolute, sep, basename } from 'node:path';
 import { detectDesignTokens, type DesignBlock } from '../stack/design.js';
 import { buildRequestBody, mergeStack, writeStackFile, readStackFile, stackFileRelPath } from '../stack/stackfile.js';
-import { resolveApiKey, saveGlobalCredential, globalCredentialsPath } from '../credentials.js';
+import { resolveApiKey } from '../credentials.js';
 import { scopeFromFlags } from '../key-scope.js';
 import { shareFromFlags } from '../consent.js';
 import { resolveServer } from '../server.js';
@@ -43,7 +43,7 @@ import { planEmbed, runEmbed, resolvePin, findExistingWidget, resolveHtmlCandida
 import { pinsayShNote } from '../lib/legacy.js';
 import { planSkillPaths } from '../lib/skill-paths.js';
 
-type KeySaved = 'repo' | 'global' | 'existing';
+type KeySaved = 'repo' | 'existing';
 type Widget = InitPlan['widget'];
 
 const ALL_ENVS = ['local', 'staging', 'production'];
@@ -119,22 +119,14 @@ async function decideWidget(
     return w ? { widget: { kind: 'already', file: w.file } } : { widget: { kind: 'extension' } };
 }
 
-/** Where this run's key ends up. A key that already resolves from env, the repo or the machine needs nothing. */
-function keyPlacement(session: Session, saveGlobal: boolean): KeySaved {
-    if (session.origin === 'env' || session.origin === 'repo' || session.origin === 'global') return 'existing';
-    return saveGlobal ? 'global' : 'repo';
+/** Where this run's key ends up. A key that already resolves from env or the repo needs nothing. */
+function keyPlacement(session: Session): KeySaved {
+    if (session.origin === 'env' || session.origin === 'repo') return 'existing';
+    return 'repo';
 }
 
-async function saveKey(cwd: string, server: string, session: Session, keySaved: KeySaved, project?: string): Promise<void> {
-    if (keySaved === 'repo') {
-        await writeCredentials(cwd, session.key, project ? { project } : {});
-    } else if (keySaved === 'global') {
-        await saveGlobalCredential(server, {
-            apiKey: session.key,
-            email: session.me.email,
-            displayName: session.me.displayName,
-        });
-    }
+async function saveKey(cwd: string, session: Session, keySaved: KeySaved, project?: string): Promise<void> {
+    if (keySaved === 'repo') await writeCredentials(cwd, session.key, project ? { project } : {});
 }
 
 async function readStackNames(cwd: string): Promise<{ frontend: string[]; backend: string[] }> {
@@ -173,7 +165,6 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     }
     const scopeResult = scopeFromFlags(options);
     if (scopeResult.error) exitWithError(2, scopeResult.error, json);
-    const saveGlobal = scopeResult.scope === 'global';
     const shareResult = shareFromFlags(options);
     if (shareResult.error) exitWithError(2, shareResult.error, json);
 
@@ -254,7 +245,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     if (dryRun && (isAddProject || configIsMulti)) {
         await multiDryRun({
-            cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti, saveGlobal,
+            cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti,
             share: shareResult.share, wantEmbed, notes,
         });
     }
@@ -289,7 +280,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         const files = [
             '.pinsay/config.json',
             '.pinsay/stack.json',
-            ...(account.kind === 'pending' && !saveGlobal ? ['.pinsay/credentials.env'] : []),
+            ...(account.kind === 'pending' ? ['.pinsay/credentials.env'] : []),
             ...(widget.kind === 'embed' ? widget.files : []),
             '.git/info/exclude (PinSay block)',
         ];
@@ -327,7 +318,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
         product,
     });
     if (!json) console.log(`${green(sym.check)} Signed in as ${session.me.displayName}`);
-    const keySaved = keyPlacement(session, saveGlobal);
+    const keySaved = keyPlacement(session);
 
     // Multi-project join: the repo already has apps configured under `projects`; this is another
     // clone or machine. See `handleMultiJoin`.
@@ -410,8 +401,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             displayName: session.me.displayName,
             keySaved,
             existingSource:
-                session.origin === 'env' || session.origin === 'repo' || session.origin === 'global' ? session.origin : undefined,
-            globalPath: globalCredentialsPath(),
+                session.origin === 'env' || session.origin === 'repo' ? session.origin : undefined,
         },
         widget,
         skills,
@@ -489,7 +479,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     if (keySaved !== 'existing') {
         progress.step('Saving your key');
-        await saveKey(cwd, server, session, keySaved, project.key);
+        await saveKey(cwd, session, keySaved, project.key);
         if (keySaved === 'repo') filesMod.push('.pinsay/credentials.env');
     }
 
@@ -790,8 +780,7 @@ function planAccount(session: Session, keySaved: KeySaved): InitPlan['account'] 
         displayName: session.me.displayName,
         keySaved,
         existingSource:
-            session.origin === 'env' || session.origin === 'repo' || session.origin === 'global' ? session.origin : undefined,
-        globalPath: globalCredentialsPath(),
+            session.origin === 'env' || session.origin === 'repo' ? session.origin : undefined,
     };
 }
 
@@ -806,12 +795,11 @@ async function multiDryRun(args: {
     product: string;
     pathFlag?: string;
     configIsMulti: boolean;
-    saveGlobal: boolean;
     share: boolean | undefined;
     wantEmbed: boolean;
     notes: string[];
 }): Promise<never> {
-    const { cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti, saveGlobal, wantEmbed } = args;
+    const { cwd, config, options, server, json, interactive, product, pathFlag, configIsMulti, wantEmbed } = args;
     const flagTool = typeof options['tool'] === 'string' ? (options['tool'] as string) : undefined;
     const resolved = await resolveApiKey(cwd, server);
     const account: InitPlan['account'] =
@@ -829,7 +817,7 @@ async function multiDryRun(args: {
               : interactive
                 ? { decided: false, share: true, saved: false, ...names, aiTools: tools }
                 : { decided: true, share: true, saved: false, ...names, aiTools: tools };
-    const keyFile = account.kind === 'pending' && !saveGlobal ? ['.pinsay/credentials.env'] : [];
+    const keyFile = account.kind === 'pending' ? ['.pinsay/credentials.env'] : [];
 
     let plan: InitPlan;
     let projectLine: string | undefined;
@@ -1113,7 +1101,7 @@ async function handleMultiJoin(args: {
 
     if (keySaved !== 'existing') {
         progress.step('Saving your key');
-        await saveKey(cwd, server, session, keySaved);
+        await saveKey(cwd, session, keySaved);
     }
     const skillWarnings: SkillWarning[] = [];
     const hide: string[] = [];
@@ -1317,7 +1305,7 @@ async function handleMultiProjectSetup(args: {
 
     if (keySaved !== 'existing') {
         progress.step('Saving your key');
-        await saveKey(cwd, server, session, keySaved);
+        await saveKey(cwd, session, keySaved);
     }
 
     const skillWarnings: SkillWarning[] = [];

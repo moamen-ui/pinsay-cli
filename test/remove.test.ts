@@ -9,7 +9,7 @@ import { hidePinsayFiles, removeExcludeBlock } from '../src/lib/git-exclude.js';
 import { writableInsideRoot } from '../src/commands/remove.js';
 import { injectVite } from '../src/inject/vite.js';
 import { SKILL_FILES } from '../src/skills.js';
-import { saveGlobalCredential, globalCredentialsPath } from '../src/credentials.js';
+import { globalCredentialsPath } from '../src/credentials.js';
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/cli.js');
 const SERVER = 'http://127.0.0.1:9';
@@ -52,7 +52,7 @@ async function fixture(dir: string, configDir: string): Promise<{ exclude: strin
     const env = 'USER_LINE=1\n';
     write(dir, '.env.development', env);
     process.env.PINSAY_CONFIG_DIR = configDir;
-    await saveGlobalCredential(SERVER, { apiKey: 'ptr_test' });
+    fs.writeFileSync(globalCredentialsPath(), JSON.stringify({ [new URL(SERVER).origin]: { apiKey: 'ptr_test' } }), 'utf8');
     await hidePinsayFiles(dir);
     for (const rel of [...SKILL_FILES['claude-code'], ...SKILL_FILES['cursor']]) write(dir, rel, '# skill\n');
     write(
@@ -132,15 +132,17 @@ test('remove --dry-run prints the list and changes nothing', async () => {
     }
 });
 
-test('remove --global --yes removes the global entry too', async () => {
+test('remove --global exits 2 with the removed-flag message and removes nothing', async () => {
     const dir = tmp();
     const configDir = tmp();
     try {
         await fixture(dir, configDir);
         const r = run(dir, configDir, ['--global', '--yes']);
-        assert.strictEqual(r.code, 0, r.err);
+        assert.strictEqual(r.code, 2);
+        assert.match(r.out + r.err, /--global is no longer supported/);
+        assert.ok(fs.existsSync(path.join(dir, '.pinsay')));
         const store = JSON.parse(fs.readFileSync(globalCredentialsPath(), 'utf8'));
-        assert.ok(!('http://127.0.0.1:9' in store));
+        assert.strictEqual(store['http://127.0.0.1:9'].apiKey, 'ptr_test');
     } finally {
         rm(dir);
         rm(configDir);

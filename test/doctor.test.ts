@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
 import { compareSemver, runInitChecks } from '../src/checks.js';
 import { doctorCommand, exitCodeFor } from '../src/commands/doctor.js';
-import { saveGlobalCredential } from '../src/credentials.js';
+import { globalCredentialsPath } from '../src/credentials.js';
 
 async function scratch(config?: Record<string, unknown>, apiKey?: string): Promise<string> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-doctor-'));
@@ -163,13 +163,8 @@ test('a rejected API key is an error, and a valid one unlocks the project check'
   assert.equal(goodChecks.find((c) => c.id === 'widget-served')?.status, 'ok');
 });
 
-/**
- * The `key` check's message names its SOURCE (env / repo / global) — added when the API key
- * resolver gained a third source (the global per-machine store `pinsay login` writes to). A repo
- * with no `.pinsay/credentials.env` at all should still pass, sourced from the global store, and
- * doctor's hint on a total miss should point at `login`.
- */
-test('the key check names its source, including the global store, and hints `login` when nothing resolves', async () => {
+/** Since 0.10.0 a key in the machine folder is not used: doctor's key check errors and hints `login`. */
+test('a key only in the machine folder is not used: the key check errors and hints login', async () => {
   const now = new Date().toISOString();
   const stub = await stubServer({
     'GET /api/branding': [200, {}],
@@ -183,13 +178,13 @@ test('the key check names its source, including the global store, and hints `log
   const globalDir = await fs.mkdtemp(join(tmpdir(), 'pinsay-doctor-global-'));
   process.env.PINSAY_CONFIG_DIR = globalDir;
   try {
-    // No credentials.env at all — only the global store has a key for this server.
+    // No credentials.env at all — only an old machine store has a key for this server.
     const dir = await scratch({ server: stub.url, project: 'demo', environment: 'local' });
-    await saveGlobalCredential(stub.url, { apiKey: 'ptr_global' });
+    await fs.writeFile(globalCredentialsPath(), JSON.stringify({ [new URL(stub.url).origin]: { apiKey: 'ptr_global' } }), 'utf8');
 
     const checks = await runInitChecks(dir, { server: stub.url }, '1.0.0');
-    assert.equal(checks.find((c) => c.id === 'key')?.status, 'ok');
-    assert.match(checks.find((c) => c.id === 'key')?.message ?? '', /\(global store\)/);
+    assert.equal(checks.find((c) => c.id === 'key')?.status, 'error');
+    assert.match(checks.find((c) => c.id === 'key')?.hint ?? '', /login/);
   } finally {
     if (prevConfigDir === undefined) delete process.env.PINSAY_CONFIG_DIR;
     else process.env.PINSAY_CONFIG_DIR = prevConfigDir;
@@ -198,7 +193,7 @@ test('the key check names its source, including the global store, and hints `log
   await stub.close();
 });
 
-test('no key anywhere (env, repo, or global) hints `login`', async () => {
+test('no key anywhere (env or repo) hints `login`', async () => {
   const prevConfigDir = process.env.PINSAY_CONFIG_DIR;
   const globalDir = await fs.mkdtemp(join(tmpdir(), 'pinsay-doctor-global-empty-'));
   process.env.PINSAY_CONFIG_DIR = globalDir;

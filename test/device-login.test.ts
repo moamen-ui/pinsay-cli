@@ -116,10 +116,11 @@ async function withStubServer(
   }
 }
 
-test('login --no-browser: prints the link and code, then saves the key globally once approved', () =>
+test('login --no-browser: prints the link and code, then saves the key in the repo once approved', () =>
   withStubServer('approve-after-one', (serverUrl) =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
+        await execAsync('git init -q', { cwd: repo });
         const { stdout } = await execAsync(`node ${cliPath} login --no-browser`, {
           cwd: repo,
           env: envFor(globalDir),
@@ -130,11 +131,11 @@ test('login --no-browser: prints the link and code, then saves the key globally 
         assert.match(stdout, /Code: ABCD-EFGH/);
         assert.match(stdout, /Waiting for approval/);
         assert.match(stdout, /Signed in as Device User \(device@example\.test\)/);
-        assert.match(stdout, /saved on this machine/);
+        assert.match(stdout, /Key saved in this repo/);
 
-        const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
-        assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_from_device_flow');
-        assert.strictEqual(store[new URL(serverUrl).origin].email, 'device@example.test');
+        const creds = await fs.readFile(path.join(repo, '.pinsay', 'credentials.env'), 'utf8');
+        assert.match(creds, /^PINSAY_API_KEY=ptr_from_device_flow$/m);
+        await assert.rejects(fs.access(path.join(globalDir, 'credentials.json')));
       }),
     ),
   ));
@@ -143,6 +144,7 @@ test('login --no-browser: a denied code exits 3 with a clear message', () =>
   withStubServer('deny-immediately', (serverUrl) =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
+        await execAsync('git init -q', { cwd: repo });
         await assert.rejects(
           execAsync(`node ${cliPath} login --no-browser`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
@@ -159,6 +161,7 @@ test('login --no-browser: an expired code exits 3 with a clear message', () =>
   withStubServer('expire-immediately', (serverUrl) =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
+        await execAsync('git init -q', { cwd: repo });
         await assert.rejects(
           execAsync(`node ${cliPath} login --no-browser`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {
@@ -178,6 +181,7 @@ test('login: no --key and no TTY (and no --no-browser) exits 2 with the fallback
   withStubServer('deny-immediately', (serverUrl) =>
     withTempDir((repo) =>
       withGlobalDir(async (globalDir) => {
+        await execAsync('git init -q', { cwd: repo });
         await assert.rejects(
           execAsync(`node ${cliPath} login`, { cwd: repo, env: envFor(globalDir) }),
           (err: any) => {

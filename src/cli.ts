@@ -38,7 +38,7 @@ function parseArgs(args: string[]) {
         'no-browser',
         // 0.9.0
         'embed',
-        'global',
+        'global', // rejected since 0.10.0 (key-scope.ts); kept so it never takes the next argument
         'share-stack',
         'no-share-stack',
         'no-color',
@@ -75,7 +75,7 @@ const HELP = `Usage: npx pinsay-cli <command> [options]
 Set up
   init      Set up this repo (sign in, project, skills)
   embed     Put the widget in your app's code
-  login     Sign in; the key is saved in this repo (--global: this machine)
+  login     Sign in; the key is saved in this repo
   logout    Remove the key this repo uses
   remove    Remove everything PinSay added to this repo
 Daily
@@ -90,7 +90,7 @@ Tools
   update    Refresh the AI skills
   map       Rebuild the source map without a build
   mcp       Start the MCP server for AI tools
-  whoami    Show the signed-in account and where the key came from
+  whoami    Show the signed-in account, workspace and key source
 
 Run npx pinsay-cli <command> --help for examples.
 Flags: --no-color  No colours or styling (also NO_COLOR=1)
@@ -137,7 +137,6 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--dry-run', 'Show the plan; write and send nothing'],
             ['--path <app>', 'The app folder, in a repo with several apps'],
             ['--key <key>', 'Sign in with this key instead of the browser'],
-            ['--global', 'Save the key on this machine (repo is the default)'],
             ['--no-browser', "Print the sign-in link; don't open a browser"],
             ['--tool <tool>', 'AI tool for the skills (asked when omitted)'],
             ['--skills-dir <path>', 'Where the skills are installed'],
@@ -150,7 +149,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--no-share-stack', "Share nothing about this app's stack"],
             ['--delivery <embed|extension>', 'How reviewers open the widget', true],
             ['--no-inject', 'Skip injection (use --embed or --html)', true],
-            ['--scope <global|repo>', 'Where the key is saved (--global is the new spelling)', true],
+            ['--scope repo', 'Old spelling; the key is always saved in this repo', true],
             ['--local-credentials', 'Alias of --scope repo', true],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
@@ -189,45 +188,39 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
     },
     login: {
-        purpose: 'Sign in; the key is saved in this repo (--global: this machine)',
+        purpose: 'Sign in; the key is saved in this repo',
         usage: 'npx pinsay-cli login [options]',
         common: [
             ['--key <key>', 'Validate a pasted key; skip the browser'],
-            ['--global', 'Save the key on this machine, not this repo'],
             ['--no-browser', "Print the sign-in link; don't open a browser"],
             ['--json', 'Machine-readable output'],
         ],
         all: [
             ['--key <key>', 'Validate a pasted key; skip the browser'],
-            ['--global', 'Save the key on this machine, not this repo'],
             ['--no-browser', "Print the sign-in link; don't open a browser"],
             ['--json', 'Machine-readable output'],
-            ['--scope <global|repo>', 'Where to save the key, without asking', true],
+            ['--scope repo', 'Old spelling; the key is always saved in this repo', true],
             ['--local-credentials', 'Alias of --scope repo', true],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli login', 'Open the browser; save the key in this repo'],
-            ['npx pinsay-cli login --global', 'Save the key on this machine'],
             ['npx pinsay-cli login --key <key>', 'Save a pasted key; no browser'],
         ],
     },
     logout: {
-        purpose: 'Remove the key this repo uses',
+        purpose: "Remove this repo's key",
         usage: 'npx pinsay-cli logout [options]',
         common: [
-            ['--global', "Remove this machine's saved key instead"],
             ['--json', 'Emit { ok, server, source, removed } as JSON'],
         ],
         all: [
-            ['--global', "Remove this machine's saved key instead"],
             ['--json', 'Emit { ok, server, source, removed } as JSON'],
-            ['--scope <global|repo>', 'Old spelling; only global changes anything', true],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli logout', "Remove this repo's key"],
-            ['npx pinsay-cli logout --global', "Also remove this machine's key"],
+            ['npx pinsay-cli update', 'Also delete an old machine-wide key'],
         ],
     },
     remove: {
@@ -236,20 +229,17 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         common: [
             ['--dry-run', 'Show what would be removed; delete nothing'],
             ['-y, --yes', 'Remove without asking'],
-            ['--global', "Also remove this machine's saved key"],
             ['--json', 'Machine-readable output'],
         ],
         all: [
             ['--dry-run', 'Show what would be removed; delete nothing'],
             ['-y, --yes', 'Remove without asking'],
-            ['--global', "Also remove this machine's saved key"],
             ['--json', 'Machine-readable output'],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
             ['npx pinsay-cli remove --dry-run', 'Show what would be removed'],
             ['npx pinsay-cli remove --yes', 'Remove without asking'],
-            ['npx pinsay-cli remove --global', "Also remove this machine's key"],
         ],
     },
     status: {
@@ -467,13 +457,13 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
     },
     whoami: {
-        purpose: 'Show the signed-in account and where the key came from',
+        purpose: 'Show the signed-in account, workspace and key source',
         usage: 'npx pinsay-cli whoami [options]',
         common: [
-            ['--json', 'Emit { ok, server, displayName, email, source } as JSON'],
+            ['--json', 'Emit { ok, server, displayName, email, workspace, source } as JSON'],
         ],
         all: [
-            ['--json', 'Emit { ok, server, displayName, email, source } as JSON'],
+            ['--json', 'Emit { ok, server, displayName, email, workspace, source } as JSON'],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [

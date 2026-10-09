@@ -28,7 +28,6 @@ function signedInPlan(): InitPlan {
       kind: 'signed-in',
       displayName: 'Jane Doe',
       keySaved: 'repo',
-      globalPath: '~/.config/pinsay/credentials.env',
     },
     widget: { kind: 'extension' },
     skills: [{ tool: 'claude-code', paths: [...CLAUDE_CODE_PATHS] }],
@@ -93,8 +92,6 @@ test('dry run: a found key names its source and says it was not checked', () => 
   assert.equal(renderPlan(plan)[2], '  Account   key found (PINSAY_API_KEY), not checked in a dry run');
   plan.account = { kind: 'found', source: 'repo' };
   assert.equal(renderPlan(plan)[2], '  Account   key found (this repo), not checked in a dry run');
-  plan.account = { kind: 'found', source: 'global' };
-  assert.equal(renderPlan(plan)[2], '  Account   key found (this machine), not checked in a dry run');
 });
 
 test('an undecided share with a saved answer says so', () => {

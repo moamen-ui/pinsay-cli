@@ -87,8 +87,6 @@ export async function overviewCommand(
   let sourceDesc = 'key from this repo';
   if (source === 'env') {
     sourceDesc = 'key from PINSAY_API_KEY';
-  } else if (source === 'global') {
-    sourceDesc = 'key from this machine';
   }
 
   const who = email ? `${displayName} (${email})` : displayName;

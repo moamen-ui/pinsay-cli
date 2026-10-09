@@ -556,35 +556,14 @@ test('init --yes --path migrating the SAME project this run configures does not 
 }));
 
 // -----------------------------------------------------------------------------------------------
-// Global credential store — `init` saves a freshly-authenticated key globally by default
+// Key location — the key is saved in the repo only (0.10.0)
 // -----------------------------------------------------------------------------------------------
 
-test('init --global saves the key to the global store and writes no repo credentials.env', () => withTempDir(async (dir) => {
-  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
-
-  const { stdout } = await execAsync(
-    `node ${cliPath} init --yes --global --key ptr_good --create "My App"`,
-    { cwd: dir, env: envFor(dir) },
-  );
-  assert.match(stdout, /key saved on this machine/);
-
-  await assert.rejects(
-    fs.access(path.join(dir, '.pinsay/credentials.env')),
-    'no repo-local credentials file when the key was saved globally',
-  );
-
-  const storePath = path.join(globalDirFor(dir), 'credentials.json');
-  const store = JSON.parse(await fs.readFile(storePath, 'utf8'));
-  const origin = new URL(serverUrl).origin;
-  assert.strictEqual(store[origin].apiKey, 'ptr_good');
-  assert.strictEqual(store[origin].displayName, 'Test User');
-  assert.ok(store[origin].savedAt);
-
-  // Windows has no POSIX file modes
-  if (process.platform !== 'win32') {
-    const stat = await fs.stat(storePath);
-    assert.strictEqual(stat.mode & 0o777, 0o600, 'the global store file must be 0600');
-  }
+test('init --global exits 2 with the removed-flag message and writes nothing', () => withTempDir(async (dir) => {
+  const r = await runCli(dir, 'init --yes --global --key ptr_good --create "My App"');
+  assert.strictEqual(r.code, 2, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /--global is no longer supported/);
+  assert.strictEqual(await exists(path.join(dir, '.pinsay')), false);
 }));
 
 test('--local-credentials (alias of --scope repo) writes the repo file and not the global store', () => withTempDir(async (dir) => {
@@ -604,7 +583,7 @@ test('--local-credentials (alias of --scope repo) writes the repo file and not t
   );
 }));
 
-test('a join needs no --key at all when a key is already saved in the global store for this server', () => withTempDir(async (dir) => {
+test('a join ignores a key in the machine folder', () => withTempDir(async (dir) => {
   await fs.mkdir(path.join(dir, '.pinsay'), { recursive: true });
   await fs.writeFile(
     path.join(dir, '.pinsay/config.json'),
@@ -617,9 +596,7 @@ test('a join needs no --key at all when a key is already saved in the global sto
     }),
     'utf8',
   );
-  const indexPath = path.join(dir, 'index.html');
-  const original = '<html><head></head><body></body></html>';
-  await fs.writeFile(indexPath, original, 'utf8');
+  await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
 
   const globalDir = globalDirFor(dir);
   await fs.mkdir(globalDir, { recursive: true });
@@ -635,20 +612,10 @@ test('a join needs no --key at all when a key is already saved in the global sto
     'utf8',
   );
 
-  // No --key anywhere on the command line — the global store alone must resolve it.
-  const { stdout } = await execAsync(`node ${cliPath} init --yes`, {
-    cwd: dir,
-    env: envFor(dir),
-  });
-  assert.match(stdout, /Next: tell your AI agent/);
-
-  const html = await fs.readFile(indexPath, 'utf8');
-  assert.strictEqual(html, original, 'a join must never inject into the app');
-
-  await assert.rejects(
-    fs.access(path.join(dir, '.pinsay/credentials.env')),
-    'a key that resolved from the global store must not also be written to the repo',
-  );
+  // No --key anywhere on the command line, and the machine folder is not read any more.
+  const r = await runCli(dir, 'init --yes');
+  assert.strictEqual(r.code, 2, r.stdout + r.stderr);
+  assert.match(r.stdout + r.stderr, /No API key/);
 }));
 
 // -----------------------------------------------------------------------------------------------
@@ -742,7 +709,7 @@ test('init --yes --path twice with --local-credentials: credentials.env has neit
   assert.doesNotMatch(creds, /^PINSAY_PROJECT=/m, 'a multi-project repo must never pin credentials.env to one project — pinsay.sh takes -p there');
 }));
 
-test('init --scope repo writes the repo credentials file instead of the global store', () => withTempDir(async (dir) => {
+test('init --scope repo (old spelling) writes the repo credentials file', () => withTempDir(async (dir) => {
   await fs.writeFile(path.join(dir, 'index.html'), '<html><head></head><body></body></html>', 'utf8');
   const { stdout } = await execAsync(
     `node ${cliPath} init --yes --key ptr_good --project existing --scope repo`,
@@ -854,27 +821,6 @@ test('--no-share-stack: no stack POST, one bare setup-done event, stack.json sti
   assert.strictEqual(later.filter((q) => q.method === 'POST' && q.path === '/api/events').length, 0);
 }));
 
-test('init --global saves the key on the machine and writes no repo key file', () => withTempDir(async (dir) => {
-  const r = await runCli(dir, 'init --global --key ptr_good --project my-app --yes');
-  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
-  const store = JSON.parse(await fs.readFile(path.join(globalDirFor(dir), 'credentials.json'), 'utf8'));
-  assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
-  assert.strictEqual(await exists(path.join(dir, '.pinsay/credentials.env')), false);
-}));
-
-test('a key already in the machine store is used as is: no repo key file, keySaved existing', () => withTempDir(async (dir) => {
-  await fs.mkdir(globalDirFor(dir), { recursive: true });
-  await fs.writeFile(
-    path.join(globalDirFor(dir), 'credentials.json'),
-    JSON.stringify({ [new URL(serverUrl).origin]: { apiKey: 'ptr_good', displayName: 'Test User', savedAt: new Date().toISOString() } }),
-    'utf8',
-  );
-  const r = await runCli(dir, 'init --project my-app --yes --json');
-  assert.strictEqual(r.code, 0, r.stdout + r.stderr);
-  assert.strictEqual(JSON.parse(r.stdout.trim()).keySaved, 'existing');
-  assert.strictEqual(await exists(path.join(dir, '.pinsay/credentials.env')), false);
-}));
-
 test('init --project with no key anywhere exits 2 with the No API key line and creates no .pinsay/', () => withTempDir(async (dir) => {
   const r = await runCli(dir, 'init --project my-app --yes');
   assert.strictEqual(r.code, 2);
@@ -938,20 +884,14 @@ test('a repo whose index.html already has the widget is left untouched and recor
 
 for (const withKey of [false, true]) {
   test(`init --dry-run ${withKey ? 'with' : 'without'} a saved key writes and sends nothing`, () => withTempDir(async (dir) => {
-    if (withKey) {
-      await fs.mkdir(globalDirFor(dir), { recursive: true });
-      await fs.writeFile(
-        path.join(globalDirFor(dir), 'credentials.json'),
-        JSON.stringify({ [new URL(serverUrl).origin]: { apiKey: 'ptr_good', savedAt: new Date().toISOString() } }),
-        'utf8',
-      );
-    }
-    const globalBefore = await fs.readdir(globalDirFor(dir)).catch(() => []);
     requests.length = 0;
-    const r = await runCli(dir, 'init --dry-run --project my-app');
+    const r = await runCli(
+      dir,
+      'init --dry-run --project my-app',
+      withKey ? { ...envFor(dir), PINSAY_API_KEY: 'ptr_good' } : envFor(dir),
+    );
     assert.strictEqual(r.code, 0, r.stdout + r.stderr);
     assert.deepStrictEqual(await fs.readdir(dir), [], 'no file created in the repo');
-    assert.deepStrictEqual(await fs.readdir(globalDirFor(dir)).catch(() => []), globalBefore, 'global dir untouched');
     assert.strictEqual(requests.filter((q) => q.method !== 'GET').length, 0, 'no POST/PATCH/PUT');
     assert.strictEqual(r.stdout.trim().split('\n').pop(), 'Dry run: nothing was written or sent.');
   }));

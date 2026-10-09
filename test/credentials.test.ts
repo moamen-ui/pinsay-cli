@@ -9,9 +9,6 @@ import { fileURLToPath } from 'node:url';
 import * as http from 'node:http';
 import {
   resolveApiKey,
-  saveGlobalCredential,
-  getGlobalCredential,
-  removeGlobalCredential,
   normalizeServerOrigin,
   sourceLabel,
   globalCredentialsPath,
@@ -53,10 +50,10 @@ async function withGlobalDir(fn: (globalDir: string) => Promise<void>) {
 }
 
 // -----------------------------------------------------------------------------------------------
-// resolveApiKey: precedence (env > repo > global), in-process
+// resolveApiKey: precedence (env > repo), in-process
 // -----------------------------------------------------------------------------------------------
 
-test('resolveApiKey: nothing resolves when env, repo, and global are all empty', () =>
+test('resolveApiKey: nothing resolves when env and repo are both empty', () =>
   withGlobalDir(() =>
     withTempDir(async (repo) => {
       const prevEnv = process.env.PINSAY_API_KEY;
@@ -71,48 +68,31 @@ test('resolveApiKey: nothing resolves when env, repo, and global are all empty',
     }),
   ));
 
-test('resolveApiKey: the global store answers when nothing else does', () =>
+test('resolveApiKey: a credentials.json in the machine folder is ignored (0.10.0)', () =>
   withGlobalDir(() =>
     withTempDir(async (repo) => {
       const prevEnv = process.env.PINSAY_API_KEY;
       delete process.env.PINSAY_API_KEY;
       try {
-        await saveGlobalCredential('https://example.test', { apiKey: 'ptr_global', displayName: 'Global User' });
+        await fs.writeFile(
+          globalCredentialsPath(),
+          JSON.stringify({ [normalizeServerOrigin('https://example.test')]: { apiKey: 'ptr_machine' } }),
+          'utf8',
+        );
         const resolved = await resolveApiKey(repo, 'https://example.test');
-        assert.strictEqual(resolved.key, 'ptr_global');
-        assert.strictEqual(resolved.source, 'global');
+        assert.deepStrictEqual(resolved, { key: undefined, source: null });
       } finally {
         if (prevEnv !== undefined) process.env.PINSAY_API_KEY = prevEnv;
       }
     }),
   ));
 
-test('resolveApiKey: repo credentials.env wins over the global store', () =>
-  withGlobalDir(() =>
-    withTempDir(async (repo) => {
-      const prevEnv = process.env.PINSAY_API_KEY;
-      delete process.env.PINSAY_API_KEY;
-      try {
-        await saveGlobalCredential('https://example.test', { apiKey: 'ptr_global' });
-        await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
-        await fs.writeFile(path.join(repo, '.pinsay/credentials.env'), 'PINSAY_API_KEY=ptr_repo\n', 'utf8');
-
-        const resolved = await resolveApiKey(repo, 'https://example.test');
-        assert.strictEqual(resolved.key, 'ptr_repo');
-        assert.strictEqual(resolved.source, 'repo');
-      } finally {
-        if (prevEnv !== undefined) process.env.PINSAY_API_KEY = prevEnv;
-      }
-    }),
-  ));
-
-test('resolveApiKey: PINSAY_API_KEY env var wins over both repo and global', () =>
+test('resolveApiKey: PINSAY_API_KEY env var wins over the repo key', () =>
   withGlobalDir(() =>
     withTempDir(async (repo) => {
       const prevEnv = process.env.PINSAY_API_KEY;
       process.env.PINSAY_API_KEY = 'ptr_env';
       try {
-        await saveGlobalCredential('https://example.test', { apiKey: 'ptr_global' });
         await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
         await fs.writeFile(path.join(repo, '.pinsay/credentials.env'), 'PINSAY_API_KEY=ptr_repo\n', 'utf8');
 
@@ -126,72 +106,13 @@ test('resolveApiKey: PINSAY_API_KEY env var wins over both repo and global', () 
     }),
   ));
 
-test('resolveApiKey: the global store is keyed by server origin, not by the exact URL string', () =>
-  withGlobalDir(() =>
-    withTempDir(async (repo) => {
-      const prevEnv = process.env.PINSAY_API_KEY;
-      delete process.env.PINSAY_API_KEY;
-      try {
-        await saveGlobalCredential('https://example.test/some/path', { apiKey: 'ptr_global' });
-        const resolved = await resolveApiKey(repo, 'https://example.test/');
-        assert.strictEqual(resolved.key, 'ptr_global');
-        assert.strictEqual(normalizeServerOrigin('https://example.test/some/path'), 'https://example.test');
-      } finally {
-        if (prevEnv !== undefined) process.env.PINSAY_API_KEY = prevEnv;
-      }
-    }),
-  ));
-
 // -----------------------------------------------------------------------------------------------
-// Global store mechanics: 0600 mode, get/save/remove
+// Machine folder paths
 // -----------------------------------------------------------------------------------------------
-
-test('saveGlobalCredential writes the store file with mode 0600', { skip: process.platform === 'win32' && 'Windows has no POSIX file modes' }, () =>
-  withGlobalDir(async () => {
-    await saveGlobalCredential('https://example.test', { apiKey: 'ptr_x' });
-    const stat = await fs.stat(globalCredentialsPath());
-    assert.strictEqual(stat.mode & 0o777, 0o600);
-  }));
-
-test('getGlobalCredential returns the saved entry; removeGlobalCredential deletes it', () =>
-  withGlobalDir(async () => {
-    await saveGlobalCredential('https://example.test', {
-      apiKey: 'ptr_x',
-      email: 'dev@example.test',
-      displayName: 'Dev',
-    });
-
-    const entry = await getGlobalCredential('https://example.test');
-    assert.strictEqual(entry?.apiKey, 'ptr_x');
-    assert.strictEqual(entry?.email, 'dev@example.test');
-    assert.strictEqual(entry?.displayName, 'Dev');
-    assert.ok(entry?.savedAt);
-
-    const removed = await removeGlobalCredential('https://example.test');
-    assert.strictEqual(removed, true);
-    assert.strictEqual(await getGlobalCredential('https://example.test'), undefined);
-
-    // Removing again reports nothing-to-remove rather than throwing.
-    assert.strictEqual(await removeGlobalCredential('https://example.test'), false);
-  }));
-
-test('saving a second server does not disturb the first', () =>
-  withGlobalDir(async () => {
-    await saveGlobalCredential('https://a.example.test', { apiKey: 'ptr_a' });
-    await saveGlobalCredential('https://b.example.test', { apiKey: 'ptr_b' });
-
-    assert.strictEqual((await getGlobalCredential('https://a.example.test'))?.apiKey, 'ptr_a');
-    assert.strictEqual((await getGlobalCredential('https://b.example.test'))?.apiKey, 'ptr_b');
-
-    await removeGlobalCredential('https://a.example.test');
-    assert.strictEqual(await getGlobalCredential('https://a.example.test'), undefined);
-    assert.strictEqual((await getGlobalCredential('https://b.example.test'))?.apiKey, 'ptr_b');
-  }));
 
 test('sourceLabel gives a human label for every source, including none', () => {
   assert.strictEqual(sourceLabel('env'), 'env var');
   assert.strictEqual(sourceLabel('repo'), 'repo credentials.env');
-  assert.strictEqual(sourceLabel('global'), 'global store');
   assert.strictEqual(sourceLabel(null), 'none');
 });
 
@@ -233,7 +154,7 @@ before(async () => {
       return;
     } else if (req.url === '/api/auth/me') {
       if (req.headers.authorization === 'Bearer jwt-for-test') {
-        res.end(JSON.stringify({ data: { displayName: 'Test User', email: 'test@example.com' }, isSuccess: true }));
+        res.end(JSON.stringify({ data: { displayName: 'Test User', email: 'test@example.com', tenantName: 'Test Workspace' }, isSuccess: true }));
       } else {
         res.writeHead(401);
         res.end(JSON.stringify({ message: 'Unauthorized' }));
@@ -260,19 +181,18 @@ function envFor(globalDir: string): NodeJS.ProcessEnv {
   return { ...process.env, PINSAY_CONFIG_DIR: globalDir, PINSAY_SERVER: serverUrl };
 }
 
-test('login saves the key globally; whoami reports it; logout removes it', () =>
+test('login saves the key in the repo; whoami reports it; logout removes it', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
+      await execAsync('git init -q', { cwd: repo });
       const { stdout: loginOut } = await execAsync(
         `node ${cliPath} login --key ptr_good`,
         { cwd: repo, env: envFor(globalDir) },
       );
       assert.match(loginOut, /Signed in as Test User/);
-      // A temp dir that is neither a git repo nor holds .pinsay/: the machine store, said out loud.
-      assert.match(loginOut, /No repo here, so the key is saved on this machine/);
 
-      const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
-      assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
+      const creds = await fs.readFile(path.join(repo, '.pinsay', 'credentials.env'), 'utf8');
+      assert.match(creds, /^PINSAY_API_KEY=ptr_good$/m);
 
       const { stdout: whoamiOut } = await execAsync(`node ${cliPath} whoami --json`, {
         cwd: repo,
@@ -280,15 +200,17 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
       });
       const whoami = JSON.parse(whoamiOut.trim().split('\n').pop()!);
       assert.strictEqual(whoami.ok, true);
-      assert.strictEqual(whoami.source, 'global');
+      assert.strictEqual(whoami.source, 'repo');
       assert.strictEqual(whoami.displayName, 'Test User');
       assert.strictEqual(whoami.email, 'test@example.com');
+      assert.strictEqual(whoami.workspace, 'Test Workspace');
 
       const { stdout: logoutOut } = await execAsync(`node ${cliPath} logout`, {
         cwd: repo,
         env: envFor(globalDir),
       });
-      assert.match(logoutOut, /Removed the saved key/);
+      assert.match(logoutOut, /Signed out: removed this repo's key/);
+      await assert.rejects(fs.access(path.join(repo, '.pinsay', 'credentials.env')));
 
       await assert.rejects(
         execAsync(`node ${cliPath} whoami --json`, { cwd: repo, env: envFor(globalDir) }),
@@ -301,14 +223,9 @@ test('login saves the key globally; whoami reports it; logout removes it', () =>
     }),
   ));
 
-test('whoami reports source env when PINSAY_API_KEY is set, even with a global entry present', () =>
+test('whoami reports source env when PINSAY_API_KEY is set', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
-      await execAsync(`node ${cliPath} login --key ptr_good`, {
-        cwd: repo,
-        env: envFor(globalDir),
-      });
-
       const { stdout } = await execAsync(`node ${cliPath} whoami --json`, {
         cwd: repo,
         env: { ...envFor(globalDir), PINSAY_API_KEY: 'ptr_good' },
@@ -327,10 +244,11 @@ test('logout on a server with no saved key reports nothing removed', () =>
       });
       const json = JSON.parse(stdout.trim());
       assert.strictEqual(json.removed, false);
+      assert.strictEqual(json.source, 'repo');
     }),
   ));
 
-test('login --scope repo writes .pinsay/credentials.env and leaves the global store alone', () =>
+test('login --scope repo writes .pinsay/credentials.env and writes nothing in the config dir', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       const { stdout } = await execAsync(
@@ -341,7 +259,7 @@ test('login --scope repo writes .pinsay/credentials.env and leaves the global st
       const creds = await fs.readFile(path.join(repo, '.pinsay/credentials.env'), 'utf8');
       assert.match(creds, /PINSAY_API_KEY=ptr_good/);
       assert.doesNotMatch(creds, /PINSAY_SERVER=/);
-      await assert.rejects(fs.access(path.join(globalDir, 'credentials.json')), 'global store must not be created');
+      await assert.rejects(fs.access(path.join(globalDir, 'credentials.json')), 'no machine store may be created');
     }),
   ));
 
@@ -373,7 +291,8 @@ test('resolveToken discards an expired cached JWT and re-exchanges the key, inst
       const prevConfigDir = process.env.PINSAY_CONFIG_DIR;
       process.env.PINSAY_CONFIG_DIR = globalDir;
       try {
-        await saveGlobalCredential(serverUrl, { apiKey: 'ptr_good' });
+        await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
+        await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_good\n', 'utf8');
 
         // Seed the cache with a structurally-real but long-expired JWT — exactly what a token
         // minted hours ago (in an earlier session, say) and never revalidated looks like on disk.
@@ -402,7 +321,8 @@ test('resolveToken keeps a non-expiring cached token as-is (a test stub / non-JW
       const prevConfigDir = process.env.PINSAY_CONFIG_DIR;
       process.env.PINSAY_CONFIG_DIR = globalDir;
       try {
-        await saveGlobalCredential(serverUrl, { apiKey: 'ptr_good' });
+        await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
+        await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_good\n', 'utf8');
         const cacheFile = tokenCacheFile(serverUrl, 'ptr_good');
         await fs.mkdir(path.dirname(cacheFile), { recursive: true });
         await fs.writeFile(cacheFile, JSON.stringify({ token: 'jwt-for-test' }), 'utf8');
@@ -418,18 +338,6 @@ test('resolveToken keeps a non-expiring cached token as-is (a test stub / non-JW
       }
     }),
   ));
-
-test('getGlobalCredential: a key saved against legacy api.pinsay.dev is found for app.pinsay.dev', () =>
-  withGlobalDir(async () => {
-    await saveGlobalCredential('https://api.pinsay.dev', { apiKey: 'pnsy_legacy' } as any);
-    const hit = await getGlobalCredential('https://app.pinsay.dev');
-    assert.strictEqual(hit?.apiKey, 'pnsy_legacy');
-    // A key saved against the canonical host wins over the legacy one.
-    await saveGlobalCredential('https://app.pinsay.dev', { apiKey: 'pnsy_new' } as any);
-    assert.strictEqual((await getGlobalCredential('https://app.pinsay.dev'))?.apiKey, 'pnsy_new');
-    // Other servers never borrow the legacy entry.
-    assert.strictEqual(await getGlobalCredential('https://self.example.com'), undefined);
-  }));
 
 // -----------------------------------------------------------------------------------------------
 // Per-machine folder `pinsay`, and the one-time move of a pre-0.8.0 `pointer` store
@@ -468,96 +376,22 @@ async function exists(p: string): Promise<boolean> {
   return fs.access(p).then(() => true, () => false);
 }
 
-const legacyStore = { 'https://example.test': { apiKey: 'ptr_legacy', savedAt: '2026-01-01T00:00:00.000Z' } };
-
-test('the store and the JWT cache live in a `pinsay` folder', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
+test('the machine folder and the JWT cache live in a `pinsay` folder', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
   withXdgDirs(async (configHome, cacheHome) => {
     assert.strictEqual(globalCredentialsPath(), path.join(configHome, 'pinsay', 'credentials.json'));
     assert.strictEqual(path.dirname(tokenCacheFile('https://example.test', 'ptr_x')), path.join(cacheHome, 'pinsay'));
     assert.strictEqual(legacyGlobalCredentialsPath(), path.join(configHome, 'pointer', 'credentials.json'));
   }));
 
-test('a pre-0.8.0 `pointer` store is moved to the `pinsay` folder on first read', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
-  withXdgDirs(async (configHome) => {
-    const legacyDir = path.join(configHome, 'pointer');
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
-
-    const entry = await getGlobalCredential('https://example.test');
-    assert.strictEqual(entry?.apiKey, 'ptr_legacy');
-
-    const moved = JSON.parse(await fs.readFile(path.join(configHome, 'pinsay', 'credentials.json'), 'utf8'));
-    assert.deepStrictEqual(moved, legacyStore);
-    const mode = (await fs.stat(path.join(configHome, 'pinsay', 'credentials.json'))).mode & 0o777;
-    assert.strictEqual(mode, 0o600);
-    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), false, 'old file must be gone');
-    assert.strictEqual(await exists(legacyDir), false, 'empty old folder must be removed');
-  }));
-
-test('the move keeps an old `pointer` folder that still holds other files', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
-  withXdgDirs(async (configHome) => {
-    const legacyDir = path.join(configHome, 'pointer');
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
-    await fs.writeFile(path.join(legacyDir, 'other.txt'), 'not ours', 'utf8');
-
-    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_legacy');
-    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), false);
-    assert.strictEqual(await fs.readFile(path.join(legacyDir, 'other.txt'), 'utf8'), 'not ours');
-  }));
-
-test('when both stores exist the new one wins and the old file is left alone', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
-  withXdgDirs(async (configHome) => {
-    const legacyDir = path.join(configHome, 'pointer');
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
-    await saveGlobalCredential('https://example.test', { apiKey: 'ptr_new' });
-    // saveGlobalCredential read first, so the legacy store was moved and then overwritten by the new key.
-    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_new');
-
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
-    assert.strictEqual((await getGlobalCredential('https://example.test'))?.apiKey, 'ptr_new');
-    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
-  }));
-
-test('an old `pointer/credentials.json` that is not a credential store is ignored and kept', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
-  withXdgDirs(async (configHome) => {
-    const legacyDir = path.join(configHome, 'pointer');
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify({ foo: 'bar' }), 'utf8');
-
-    assert.strictEqual(await getGlobalCredential('https://example.test'), undefined);
-    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
-    assert.strictEqual(await exists(path.join(configHome, 'pinsay', 'credentials.json')), false);
-  }));
-
-test('PINSAY_CONFIG_DIR turns the legacy read off', { skip: process.platform === 'win32' && 'XDG paths' }, () =>
-  withXdgDirs(async (configHome) => {
-    const legacyDir = path.join(configHome, 'pointer');
-    await fs.mkdir(legacyDir, { recursive: true });
-    await fs.writeFile(path.join(legacyDir, 'credentials.json'), JSON.stringify(legacyStore), 'utf8');
-    await withGlobalDir(async () => {
-      assert.strictEqual(legacyGlobalCredentialsPath(), undefined);
-      assert.strictEqual(await getGlobalCredential('https://example.test'), undefined);
-    });
-    assert.strictEqual(await exists(path.join(legacyDir, 'credentials.json')), true);
-  }));
-
-test('removeGlobalCredential(app.pinsay.dev) also removes a key saved against legacy api.pinsay.dev', () =>
-  withGlobalDir(async () => {
-    await saveGlobalCredential('https://api.pinsay.dev', { apiKey: 'ptr_old_host' });
-    assert.strictEqual((await getGlobalCredential('https://app.pinsay.dev'))?.apiKey, 'ptr_old_host');
-    assert.strictEqual(await removeGlobalCredential('https://app.pinsay.dev'), true);
-    assert.strictEqual(await getGlobalCredential('https://app.pinsay.dev'), undefined);
-  }));
-
-test('login outside any repo (no git, no .pinsay/) saves on this machine', () =>
+test('login outside any repo exits 2 and writes nothing', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
-      const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
-      assert.match(stdout, /saved on this machine/);
-      await assert.rejects(fs.access(path.join(repo, '.pinsay', 'credentials.env')));
+      await assert.rejects(
+        execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) }),
+        (err: any) => err.code === 2 && /Run this inside your project's repo/.test(err.stderr + err.stdout),
+      );
+      assert.strictEqual(await exists(path.join(repo, '.pinsay')), false);
+      assert.strictEqual(await exists(path.join(globalDir, 'credentials.json')), false);
     }),
   ));
 
@@ -587,8 +421,7 @@ test('login --scope with an unknown value exits 2 before signing in (no --key ne
   ));
 
 // -----------------------------------------------------------------------------------------------
-// 0.9.0 key storage (SPEC B2): repo by default, --global for the machine, login --global moves a
-// repo key, logout removes the key this repo uses.
+// 0.10.0 key storage (SPEC B2): the key lives in the repo only; --global is rejected; logout removes it.
 // -----------------------------------------------------------------------------------------------
 
 async function gitInit(dir: string): Promise<void> {
@@ -611,81 +444,44 @@ test('login in a git repo saves the key in the repo (0600) and not on the machin
     }),
   ));
 
-test('login --global (and --scope global) in a git repo saves on the machine only', () =>
+test('login --global and --scope global exit 2 with the removed-flag message', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       await gitInit(repo);
       for (const flag of ['--global', '--scope global']) {
-        const { stdout } = await execAsync(`node ${cliPath} login --key ptr_good ${flag}`, { cwd: repo, env: envFor(globalDir) });
-        assert.match(stdout, /Key saved on this machine/);
-        assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
-        const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
-        assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
+        await assert.rejects(
+          execAsync(`node ${cliPath} login --key ptr_good ${flag}`, { cwd: repo, env: envFor(globalDir) }),
+          (err: any) => err.code === 2 && /--global is no longer supported/.test(err.stderr + err.stdout),
+        );
+        assert.strictEqual(await exists(path.join(repo, '.pinsay')), false);
+        assert.strictEqual(await exists(path.join(globalDir, 'credentials.json')), false);
       }
     }),
   ));
 
-test('login --global moves a valid repo key to the machine store without a browser', () =>
+test('logout removes the repo key; a second logout says there is none', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       await gitInit(repo);
-      await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
-      await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_good\n');
-      const { stdout } = await execAsync(`node ${cliPath} login --global`, { cwd: repo, env: envFor(globalDir) });
-      assert.match(stdout, /Moved your key to this machine's store \(.*credentials\.json\)\. Every repo on this machine can use it now\./);
-      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
-      const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
-      assert.strictEqual(store[new URL(serverUrl).origin].apiKey, 'ptr_good');
-
-      // whoami from another folder now reports the machine store.
-      await withTempDir(async (other) => {
-        const { stdout: w } = await execAsync(`node ${cliPath} whoami --json`, { cwd: other, env: envFor(globalDir) });
-        assert.strictEqual(JSON.parse(w.trim().split('\n').pop()!).source, 'global');
-      });
-    }),
-  ));
-
-test('login --global with an invalid repo key and no terminal exits 2 (no key to move, nobody to sign in)', () =>
-  withTempDir(async (repo) =>
-    withGlobalDir(async (globalDir) => {
-      await gitInit(repo);
-      await fs.mkdir(path.join(repo, '.pinsay'), { recursive: true });
-      await fs.writeFile(path.join(repo, '.pinsay', 'credentials.env'), 'PINSAY_API_KEY=ptr_bad\n');
-      await assert.rejects(
-        execAsync(`node ${cliPath} login --global`, { cwd: repo, env: envFor(globalDir) }),
-        (err: any) => err.code === 2 && /No API key\. Pass --key <key> or set PINSAY_API_KEY/.test(err.stderr),
-      );
-      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), true, 'repo file untouched');
-    }),
-  ));
-
-test('logout removes only the repo key when the repo has one; then the machine key', () =>
-  withTempDir(async (repo) =>
-    withGlobalDir(async (globalDir) => {
-      await gitInit(repo);
-      await execAsync(`node ${cliPath} login --key ptr_good --global`, { cwd: repo, env: envFor(globalDir) });
       await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
 
       const first = JSON.parse((await execAsync(`node ${cliPath} logout --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
       assert.deepStrictEqual([first.source, first.removed], ['repo', true]);
       assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), false);
-      const store = JSON.parse(await fs.readFile(path.join(globalDir, 'credentials.json'), 'utf8'));
-      assert.ok(store[new URL(serverUrl).origin], 'machine entry kept');
 
-      const second = JSON.parse((await execAsync(`node ${cliPath} logout --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
-      assert.deepStrictEqual([second.source, second.removed], ['global', true]);
+      const { stdout } = await execAsync(`node ${cliPath} logout`, { cwd: repo, env: envFor(globalDir) });
+      assert.match(stdout, /No key saved in this repo\./);
     }),
   ));
 
-test('logout --global removes the machine entry even when the repo has its own key', () =>
+test('logout --global exits 2 with the removed-flag message', () =>
   withTempDir(async (repo) =>
     withGlobalDir(async (globalDir) => {
       await gitInit(repo);
-      await execAsync(`node ${cliPath} login --key ptr_good --global`, { cwd: repo, env: envFor(globalDir) });
-      await execAsync(`node ${cliPath} login --key ptr_good`, { cwd: repo, env: envFor(globalDir) });
-      const out = JSON.parse((await execAsync(`node ${cliPath} logout --global --json`, { cwd: repo, env: envFor(globalDir) })).stdout.trim());
-      assert.deepStrictEqual([out.source, out.removed], ['global', true]);
-      assert.strictEqual(await exists(path.join(repo, '.pinsay', 'credentials.env')), true);
+      await assert.rejects(
+        execAsync(`node ${cliPath} logout --global`, { cwd: repo, env: envFor(globalDir) }),
+        (err: any) => err.code === 2 && /--global is no longer supported/.test(err.stderr + err.stdout),
+      );
     }),
   ));
 

@@ -12,12 +12,11 @@ export type InitPlan = {
     | {
         kind: 'signed-in';
         displayName: string;
-        keySaved: 'repo' | 'global' | 'existing';
-        existingSource?: 'env' | 'repo' | 'global';
-        globalPath: string;
+        keySaved: 'repo' | 'existing';
+        existingSource?: 'env' | 'repo';
       }
     | { kind: 'pending' } // dry run, no key found
-    | { kind: 'found'; source: 'env' | 'repo' | 'global' }; // dry run, key found but not checked
+    | { kind: 'found'; source: 'env' | 'repo' }; // dry run, key found but not checked
   widget:
     | { kind: 'extension' }
     | { kind: 'embed'; files: string[] } // files embed will change
@@ -44,15 +43,11 @@ export function accountText(plan: InitPlan): string {
     if (account.keySaved === 'repo') {
       return `${account.displayName} · key saved in this repo (.pinsay/credentials.env, hidden from git)`;
     }
-    if (account.keySaved === 'global') {
-      return `${account.displayName} · key saved on this machine (${account.globalPath})`;
-    }
     if (account.existingSource === 'env') return `${account.displayName} · key from PINSAY_API_KEY`;
-    if (account.existingSource === 'global') return `${account.displayName} · key already saved on this machine`;
     return `${account.displayName} · key already saved in this repo`;
   }
   if (account.kind === 'pending') return "you'll sign in in your browser";
-  const where = account.source === 'env' ? 'PINSAY_API_KEY' : account.source === 'repo' ? 'this repo' : 'this machine';
+  const where = account.source === 'env' ? 'PINSAY_API_KEY' : 'this repo';
   return `key found (${where}), not checked in a dry run`;
 }
 
@@ -157,7 +152,7 @@ export function renderPlan(plan: InitPlan): string[] {
 export function planToJson(plan: InitPlan): {
   project: InitPlan['project'];
   account: string;
-  keySaved: 'repo' | 'global' | 'existing' | null;
+  keySaved: 'repo' | 'existing' | null;
   delivery: 'extension' | 'embed';
   skills: InitPlan['skills'];
   files: string[];

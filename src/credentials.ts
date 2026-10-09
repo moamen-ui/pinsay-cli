@@ -1,26 +1,10 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join, dirname } from 'node:path';
-
-/**
- * One server's saved credential in the global store — see `globalCredentialsPath`. `apiKey` is the
- * same long-lived personal key `.pinsay/credentials.env` holds today; `email`/`displayName` are
- * cached from `/api/auth/me` purely so `whoami`/`init`'s join-mode message can greet the user
- * without another round trip.
- */
-export interface GlobalCredentialEntry {
-  apiKey: string;
-  email?: string;
-  displayName?: string;
-  savedAt: string;
-}
-
-/** Keyed by server origin (no trailing slash) — one entry per machine per server. */
-export type GlobalCredentialsStore = Record<string, GlobalCredentialEntry>;
+import { join } from 'node:path';
 
 /** Where an API key came from, for `whoami` and doctor's `key` check. `null` = none resolved. */
-export type ApiKeySource = 'env' | 'repo' | 'global' | null;
+export type ApiKeySource = 'env' | 'repo' | null;
 
 export interface ResolvedApiKey {
   key: string | undefined;
@@ -31,7 +15,6 @@ export interface ResolvedApiKey {
 export function sourceLabel(source: ApiKeySource): string {
   if (source === 'env') return 'env var';
   if (source === 'repo') return 'repo credentials.env';
-  if (source === 'global') return 'global store';
   return 'none';
 }
 
@@ -51,8 +34,8 @@ export function normalizeServerOrigin(server: string): string {
 const DIR_NAME = 'pinsay';
 
 /**
- * The folder name every CLI before 0.8.0 used. Read once, only to move an existing credential
- * store to `DIR_NAME` (see `migrateLegacyStore`); never written. The old cache folder is simply
+ * The folder name every CLI before 0.8.0 used. Only looked at by `update`'s cleanup of an old
+ * machine-wide key; never written. The old cache folder is simply
  * no longer read — a JWT is re-fetched — and never deleted: a folder called `pointer` might
  * belong to another tool.
  */
@@ -67,8 +50,7 @@ function configBase(): string {
 }
 
 /**
- * Directory holding the global credential store (and nothing else — the token cache lives under
- * the XDG *cache* dir, see `globalCacheDir`, deliberately not here).
+ * Directory where CLIs before 0.10.0 kept the machine-wide key (`credentials.json`); read since 0.10.0 only so `update` can delete it.
  *
  * `$PINSAY_CONFIG_DIR` overrides everything below it, so tests never touch a real machine's
  * `~/.config`. Otherwise: Windows uses `%APPDATA%\pinsay`; everywhere else honours
@@ -84,8 +66,8 @@ export function globalCredentialsPath(): string {
 }
 
 /**
- * The pre-0.8.0 store file (`~/.config/pointer/credentials.json`, `%APPDATA%\pointer\...`), or
- * `undefined` when `$PINSAY_CONFIG_DIR` is set: a test's isolated store never migrates anything.
+ * The pre-0.8.0 machine store (`~/.config/pointer/credentials.json`, `%APPDATA%\pointer\...`), or
+ * `undefined` when `$PINSAY_CONFIG_DIR` is set. Only `update` looks at it, to delete it.
  */
 export function legacyGlobalCredentialsPath(): string | undefined {
   if (process.env.PINSAY_CONFIG_DIR) return undefined;
@@ -117,105 +99,12 @@ export function tokenCacheFile(server: string, apiKey: string): string {
   return join(globalCacheDir(), `${hash}.json`);
 }
 
-/** True for what `writeGlobalStore` writes: a JSON object whose every value has a string `apiKey`. */
-function isCredentialStore(value: unknown): value is GlobalCredentialsStore {
+/** True for what an older CLI's machine store held: a JSON object whose every value has a string `apiKey`. */
+export function isCredentialStore(value: unknown): value is Record<string, { apiKey: string }> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   return Object.values(value).every(
     (entry) => !!entry && typeof entry === 'object' && typeof (entry as { apiKey?: unknown }).apiKey === 'string',
   );
-}
-
-async function readGlobalStore(): Promise<GlobalCredentialsStore> {
-  let raw: string;
-  try {
-    raw = await fs.readFile(globalCredentialsPath(), 'utf8');
-  } catch (err: any) {
-    // No store in the new place yet: a machine that signed in with a CLI before 0.8.0 still has
-    // it under the old `pointer` folder — move it over once instead of looking logged out.
-    if (err?.code === 'ENOENT') return migrateLegacyStore();
-    return {};
-  }
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-}
-
-/**
- * Moves the pre-0.8.0 store (`legacyGlobalCredentialsPath`) to `globalCredentialsPath`, once.
- *
- * Only a file that really is a credential store is moved (a `pointer` folder could belong to
- * another tool). Move, not copy: the key never sits in two places and `logout` stays truthful.
- * If the new file cannot be written the old content is still returned (read-through) and the old
- * file is left where it is. The old folder is removed only when it is empty afterwards.
- */
-async function migrateLegacyStore(): Promise<GlobalCredentialsStore> {
-  const legacyFile = legacyGlobalCredentialsPath();
-  if (!legacyFile) return {};
-  let legacy: unknown;
-  try {
-    legacy = JSON.parse(await fs.readFile(legacyFile, 'utf8'));
-  } catch {
-    return {};
-  }
-  if (!isCredentialStore(legacy)) return {};
-  try {
-    await writeGlobalStore(legacy);
-  } catch {
-    return legacy;
-  }
-  await fs.rm(legacyFile, { force: true }).catch(() => {});
-  // Never recursive: removes the folder only if nothing else is left in it.
-  await fs.rmdir(dirname(legacyFile)).catch(() => {});
-  return legacy;
-}
-
-async function writeGlobalStore(store: GlobalCredentialsStore): Promise<void> {
-  const file = globalCredentialsPath();
-  await fs.mkdir(dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify(store, null, 2) + '\n', { encoding: 'utf8', mode: 0o600 });
-  // chmod explicitly too: a file that already existed (copied from another machine, or created by
-  // an older process before this mode was enforced) keeps its old permissions on write() alone —
-  // the create-time mode above only applies when the file did not already exist.
-  await fs.chmod(file, 0o600).catch(() => {});
-}
-
-export async function getGlobalCredential(server: string): Promise<GlobalCredentialEntry | undefined> {
-  const store = await readGlobalStore();
-  const origin = normalizeServerOrigin(server);
-  // api.pinsay.dev became a legacy alias of app.pinsay.dev on 2026-09-28 (same server). A key saved
-  // by `login` against the old host is still valid for the new one, so a user who signed in before
-  // the switch is not suddenly "logged out". See CANONICAL_SERVER in config.ts.
-  if (!store[origin] && origin === 'https://app.pinsay.dev') return store['https://api.pinsay.dev'];
-  return store[origin];
-}
-
-export async function saveGlobalCredential(
-  server: string,
-  entry: { apiKey: string; email?: string; displayName?: string },
-): Promise<void> {
-  const store = await readGlobalStore();
-  store[normalizeServerOrigin(server)] = { ...entry, savedAt: new Date().toISOString() };
-  await writeGlobalStore(store);
-}
-
-/**
- * Returns true when an entry existed and was removed; false when there was nothing to remove.
- * Removing `https://app.pinsay.dev` also removes a key saved against the legacy
- * `https://api.pinsay.dev` — the same alias `getGlobalCredential` reads — or `whoami` would keep
- * answering after `logout`.
- */
-export async function removeGlobalCredential(server: string): Promise<boolean> {
-  const store = await readGlobalStore();
-  const origin = normalizeServerOrigin(server);
-  const origins = origin === 'https://app.pinsay.dev' ? [origin, 'https://api.pinsay.dev'] : [origin];
-  const present = origins.filter((o) => o in store);
-  if (present.length === 0) return false;
-  for (const o of present) delete store[o];
-  await writeGlobalStore(store);
-  return true;
 }
 
 /** The same `.pinsay/credentials.env` `writeCredentials` (config.ts) writes — read here too so
@@ -250,23 +139,16 @@ export async function removeRepoCredentials(root: string): Promise<boolean> {
  * The one resolver every command (and the MCP server) uses to find an API key, in order:
  *
  *   1. `PINSAY_API_KEY` env var — CI, or a deliberate one-off override
- *   2. repo `.pinsay/credentials.env` — a repo that opted out of the global store (`--local-credentials`)
- *   3. the global per-machine store, keyed by `server`'s origin
+ *   2. this repo's `.pinsay/credentials.env`
  *
- * `server` is optional only because a couple of callers resolve it after checking whether a key
- * exists at all; pass it whenever it is already known so step 3 actually runs.
+ * Since 0.10.0 there is no machine-wide key. `_server` is unused; it stays so callers need not change.
  */
-export async function resolveApiKey(root: string, server?: string): Promise<ResolvedApiKey> {
+export async function resolveApiKey(root: string, _server?: string): Promise<ResolvedApiKey> {
   const envKey = process.env.PINSAY_API_KEY?.trim();
   if (envKey) return { key: envKey, source: 'env' };
 
   const repoKey = await readRepoApiKey(root);
   if (repoKey) return { key: repoKey, source: 'repo' };
-
-  if (server) {
-    const globalEntry = await getGlobalCredential(server);
-    if (globalEntry?.apiKey) return { key: globalEntry.apiKey, source: 'global' };
-  }
 
   return { key: undefined, source: null };
 }

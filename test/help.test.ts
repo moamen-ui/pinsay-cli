@@ -63,6 +63,7 @@ test('init --help --all lists every flag, old ones marked (old)', async () => {
     assert.ok(stdout.includes(flag), `init --all misses ${flag}`);
   }
   const { stdout: loginAll } = await run(['login', '--help', '--all']);
-  assert.match(loginAll, /--scope <global\|repo>/);
+  assert.match(loginAll, /--scope repo/);
+  assert.doesNotMatch(loginAll, /--global/);
   assert.match(loginAll, /--local-credentials.*\(old\)/);
 });

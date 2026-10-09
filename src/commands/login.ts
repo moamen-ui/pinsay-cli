@@ -4,12 +4,6 @@ import { execFileSync } from 'node:child_process';
 import { findRepoRoot, writeCredentials } from '../config.js';
 import { hidePinsayFiles, formatHideWarnings } from '../lib/git-exclude.js';
 import { getBranding } from '../branding.js';
-import {
-  saveGlobalCredential,
-  readRepoApiKey,
-  removeRepoCredentials,
-  globalCredentialsPath,
-} from '../credentials.js';
 import { ask, closePrompts } from '../prompt.js';
 import { scopeFromFlags } from '../key-scope.js';
 import { resolveServer } from '../server.js';
@@ -29,14 +23,13 @@ function inGitRepo(dir: string): boolean {
 }
 
 /**
- * Signs in and saves the API key (SPEC B2/C2, lead-only).
+ * Signs in and saves the API key in this repo's `.pinsay/credentials.env` (0600, hidden from git), the only place a key
+ * is kept since 0.10.0 (SPEC B2/C2, lead-only).
  *
- *   login                 → this repo's `.pinsay/credentials.env` (0600, hidden from git). Outside any git repo and
- *                           any folder with `.pinsay/`, the machine store instead (no stray `.pinsay/` in a home folder).
- *   login --global        → the machine store. In a repo whose own key is valid (and no --key): MOVE that key there
- *                           (no browser) and delete the repo file.
- *   login --key <key>     → validate a pasted key instead of the browser.
- *   --scope global|repo, --local-credentials → old spellings, still accepted.
+ *   login                     → this repo. Outside any git repo and any folder with `.pinsay/`: exit 2 (no stray
+ *                               `.pinsay/` in a home folder), unless `--scope repo` / `--local-credentials` names this folder.
+ *   login --key <key>         → validate a pasted key instead of the browser.
+ *   --global, --scope global  → exit 2 (`GLOBAL_KEY_REMOVED`).
  */
 export async function loginCommand(cwd: string, options: Record<string, string | boolean> = {}): Promise<void> {
   const json = options['json'] === true;
@@ -44,35 +37,20 @@ export async function loginCommand(cwd: string, options: Record<string, string |
   if (flags.error) exitWithError(2, flags.error, json);
 
   const root = await findRepoRoot(cwd);
+  const inRepo = existsSync(join(root, '.pinsay')) || inGitRepo(root);
+  if (!inRepo && !flags.explicitRepo) {
+    exitWithError(2, "Run this inside your project's repo: the key is saved there (.pinsay/credentials.env).", json);
+  }
   const server = resolveServer();
   const branding = await getBranding(server); // fails fast (exit 4) when the server can't be reached
   const product = branding.productName;
 
-  const inRepo = existsSync(join(root, '.pinsay')) || inGitRepo(root);
-  const scope = flags.scope ?? (inRepo ? 'repo' : 'global');
   let flagKey = typeof options['key'] === 'string' ? options['key'].trim() : '';
   if (options['key'] === true) {
     // `--key` with no value: ask with hidden input (keeps the key out of shell history), never the browser.
     if (!process.stdin.isTTY) exitWithError(2, noKeyMessage(product), json);
     flagKey = (await ask(`API key (from ${product} → Profile → API key; input hidden)`, { secret: true })).trim();
     if (!flagKey) exitWithError(2, noKeyMessage(product), json);
-  }
-
-  // Move: `login --global` in a repo that already holds a valid key — no browser, no new key.
-  if (scope === 'global' && !flagKey) {
-    const repoKey = await readRepoApiKey(root);
-    if (repoKey) {
-      try {
-        const { me } = await exchangeKey(server, repoKey);
-        await saveGlobalCredential(server, { apiKey: repoKey, email: me.email, displayName: me.displayName });
-        await removeRepoCredentials(root);
-        done(json, { server, scope: 'global', moved: true, displayName: me.displayName, email: me.email },
-          `${green(sym.check)} Moved your key to this machine's store (${globalCredentialsPath()}). Every repo on this machine can use it now.`);
-      } catch (err) {
-        if (!(err instanceof InvalidKeyError)) throw err;
-        // An invalid repo key: sign in fresh below and save the new key to the machine store.
-      }
-    }
   }
 
   let key: string;
@@ -104,18 +82,11 @@ export async function loginCommand(cwd: string, options: Record<string, string |
   closePrompts();
 
   const who = displayName ? `${displayName}${email ? ` (${email})` : ''}` : (email ?? 'you');
-  if (scope === 'repo') {
-    await writeCredentials(root, key);
-    const hideWarnings = formatHideWarnings(await hidePinsayFiles(root));
-    if (!json) for (const line of hideWarnings) console.error(line);
-    done(json, { server, scope: 'repo', moved: false, displayName, email },
-      `${green(sym.check)} Signed in as ${who}. Key saved in this repo (.pinsay/credentials.env, hidden from git).`);
-  }
-  await saveGlobalCredential(server, { apiKey: key, email, displayName });
-  done(json, { server, scope: 'global', moved: false, displayName, email },
-    inRepo || flags.scope === 'global'
-      ? `${green(sym.check)} Signed in as ${who}. Key saved on this machine (${globalCredentialsPath()}) for every repo.`
-      : `${green(sym.check)} Signed in as ${who}. No repo here, so the key is saved on this machine (${globalCredentialsPath()}) for every repo.`);
+  await writeCredentials(root, key);
+  const hideWarnings = formatHideWarnings(await hidePinsayFiles(root));
+  if (!json) for (const line of hideWarnings) console.error(line);
+  done(json, { server, scope: 'repo', moved: false, displayName, email },
+    `${green(sym.check)} Signed in as ${who}. Key saved in this repo (.pinsay/credentials.env, hidden from git).`);
 }
 
 function done(json: boolean, payload: Record<string, unknown>, message: string): never {

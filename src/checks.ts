@@ -210,7 +210,7 @@ export async function runInitChecks(
     checks.push({
       id: 'key',
       status: 'error',
-      message: 'No API key found (env, repo, or global store)',
+      message: 'No API key found (env var or this repo)',
       hint: 'Run `npx pinsay-cli login`',
     });
   } else if (!serverReachable) {

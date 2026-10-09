@@ -1,22 +1,22 @@
-/** Where a freshly signed-in API key is saved: this repo (the default since 0.9.0), or this machine's store. */
-export type KeyScope = 'global' | 'repo';
+/** Since 0.10.0 the API key is saved in the repo only (`.pinsay/credentials.env`); there is no machine-wide key. */
+export const GLOBAL_KEY_REMOVED =
+  '--global is no longer supported: the API key is saved in this repo only (.pinsay/credentials.env). ' +
+  'Run npx pinsay-cli update to delete a machine-wide key an older version saved.';
 
 /**
- * The scope a flag fixed: `--global` or `--scope global` → global; `--scope repo` or `--local-credentials` → repo
- * (old flags; repo is the default anyway). `{}` when no flag decided it; `{ error }` for an unknown `--scope`.
- * A returned `scope` means a flag was passed — `login` honours an explicit repo choice even outside a git repo,
- * where the default would be the machine store.
+ * Checks the old key-location flags. `--global` / `--scope global` → `{ error: GLOBAL_KEY_REMOVED }`;
+ * `--scope repo` / `--local-credentials` → `{ explicitRepo: true }` (old spellings of the only choice; `login`
+ * honours them outside a git repo); any other `--scope` → `{ error }`; no flag → `{}`.
  */
-export function scopeFromFlags(options: Record<string, string | boolean>): { scope?: KeyScope; error?: string } {
+export function scopeFromFlags(options: Record<string, string | boolean>): { explicitRepo?: boolean; error?: string } {
   const raw = options['scope'];
   if (typeof raw === 'string') {
     const value = raw.toLowerCase();
-    if (value !== 'global' && value !== 'repo') {
-      return { error: `Invalid --scope "${raw}". Valid values: global, repo.` };
-    }
-    return { scope: value };
+    if (value === 'global') return { error: GLOBAL_KEY_REMOVED };
+    if (value !== 'repo') return { error: `Invalid --scope "${raw}". Valid value: repo.` };
+    return { explicitRepo: true };
   }
-  if (options['global'] === true) return { scope: 'global' };
-  if (options['local-credentials'] === true) return { scope: 'repo' };
+  if (options['global'] === true) return { error: GLOBAL_KEY_REMOVED };
+  if (options['local-credentials'] === true) return { explicitRepo: true };
   return {};
 }

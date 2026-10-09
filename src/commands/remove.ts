@@ -8,15 +8,14 @@ import {
     trackedPinsayFiles,
 } from '../lib/git-exclude.js';
 import { readConfig, findRepoRoot } from '../config.js';
-import { normalizeServerOrigin, removeGlobalCredential } from '../credentials.js';
-import { resolveServer } from '../server.js';
+import { GLOBAL_KEY_REMOVED } from '../key-scope.js';
 import { exitWithError } from '../errors.js';
 import { isInteractive } from '../ui/interactive.js';
 import { confirm, closePrompts } from '../prompt.js';
 import { dim, green, sym } from '../ui/style.js';
 
 export type Removal = {
-    kind: 'path' | 'exclude-block' | 'html-block' | 'env-lines' | 'global-key';
+    kind: 'path' | 'exclude-block' | 'html-block' | 'env-lines';
     target: string;
 };
 
@@ -71,7 +70,6 @@ export async function writableInsideRoot(root: string, abs: string): Promise<boo
 /** Everything PinSay could remove here, without writing anything. Reads config first — it lives in the `.pinsay/` this plans to delete. */
 export async function collectRemovals(
     root: string,
-    opts: { global: boolean; server: string },
 ): Promise<{ removals: Removal[]; byHand: string[]; tracked: string[] }> {
     const config = await readConfig(root);
     const removals: Removal[] = [];
@@ -119,10 +117,6 @@ export async function collectRemovals(
         }
     }
 
-    if (opts.global) {
-        removals.push({ kind: 'global-key', target: normalizeServerOrigin(opts.server) });
-    }
-
     const byHand: string[] = [];
     for (const appDir of appDirs) {
         for (const name of VITE_CONFIGS) {
@@ -163,14 +157,11 @@ async function removeEmptyParents(root: string, abs: string): Promise<void> {
 /** One command removes everything PinSay put in this repo — and nothing else — after showing the list and asking (default No). Works offline. */
 export async function removeCommand(cwd: string, options: Record<string, string | boolean>): Promise<void> {
     const json = options['json'] === true;
+    if (options['global'] === true) exitWithError(2, GLOBAL_KEY_REMOVED, json);
     const interactive = isInteractive(options);
-    const server = resolveServer();
     const root = await findRepoRoot(cwd);
 
-    const { removals, byHand, tracked } = await collectRemovals(root, {
-        global: options['global'] === true,
-        server,
-    });
+    const { removals, byHand, tracked } = await collectRemovals(root);
 
     if (removals.length === 0) {
         if (json) console.log(JSON.stringify({ ok: true, removed: [] }));
@@ -186,9 +177,7 @@ export async function removeCommand(cwd: string, options: Record<string, string 
                     ? ' (PinSay block)'
                     : r.kind === 'env-lines'
                       ? ' (VITE_PINSAY_* lines)'
-                      : r.kind === 'global-key'
-                        ? ` (this machine's key for ${r.target})`
-                        : '';
+                      : '';
             console.log(`  ${r.target}${reason ? dim(reason) : ''}`);
         }
         if (byHand.length > 0) {
@@ -256,8 +245,6 @@ export async function removeCommand(cwd: string, options: Record<string, string 
             const abs = joinRel(root, r.target);
             if (!abs) continue;
             await fs.rm(abs, { recursive: true, force: true });
-        } else if (r.kind === 'global-key') {
-            await removeGlobalCredential(server);
         }
     }
 
