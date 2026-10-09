@@ -259,3 +259,143 @@ test('update leaves an old .pinsay/pinsay.sh untouched and notes it is no longer
     await stub.close();
   }
 });
+
+const CFG = { project: 'demo', environment: 'local', aiTool: 'claude-code' };
+const STORE = '{"https://app.pinsay.dev":{"apiKey":"pnsy_x"}}';
+
+/** Runs `fn` with the named env vars saved, restoring them (or deleting them) afterwards. */
+async function withEnv(names: string[], fn: () => Promise<void>): Promise<void> {
+  const saved = names.map((n) => process.env[n]);
+  try {
+    await fn();
+  } finally {
+    names.forEach((n, i) => {
+      if (saved[i] === undefined) delete process.env[n];
+      else process.env[n] = saved[i];
+    });
+  }
+}
+
+test('update deletes the machine-wide key file and says which one', async (t) => {
+  await withEnv(['PINSAY_CONFIG_DIR'], async () => {
+    const stub = await stubServer('2026.09.16');
+    try {
+      const cfg = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-cfg-'));
+      process.env.PINSAY_CONFIG_DIR = cfg;
+      await fs.writeFile(join(cfg, 'credentials.json'), STORE, 'utf8');
+      const dir = await scratch({ server: stub.url, ...CFG });
+      await fs.writeFile(join(dir, '.pinsay/credentials.env'), 'PINSAY_API_KEY=pnsy_repo\n', 'utf8');
+      const lines: string[] = [];
+      t.mock.method(console, 'log', (...a: unknown[]) => { lines.push(a.join(' ')); });
+      await updateCommand(dir, { server: stub.url });
+      await assert.rejects(fs.access(join(cfg, 'credentials.json')));
+      assert.equal(lines.filter((l) => l.includes('removed machine-wide key')).length, 1);
+      assert.ok(lines.includes(`removed machine-wide key ${join(cfg, 'credentials.json')}`));
+      assert.ok(!lines.some((l) => l.includes('has no key of its own')));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+test('update hints login when the repo has no key of its own', async (t) => {
+  await withEnv(['PINSAY_CONFIG_DIR', 'PINSAY_API_KEY'], async () => {
+    const stub = await stubServer('2026.09.16');
+    try {
+      const cfg = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-cfg-'));
+      process.env.PINSAY_CONFIG_DIR = cfg;
+      delete process.env.PINSAY_API_KEY;
+      await fs.writeFile(join(cfg, 'credentials.json'), STORE, 'utf8');
+      const dir = await scratch({ server: stub.url, ...CFG });
+      const lines: string[] = [];
+      t.mock.method(console, 'log', (...a: unknown[]) => { lines.push(a.join(' ')); });
+      await updateCommand(dir, { server: stub.url });
+      assert.ok(lines.includes('This repo has no key of its own yet. Sign in for it: npx pinsay-cli login'));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+test('update --check lists the machine key and keeps it', async (t) => {
+  await withEnv(['PINSAY_CONFIG_DIR'], async () => {
+    const stub = await stubServer('2026.09.16');
+    try {
+      const cfg = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-cfg-'));
+      process.env.PINSAY_CONFIG_DIR = cfg;
+      await fs.writeFile(join(cfg, 'credentials.json'), STORE, 'utf8');
+      const dir = await scratch({ server: stub.url, ...CFG });
+      const lines: string[] = [];
+      t.mock.method(console, 'log', (...a: unknown[]) => { lines.push(a.join(' ')); });
+      await updateCommand(dir, { server: stub.url, check: true });
+      await fs.access(join(cfg, 'credentials.json'));
+      assert.ok(lines.includes(`machine-wide key found: ${join(cfg, 'credentials.json')} (update deletes it)`));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+test('update with no machine key prints nothing about it', async (t) => {
+  await withEnv(['PINSAY_CONFIG_DIR'], async () => {
+    const stub = await stubServer('2026.09.16');
+    try {
+      process.env.PINSAY_CONFIG_DIR = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-cfg-'));
+      const dir = await scratch({ server: stub.url, ...CFG });
+      const lines: string[] = [];
+      t.mock.method(console, 'log', (...a: unknown[]) => { lines.push(a.join(' ')); });
+      await updateCommand(dir, { server: stub.url });
+      assert.ok(!lines.some((l) => l.includes('machine-wide')));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+test("update in a folder that isn't set up still deletes the machine key", async (t) => {
+  await withEnv(['PINSAY_CONFIG_DIR'], async () => {
+    const stub = await stubServer('2026.09.16');
+    try {
+      const cfg = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-cfg-'));
+      process.env.PINSAY_CONFIG_DIR = cfg;
+      await fs.writeFile(join(cfg, 'credentials.json'), STORE, 'utf8');
+      const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-'));
+      t.mock.method(console, 'log', () => {});
+      t.mock.method(console, 'error', () => {});
+      assert.equal(await updateCommand(dir, { server: stub.url }), 1);
+      await assert.rejects(fs.access(join(cfg, 'credentials.json')));
+    } finally {
+      await stub.close();
+    }
+  });
+});
+
+test(
+  'update deletes a pre-0.8.0 pointer store only when it is a PinSay store',
+  { skip: process.platform === 'win32' && 'XDG paths' },
+  async (t) => {
+    await withEnv(['PINSAY_CONFIG_DIR', 'XDG_CONFIG_HOME'], async () => {
+      const stub = await stubServer('2026.09.16');
+      try {
+        delete process.env.PINSAY_CONFIG_DIR;
+        const xdg = await fs.mkdtemp(join(tmpdir(), 'pinsay-update-xdg-'));
+        process.env.XDG_CONFIG_HOME = xdg;
+        const file = join(xdg, 'pointer', 'credentials.json');
+        await fs.mkdir(join(xdg, 'pointer'), { recursive: true });
+        await fs.writeFile(file, '{"https://app.pinsay.dev":{"apiKey":"pnsy_old"}}', 'utf8');
+        const dir = await scratch({ server: stub.url, ...CFG });
+        t.mock.method(console, 'log', () => {});
+        await updateCommand(dir, { server: stub.url });
+        await assert.rejects(fs.access(file));
+        await assert.rejects(fs.access(join(xdg, 'pointer')));
+
+        await fs.mkdir(join(xdg, 'pointer'), { recursive: true });
+        await fs.writeFile(file, '{"other":"tool"}', 'utf8');
+        await updateCommand(dir, { server: stub.url });
+        await fs.access(file);
+      } finally {
+        await stub.close();
+      }
+    });
+  },
+);

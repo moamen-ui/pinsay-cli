@@ -87,7 +87,7 @@ Daily
   reply     Reply to a comment
 Tools
   doctor    Check this install and fix what it can
-  update    Refresh the AI skills
+  update    Refresh the AI skills; delete an old machine-wide key
   map       Rebuild the source map without a build
   mcp       Start the MCP server for AI tools
   whoami    Show the signed-in account, workspace and key source
@@ -408,7 +408,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
     },
     update: {
-        purpose: 'Refresh the AI skills',
+        purpose: 'Refresh the AI skills; delete an old machine-wide key',
         usage: 'npx pinsay-cli update [options]',
         common: [
             ['--check', 'Report what is out of date; write nothing'],

@@ -1,7 +1,7 @@
 import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 /** Where an API key came from, for `whoami` and doctor's `key` check. `null` = none resolved. */
 export type ApiKeySource = 'env' | 'repo' | null;
@@ -72,6 +72,49 @@ export function globalCredentialsPath(): string {
 export function legacyGlobalCredentialsPath(): string | undefined {
   if (process.env.PINSAY_CONFIG_DIR) return undefined;
   return join(configBase(), LEGACY_DIR_NAME, 'credentials.json');
+}
+
+/**
+ * The machine-wide key files an older CLI left: `credentials.json` from `login --global` / `init --global`
+ * (0.8.0–0.9.x), and the pre-0.8.0 `pointer` store, only when it really is a PinSay credential store (a `pointer`
+ * folder could belong to another tool). Existing files only.
+ */
+export async function findMachineKeyFiles(): Promise<string[]> {
+  const found: string[] = [];
+  const current = globalCredentialsPath();
+  try {
+    await fs.access(current);
+    found.push(current);
+  } catch {
+    // none
+  }
+  const legacy = legacyGlobalCredentialsPath();
+  if (legacy) {
+    try {
+      if (isCredentialStore(JSON.parse(await fs.readFile(legacy, 'utf8')))) found.push(legacy);
+    } catch {
+      // missing, unreadable or not ours: leave it alone
+    }
+  }
+  return found;
+}
+
+/**
+ * Deletes what `findMachineKeyFiles` finds, then each file's folder when nothing else is left in it (never
+ * recursive). Returns the files it deleted. Since 0.10.0 the key lives only in the repo; `update` calls this.
+ */
+export async function removeMachineKeyFiles(): Promise<string[]> {
+  const removed: string[] = [];
+  for (const file of await findMachineKeyFiles()) {
+    try {
+      await fs.rm(file);
+    } catch {
+      continue;
+    }
+    removed.push(file);
+    await fs.rmdir(dirname(file)).catch(() => {});
+  }
+  return removed;
 }
 
 /**

@@ -11,6 +11,7 @@ import type { MetaResponse } from '../checks.js';
 import { resolveServer } from '../server.js';
 import { hidePinsayFiles, formatHideWarnings, skillsDirExtra } from '../lib/git-exclude.js';
 import { dim } from '../ui/style.js';
+import { findMachineKeyFiles, removeMachineKeyFiles, resolveApiKey } from '../credentials.js';
 
 export interface UpdateOptions {
   server?: string;
@@ -51,6 +52,7 @@ function isFlatPinSayFeedbackFile(path: string, aiTool: string | undefined, skil
  * Symlinks are preserved deliberately: installSkills points `.agents/<name>/SKILL.md` at the
  * tool-specific copy for several tools, so writing through the link keeps that arrangement intact,
  * whereas replacing the file would break it.
+ * Since 0.10.0 it also deletes the machine-wide key an older CLI saved (see `removeMachineKeyFiles`).
  */
 export async function updateCommand(cwd: string, options: UpdateOptions): Promise<number> {
   // A repo installed by an older CLI may still have files that version wrote and this one no
@@ -60,6 +62,18 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   for (const f of removedLegacyFiles) console.log(dim(`removed legacy ${f}`));
   const note = pinsayShNote(cwd);
   if (note) console.log(dim(note));
+
+  // 0.10.0: the API key lives only in the repo. Delete a machine-wide key an older CLI saved (`login --global`).
+  // Before the config check, so it also runs in a folder that isn't set up.
+  if (options.check) {
+    for (const f of await findMachineKeyFiles()) console.log(`machine-wide key found: ${f} (update deletes it)`);
+  } else {
+    const removedKeys = await removeMachineKeyFiles();
+    for (const f of removedKeys) console.log(`removed machine-wide key ${f}`);
+    if (removedKeys.length > 0 && !(await resolveApiKey(cwd)).key) {
+      console.log('This repo has no key of its own yet. Sign in for it: npx pinsay-cli login');
+    }
+  }
 
   const config = await readConfig(cwd);
   const server = (options.server || resolveServer()).replace(/\/$/, '');
