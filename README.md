@@ -19,7 +19,7 @@ npx pinsay-cli init
 |---|---|
 | `npx pinsay-cli init` | Set up this repo (sign in, project, skills; Chrome extension by default) |
 | `npx pinsay-cli embed` | Put the widget in your app's code |
-| `npx pinsay-cli login` / `whoami` / `logout` | Sign in; the key is saved in this repo (`--global`: this machine); check / clear credentials |
+| `npx pinsay-cli login` / `whoami` / `logout` | Sign in; the key is saved in this repo; check (account, workspace) / clear credentials |
 | `npx pinsay-cli remove` | Remove everything PinSay added to this repo |
 | `npx pinsay-cli status` | Who you are, this folder's project, comments waiting |
 | `npx pinsay-cli open` | Open this project in the dashboard |
@@ -42,7 +42,7 @@ npx pinsay-cli init
 
 ## API keys
 
-Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` → the per-machine store (`~/.config/pinsay/credentials.json`, mode 0600, never committed). `init` and `login` save the key to `.pinsay/credentials.env` (hidden from git) by default; `--global` saves to the machine store instead; `login --global` moves a repo key there.
+Keys look like `pnsy_` + 40 hex characters. They resolve in this order: `PINSAY_API_KEY` env var → `.pinsay/credentials.env` (mode 0600, hidden from git). `init` and `login` save the key in the repo; there is no machine-wide key since 0.10.0, and `npx pinsay-cli update` deletes one an older version saved (`~/.config/pinsay/credentials.json`).
 
 ## MCP (Claude Code / Cursor)
 
@@ -61,6 +61,12 @@ The CLI never reads or uploads your source code. It asks before sharing your fra
 Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pinsay-cli/issues · support@pinsay.dev
 
 ## Changelog
+
+### 0.10.0
+
+- The API key lives only in the repo: `--global` (login, init, logout, remove) is gone, and a key saved on the machine is no longer read.
+- `update` deletes the machine-wide key file an older version saved, and says which file it removed.
+- `whoami` shows the workspace; `status` / `apply` say "Project … not found in workspace …" instead of a generic error.
 
 ### 0.9.1
 
