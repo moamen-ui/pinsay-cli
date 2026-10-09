@@ -5,7 +5,7 @@ import { accent, dim, sym } from '../ui/style.js';
  * Pure: `renderPlan`/`planToJson` write nothing, decide nothing, and only phrase what the caller already decided.
  */
 
-export interface InitPlan {
+export type InitPlan = {
   product: string;
   project: { key: string; name: string; create: boolean } | null; // null = not known yet (dry run)
   account:
@@ -29,7 +29,7 @@ export interface InitPlan {
   files: string[];
   shared: { decided: boolean; share: boolean; saved: boolean; frontend: string[]; backend: string[]; aiTool: string };
   notes: string[];
-}
+};
 
 const INDENT = ' '.repeat(12);
 

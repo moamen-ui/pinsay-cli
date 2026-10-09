@@ -169,7 +169,7 @@ export async function removeCommand(cwd: string, options: Record<string, string 
 
     if (removals.length === 0) {
         if (json) console.log(JSON.stringify({ ok: true, removed: [] }));
-        else console.log("PinSay isn't set up in this folder. Nothing to remove.");
+        else console.log("This folder isn't set up. Nothing to remove.");
         return;
     }
 

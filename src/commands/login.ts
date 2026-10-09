@@ -13,7 +13,7 @@ import {
 import { ask, closePrompts } from '../prompt.js';
 import { scopeFromFlags } from '../key-scope.js';
 import { resolveServer } from '../server.js';
-import { exchangeKey, InvalidKeyError, NO_KEY_MESSAGE } from '../init/session.js';
+import { exchangeKey, InvalidKeyError, noKeyMessage } from '../init/session.js';
 import { runDeviceLogin } from '../device-login.js';
 import { exitWithError } from '../errors.js';
 import { green, sym } from '../ui/style.js';
@@ -45,16 +45,17 @@ export async function loginCommand(cwd: string, options: Record<string, string |
 
   const root = await findRepoRoot(cwd);
   const server = resolveServer();
-  await getBranding(server); // fails fast (exit 4) when the server can't be reached
+  const branding = await getBranding(server); // fails fast (exit 4) when the server can't be reached
+  const product = branding.productName;
 
   const inRepo = existsSync(join(root, '.pinsay')) || inGitRepo(root);
   const scope = flags.scope ?? (inRepo ? 'repo' : 'global');
   let flagKey = typeof options['key'] === 'string' ? options['key'].trim() : '';
   if (options['key'] === true) {
     // `--key` with no value: ask with hidden input (keeps the key out of shell history), never the browser.
-    if (!process.stdin.isTTY) exitWithError(2, NO_KEY_MESSAGE, json);
-    flagKey = (await ask('API key (from PinSay → Profile → API key; input hidden)', { secret: true })).trim();
-    if (!flagKey) exitWithError(2, NO_KEY_MESSAGE, json);
+    if (!process.stdin.isTTY) exitWithError(2, noKeyMessage(product), json);
+    flagKey = (await ask(`API key (from ${product} → Profile → API key; input hidden)`, { secret: true })).trim();
+    if (!flagKey) exitWithError(2, noKeyMessage(product), json);
   }
 
   // Move: `login --global` in a repo that already holds a valid key — no browser, no new key.
@@ -86,7 +87,7 @@ export async function loginCommand(cwd: string, options: Record<string, string |
       email = me.email;
     } catch (err) {
       if (!(err instanceof InvalidKeyError)) throw err;
-      exitWithError(3, 'That API key is not valid. Check it in PinSay → Profile → API key.', json);
+      exitWithError(3, `That API key is not valid. Check it in ${product} → Profile → API key.`, json);
     }
   } else if (process.stdin.isTTY || options['no-browser'] === true) {
     // The device flow never reads stdin, so `--no-browser` lets it run without a TTY (the link is printed).
@@ -98,7 +99,7 @@ export async function loginCommand(cwd: string, options: Record<string, string |
     displayName = outcome.result.displayName;
     email = outcome.result.email;
   } else {
-    exitWithError(2, NO_KEY_MESSAGE, json);
+    exitWithError(2, noKeyMessage(product), json);
   }
   closePrompts();
 

@@ -86,7 +86,7 @@ export async function chooseProject(
 
   const createRow = `${sym.plus} ${CREATE_ROW_LABEL}`;
   const rows = projects.map((p) => `${p.name}  (${p.key})`);
-  const question = opts.label ? `Which PinSay project is ${opts.label}?` : 'Which project is this app?';
+  const question = opts.label ? `Which project is ${opts.label}?` : 'Which project is this app?';
   const choice = await select(question, me.isAdmin ? [...rows, createRow] : rows);
   if (choice === createRow) return askNewProject();
   const picked = projects[rows.indexOf(choice)];

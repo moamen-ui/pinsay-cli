@@ -662,7 +662,7 @@ export function appLabel(appDir: string): string {
  * per-app header).
  */
 export function projectQuestion(label?: string): string {
-    return label ? `Which PinSay project is ${label}?` : 'Which project is this app?';
+    return label ? `Which project is ${label}?` : 'Which project is this app?';
 }
 
 /** An absolute path made repo-root-relative, with forward slashes — what a `ProjectEntry` stores. */
@@ -1169,6 +1169,8 @@ async function handleMultiJoin(args: {
         console.log(`${green(sym.check)} Joined ${product} (${projects.length} project${projects.length === 1 ? '' : 's'}) as ${session.me.displayName}`);
         console.log(`  Projects: ${projects.map((p) => `${p.key} (${p.path})`).join(', ')}`);
         for (const line of quickCheckLines(checks)) console.log(line);
+        const shNote = pinsayShNote(cwd);
+        if (shNote) console.log(dim(shNote));
         console.log('');
         for (const line of renderNext(nextStep)) console.log(line);
     }

@@ -38,12 +38,16 @@ export class InvalidKeyError extends Error {
   }
 }
 
-export const NO_KEY_MESSAGE =
-  'No API key. Pass --key <key> or set PINSAY_API_KEY (get one in PinSay → Profile → API key).';
+export function noKeyMessage(product: string): string {
+  return `No API key. Pass --key <key> or set PINSAY_API_KEY (get one in ${product} → Profile → API key).`;
+}
 export const SAVED_KEY_REJECTED = 'Your saved key no longer works (expired or revoked).';
-export const QUICK_ACCESS_MESSAGE =
-  "This is a quick-access account. It can leave comments, but it can't connect a repo. Sign in with your full " +
-  'PinSay account, or ask your workspace admin for one.';
+export function quickAccessMessage(product: string): string {
+  return (
+    "This is a quick-access account. It can leave comments, but it can't connect a repo. Sign in with your full " +
+    `${product} account, or ask your workspace admin for one.`
+  );
+}
 
 function toProfile(raw: any): Profile {
   return {
@@ -98,7 +102,7 @@ export type SignInOptions = {
  */
 export async function signIn(server: string, root: string, opts: SignInOptions): Promise<Session> {
   const session = await obtainSession(server, root, opts);
-  if (session.me.isQuickAccess) exitWithError(3, QUICK_ACCESS_MESSAGE, opts.json);
+  if (session.me.isQuickAccess) exitWithError(3, quickAccessMessage(opts.product), opts.json);
   return session;
 }
 
@@ -110,12 +114,12 @@ async function obtainSession(server: string, root: string, opts: SignInOptions):
       return { key, token, me, origin: 'flag' };
     } catch (err) {
       if (!(err instanceof InvalidKeyError)) throw err;
-      exitWithError(3, 'That API key is not valid. Check it in PinSay → Profile → API key.', opts.json);
+      exitWithError(3, `That API key is not valid. Check it in ${opts.product} → Profile → API key.`, opts.json);
     }
   }
 
   if (opts.flagKey === true) {
-    if (!opts.interactive) exitWithError(2, NO_KEY_MESSAGE, opts.json);
+    if (!opts.interactive) exitWithError(2, noKeyMessage(opts.product), opts.json);
     for (let attempt = 1; ; attempt++) {
       const key = (await ask(`API key (from ${opts.product} → Profile → API key; input hidden)`, { secret: true })).trim();
       try {
@@ -143,7 +147,7 @@ async function obtainSession(server: string, root: string, opts: SignInOptions):
     }
   }
 
-  if (!opts.interactive) exitWithError(2, NO_KEY_MESSAGE, opts.json);
+  if (!opts.interactive) exitWithError(2, noKeyMessage(opts.product), opts.json);
 
   const outcome = await runDeviceLogin(server, { noBrowser: opts.noBrowser });
   if (!outcome.ok) {

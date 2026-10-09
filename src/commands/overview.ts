@@ -91,7 +91,8 @@ export async function overviewCommand(
     sourceDesc = 'key from this machine';
   }
 
-  console.log(`  Signed in   ${displayName} (${email}) ${sym.dot} ${sourceDesc}`);
+  const who = email ? `${displayName} (${email})` : displayName;
+  console.log(`  Signed in   ${who} ${sym.dot} ${sourceDesc}`);
 
   if (projectsWithPending.length === 0) {
     console.log(`  Project     none in this folder ${sym.arrow} npx pinsay-cli init`);

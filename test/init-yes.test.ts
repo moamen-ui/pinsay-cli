@@ -662,7 +662,7 @@ test('appLabel/projectQuestion: naming the app disambiguates the project questio
   assert.strictEqual(projectQuestion(), 'Which project is this app?');
   assert.strictEqual(
     projectQuestion(appLabel('apps/tuwaiq-clubs')),
-    'Which PinSay project is apps/tuwaiq-clubs?',
+    'Which project is apps/tuwaiq-clubs?',
   );
 });
 
@@ -894,6 +894,36 @@ for (const flags of ['--delivery embed', '--html index.html', '--pin']) {
     assert.match(r.stdout, /Next: start your app and click the/);
   }));
 }
+
+// SPEC criterion 37: `init --embed` (one step) and `init` then `embed --yes` (two steps) must leave
+// identical fresh repos — same files, same bytes.
+test('init --embed and init followed by embed produce identical index.html, .env.development and config', () => withTempDir(async (dirA) =>
+  withTempDir(async (dirB) => {
+    await viteFixture(dirA);
+    await viteFixture(dirB);
+
+    const oneStep = await runCli(dirA, 'init --key ptr_good --project my-app --yes --embed');
+    assert.strictEqual(oneStep.code, 0, oneStep.stdout + oneStep.stderr);
+    const initStep = await runCli(dirB, 'init --key ptr_good --project my-app --yes');
+    assert.strictEqual(initStep.code, 0, initStep.stdout + initStep.stderr);
+    const embedStep = await runCli(dirB, 'embed --yes');
+    assert.strictEqual(embedStep.code, 0, embedStep.stdout + embedStep.stderr);
+
+    assert.strictEqual(
+      await fs.readFile(path.join(dirA, 'index.html'), 'utf8'),
+      await fs.readFile(path.join(dirB, 'index.html'), 'utf8'),
+      'index.html must be identical on both paths',
+    );
+    assert.strictEqual(
+      await fs.readFile(path.join(dirA, '.env.development'), 'utf8'),
+      await fs.readFile(path.join(dirB, '.env.development'), 'utf8'),
+      '.env.development must be identical on both paths',
+    );
+    const configA = JSON.parse(await fs.readFile(path.join(dirA, '.pinsay/config.json'), 'utf8'));
+    const configB = JSON.parse(await fs.readFile(path.join(dirB, '.pinsay/config.json'), 'utf8'));
+    assert.strictEqual(configA.delivery, configB.delivery, 'delivery must match on both paths');
+    assert.strictEqual(configA.htmlPath, configB.htmlPath, 'htmlPath must match on both paths');
+  })));
 
 test('a repo whose index.html already has the widget is left untouched and recorded as embed', () => withTempDir(async (dir) => {
   const html = '<html><head></head><body><pinsay-feedback project="my-app"></pinsay-feedback></body></html>';

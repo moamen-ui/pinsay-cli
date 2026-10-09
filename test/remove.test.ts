@@ -151,7 +151,7 @@ test('empty folder: the Nothing to remove line, exit 0', () => {
     try {
         const r = run(dir, tmp(), []);
         assert.strictEqual(r.code, 0);
-        assert.ok(r.out.includes("PinSay isn't set up in this folder. Nothing to remove."));
+        assert.ok(r.out.includes("This folder isn't set up. Nothing to remove."));
     } finally {
         rm(dir);
     }

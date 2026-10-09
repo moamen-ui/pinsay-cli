@@ -51,7 +51,7 @@ export async function embedCommand(cwd: string, options: Record<string, string |
     }
 
     if (!project) {
-        exitWithError(2, 'No PinSay project in this folder yet. Run: npx pinsay-cli init --embed', json);
+        exitWithError(2, 'No project in this folder yet. Run: npx pinsay-cli init --embed', json);
     }
 
     const plan = await planEmbed(root, {

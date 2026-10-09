@@ -4,7 +4,7 @@ import * as http from 'node:http';
 import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { exchangeKey, signIn, InvalidKeyError, QUICK_ACCESS_MESSAGE, NO_KEY_MESSAGE } from '../src/init/session.js';
+import { exchangeKey, signIn, InvalidKeyError, quickAccessMessage, noKeyMessage } from '../src/init/session.js';
 import {
   chooseProject,
   createProject,
@@ -137,7 +137,7 @@ test('signIn: a key from PINSAY_API_KEY is used silently (origin env)', async ()
 
 test('signIn: no key and no terminal exits 2 with the "No API key" line', async () => {
   assert.strictEqual(await exitCode(signIn(url, tmp, nonInteractive)), 2);
-  assert.ok(errors.includes(NO_KEY_MESSAGE));
+  assert.ok(errors.includes(noKeyMessage('PinSay')));
 });
 
 test('signIn: --key with no value and no terminal exits 2', async () => {
@@ -152,7 +152,7 @@ test('signIn: a rejected saved key without a terminal exits 3', async () => {
 
 test('signIn: a quick-access account stops with exit 3 and the quick-access message', async () => {
   assert.strictEqual(await exitCode(signIn(url, tmp, { ...nonInteractive, flagKey: 'ptr_quick' })), 3);
-  assert.ok(errors.includes(QUICK_ACCESS_MESSAGE));
+  assert.ok(errors.includes(quickAccessMessage('PinSay')));
 });
 
 const admin = { displayName: 'Ada', isAdmin: true, isQuickAccess: false };
