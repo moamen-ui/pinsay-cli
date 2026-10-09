@@ -90,11 +90,13 @@ export async function runDeviceLogin(
     throw err;
   }
 
-  console.log('Open this link and enter the code to sign in:');
-  console.log(`  ${start.verificationUrl}`);
-  console.log(`  Code: ${start.userCode}`);
-  const printedLines = 4;
-  console.log('Waiting for approval… (Ctrl+C to cancel)');
+  const printed = [
+    'Open this link and enter the code to sign in:',
+    `  ${start.verificationUrl}`,
+    `  Code: ${start.userCode}`,
+    'Waiting for approval… (Ctrl+C to cancel)',
+  ];
+  for (const line of printed) console.log(line);
 
   if (!options.noBrowser) openBrowser(start.verificationUrl);
 
@@ -128,7 +130,12 @@ export async function runDeviceLogin(
         return { ok: false, reason: 'expired' };
       }
       // Tidy: drop the link/code/waiting lines so only the caller's "Signed in" line stays.
-      if (colorEnabled() && process.stdout.isTTY) process.stdout.write(`\x1b[${printedLines}A\x1b[0J`);
+      // Terminal rows, not lines: a long URL wraps. Unknown width → leave the lines.
+      const columns = process.stdout.columns;
+      if (colorEnabled() && process.stdout.isTTY && columns > 0) {
+        const rows = printed.reduce((n, l) => n + Math.max(1, Math.ceil(l.length / columns)), 0);
+        process.stdout.write(`\x1b[${rows}A\x1b[0J`);
+      }
       return { ok: true, result: { apiKey: poll.apiKey, displayName: poll.displayName, email: poll.email } };
     }
     if (poll.status === 'denied') return { ok: false, reason: 'denied' };
