@@ -6,7 +6,7 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import * as http from 'node:http';
 import { fileURLToPath } from 'node:url';
-import { describeError, NetworkError } from '../src/errors.js';
+import { describeError, NetworkError, ProjectNotFoundError } from '../src/errors.js';
 import { ApiError } from '../src/api.js';
 import { rmTempDir } from './rm-temp.js';
 
@@ -28,6 +28,19 @@ test('describeError maps each failure to a code and one sentence', () => {
     const other = describeError(new Error('boom'));
     assert.strictEqual(other.code, 1);
     assert.ok(other.message.includes('PINSAY_DEBUG=1'));
+});
+
+test('describeError maps ProjectNotFoundError to exit 3 with the workspace name', () => {
+    const withWs = describeError(new ProjectNotFoundError('demo', 'PinSay'));
+    assert.strictEqual(withWs.code, 3);
+    assert.strictEqual(
+        withWs.message,
+        'Project "demo" not found in workspace PinSay. Sign in with an account in the project\'s workspace (npx pinsay-cli login), or fix the key in .pinsay/config.json.',
+    );
+
+    const noWs = describeError(new ProjectNotFoundError('demo'));
+    assert.strictEqual(noWs.code, 3);
+    assert.ok(noWs.message.includes('not found in this workspace.'), noWs.message);
 });
 
 function run(args: string[], cwd: string, env: Record<string, string>) {

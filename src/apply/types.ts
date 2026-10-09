@@ -182,6 +182,8 @@ export type ApplyClientContext = {
   token?: string;
   apiKey?: string;
   cwd: string;
+  /** The signed-in workspace's name (`/api/auth/me` `tenantName`), for the project-not-found message. */
+  workspaceName?: string;
 };
 
 export type ApplyRunResult = {

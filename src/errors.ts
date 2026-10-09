@@ -3,6 +3,27 @@ export { NetworkError };
 
 export const ISSUES_URL = 'https://github.com/moamen-ui/pinsay-cli/issues';
 
+/** "Project <x> not found in workspace <name>." — the project key isn't in the signed-in key's workspace (or doesn't exist). */
+export function projectNotFoundMessage(project: string, workspace?: string): string {
+    const where = workspace ? `workspace ${workspace}` : 'this workspace';
+    return (
+        `Project "${project}" not found in ${where}. Sign in with an account in the project's workspace ` +
+        '(npx pinsay-cli login), or fix the key in .pinsay/config.json.'
+    );
+}
+
+/**
+ * HTTP 404 on a project's comment queue. `code` is the MCP tool-error code (`mcp/server.ts` uses a string `code` as is);
+ * `describeError` turns it into exit 3 (a key/workspace problem).
+ */
+export class ProjectNotFoundError extends Error {
+    readonly code = 'not_found';
+    constructor(public project: string, public workspace?: string) {
+        super(projectNotFoundMessage(project, workspace));
+        this.name = 'ProjectNotFoundError';
+    }
+}
+
 /** True for failures that mean "PinSay can't be reached right now" — callers must rethrow these, never swallow. */
 export function isOutage(err: unknown): boolean {
     return err instanceof NetworkError || (err instanceof ApiError && err.code >= 500);
@@ -14,6 +35,7 @@ function hostOf(server?: string): string {
 
 /** One sentence + fix, and the exit code, for any error that reached the top. White-label: no product name. */
 export function describeError(err: unknown, server?: string): { code: number; message: string } {
+    if (err instanceof ProjectNotFoundError) return { code: 3, message: err.message };
     if (err instanceof NetworkError) {
         return { code: 4, message: `Can't reach ${err.host}. Check your internet connection and try again.` };
     }

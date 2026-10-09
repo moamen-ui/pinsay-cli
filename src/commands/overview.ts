@@ -57,7 +57,7 @@ export async function overviewCommand(
   for (const p of projects) {
     const name = projectNames[p.key] || p.key;
     const items = await fetchQueue(
-      { server, project: p.key, token, apiKey: key, cwd: root },
+      { server, project: p.key, token, apiKey: key, cwd: root, workspaceName: me?.tenantName || undefined },
       {},
     );
     projectsWithPending.push({
