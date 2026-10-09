@@ -84,12 +84,13 @@ function releaseStdin(): void {
     if (shared === null && plain === null) process.stdin.pause();
 }
 
-/** Releases stdin so the process can exit once prompting is done. */
+/** Releases stdin (and the keypress listeners this module added) so the process can exit once prompting is done. */
 export function closePrompts(): void {
     shared?.close();
     shared = null;
     plain?.close();
     plain = null;
+    process.stdin.removeAllListeners('keypress');
     process.stdin.pause();
 }
 

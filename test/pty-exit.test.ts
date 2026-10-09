@@ -68,10 +68,15 @@ before(async () => {
 
 after(() => {
     server.close();
+    for (const d of made) fs.rmSync(d, { recursive: true, force: true });
 });
 
+const made: string[] = [];
+
 function tmp(): string {
-    return fs.mkdtempSync(path.join(os.tmpdir(), 'pinsay-pty-'));
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinsay-pty-'));
+    made.push(dir, `${dir}-global`);
+    return dir;
 }
 
 function write(dir: string, rel: string, content: string): void {
@@ -88,11 +93,26 @@ function viteFixture(): string {
     return dir;
 }
 
+/** A clean child env: the outer CI / agent-tool signals must not change which prompts appear. */
+function ptyEnv(server: string, dir: string): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = {
+        PATH: process.env.PATH,
+        HOME: process.env.HOME,
+        TMPDIR: process.env.TMPDIR,
+        TERM: 'xterm',
+        CI: '',
+        PINSAY_SERVER: server,
+        PINSAY_CONFIG_DIR: `${dir}-global`,
+    };
+    for (const k of ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'OPENCODE', 'WINDSURF', 'ANTIGRAVITY_AGENT', 'GEMINI_CLI', 'FORCE_COLOR', 'NO_COLOR']) delete env[k];
+    return env;
+}
+
 /** Runs `node dist/cli.js <args>` in a pseudo-terminal, answering each [trigger, keys] step. */
 async function pty(dir: string, server: string, steps: Array<[string, string]>, args: string[]): Promise<{ code: number | 'TIMEOUT'; output: string }> {
     const { stdout: out } = await execFileAsync('python3', ['-I', helper, dir, JSON.stringify(steps), process.execPath, cliPath, ...args], {
         encoding: 'utf8',
-        env: { ...process.env, PINSAY_SERVER: server, PINSAY_CONFIG_DIR: `${dir}-global`, NO_COLOR: '', TERM: 'xterm' },
+        env: ptyEnv(server, dir),
         timeout: 60000,
     });
     return JSON.parse(out.trim().split('\n').pop()!);
@@ -139,9 +159,9 @@ test('remove: Enter at "Remove these?" removes nothing and exits 0', { skip }, a
     assert.ok(fs.existsSync(path.join(dir, '.pinsay')));
 });
 
-test('init: share question then "Go ahead?" answered with Enter exits 0', { skip }, async () => {
+test('init: tools and share questions then "Go ahead?" answered with Enter exits 0', { skip }, async () => {
     const dir = tmp();
-    const r = await pty(dir, serverUrl, [['Share your project', '\r'], ['Go ahead?', '\r']], ['init', '--key', 'ptr_good', '--project', 'my-app']);
+    const r = await pty(dir, serverUrl, [['Which AI tools', '\r'], ['Share your project', '\r'], ['Go ahead?', '\r']], ['init', '--key', 'ptr_good', '--project', 'my-app']);
     assert.notStrictEqual(r.code, 'TIMEOUT', 'the process must exit on its own');
     assert.strictEqual(r.code, 0, r.output);
 });
@@ -152,4 +172,14 @@ test('login --key (no value): hidden key is typed, accepted, never echoed, and t
     assert.notStrictEqual(r.code, 'TIMEOUT', 'the process must exit on its own');
     assert.strictEqual(r.code, 0, r.output);
     assert.ok(!r.output.includes('ptr_good'), 'the typed key must not appear in the output');
+});
+
+test('embed --dry-run in a multi-project repo: Enter at the app question exits 0', { skip }, async () => {
+    const dir = viteFixture();
+    write(dir, 'a/index.html', '<html><head></head><body></body></html>\n');
+    write(dir, 'b/index.html', '<html><head></head><body></body></html>\n');
+    write(dir, '.pinsay/config.json', JSON.stringify({ projects: { 'app-a': { path: 'a' }, 'app-b': { path: 'b' } }, aiTool: 'claude-code' }));
+    const r = await pty(dir, DEAD, [['Which app should get the widget?', '\r']], ['embed', '--dry-run']);
+    assert.notStrictEqual(r.code, 'TIMEOUT', 'the process must exit on its own');
+    assert.strictEqual(r.code, 0, r.output);
 });

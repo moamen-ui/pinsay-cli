@@ -78,7 +78,8 @@ export async function embedCommand(cwd: string, options: Record<string, string |
         } else {
             console.log('Dry run: nothing was written or sent.');
         }
-        return;
+        closePrompts();
+        process.exit(0);
     }
 
     const saveConfig = async (htmlPath?: string): Promise<void> => {
@@ -101,7 +102,8 @@ export async function embedCommand(cwd: string, options: Record<string, string |
         finish(`The widget is already in your code (${plan.htmlPath}). Nothing to change.`, {
             files: [], htmlPath: plan.htmlPath, nextStep: 'Nothing to change.',
         });
-        return;
+        closePrompts();
+        process.exit(0);
     }
 
     if (plan.kind === 'skill') {
@@ -112,7 +114,8 @@ export async function embedCommand(cwd: string, options: Record<string, string |
         const missing = !skillFile || !existsSync(join(root, skillFile));
         if (!json && missing) console.log('Run npx pinsay-cli update first to install the skills.');
         finish(nextStep, { files: [], nextStep });
-        return;
+        closePrompts();
+        process.exit(0);
     }
 
     if (isInteractive(options)) {
