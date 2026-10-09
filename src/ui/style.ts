@@ -49,8 +49,8 @@ export const bold = wrap('1');
 export const green = wrap('32');
 export const red = wrap('31');
 export const yellow = wrap('33');
-/** The accent for the plan heading and the `Next` line (same blue as the question band). */
-export const accent = wrap('1;34');
+/** The accent for the plan heading and the `Next` line: bold in the terminal's own foreground (readable on every theme, QA N14). */
+export const accent = wrap('1');
 
 /** Bold bright-white text on a blue band, one space of padding each side. Plain text when colour is off. */
 export function band(text: string): string {
