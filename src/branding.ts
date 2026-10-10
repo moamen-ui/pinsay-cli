@@ -14,13 +14,27 @@ export async function getBranding(server: string): Promise<{
     productName: string,
     urls: { app: string },
     /**
-     * The Chrome extension's Web Store listing / manual-install zip — a super-admin setting
-     * (`GET /api/branding` → `extension.storeUrl`/`extension.zipUrl`), never hard-coded here. Both
-     * may be empty when the admin has not configured them yet.
+     * The browser extensions' store listings / the manual-install zip — a super-admin setting
+     * (`GET /api/branding` → `extension.storeUrl`/`extension.zipUrl`/`extension.storeUrls`), never
+     * hard-coded here. Both may be empty when the admin has not configured them yet. `storeUrls`
+     * holds the Chrome Web Store / Edge Add-ons / Firefox Add-ons listings; servers that do not
+     * send it fall back to `chrome: storeUrl` with Edge and Firefox empty.
      */
-    extension: { storeUrl: string, zipUrl: string },
+    extension: {
+        storeUrl: string,
+        zipUrl: string,
+        storeUrls: { chrome: string, edge: string, firefox: string },
+    },
 }> {
-    let branding: { productName?: string, urls?: { app?: string }, extension?: { storeUrl?: string, zipUrl?: string } };
+    let branding: {
+        productName?: string,
+        urls?: { app?: string },
+        extension?: {
+            storeUrl?: string,
+            zipUrl?: string,
+            storeUrls?: { chrome?: string, edge?: string, firefox?: string },
+        },
+    };
     try {
         branding = await api(server, '/api/branding');
     } catch (err) {
@@ -34,9 +48,22 @@ export async function getBranding(server: string): Promise<{
         process.exit(1);
     }
 
+    const storeUrl = branding.extension?.storeUrl ?? '';
+    const rawStoreUrls = branding.extension?.storeUrls;
+
     return {
         productName: branding.productName,
         urls: { app: branding.urls?.app ?? '' },
-        extension: { storeUrl: branding.extension?.storeUrl ?? '', zipUrl: branding.extension?.zipUrl ?? '' },
+        extension: {
+            storeUrl,
+            zipUrl: branding.extension?.zipUrl ?? '',
+            storeUrls: rawStoreUrls
+                ? {
+                      chrome: typeof rawStoreUrls.chrome === 'string' ? rawStoreUrls.chrome : '',
+                      edge: typeof rawStoreUrls.edge === 'string' ? rawStoreUrls.edge : '',
+                      firefox: typeof rawStoreUrls.firefox === 'string' ? rawStoreUrls.firefox : '',
+                  }
+                : { chrome: storeUrl, edge: '', firefox: '' },
+        },
     };
 }

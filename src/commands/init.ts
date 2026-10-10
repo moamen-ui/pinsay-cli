@@ -36,7 +36,7 @@ import { signIn, type Session } from '../init/session.js';
 import { chooseProject, createProject, slugifyKey, type ProjectChoice } from '../init/project.js';
 import { decideTools, detectRepoTools, TOOL_CATALOGUE } from '../init/tool-detect.js';
 import { renderPlan, planToJson, type InitPlan } from '../init/plan.js';
-import { nextStepText, renderNext, type NextCase } from '../init/next-step.js';
+import { nextStepText, otherStoreLines, renderNext, type NextCase } from '../init/next-step.js';
 import { createProgress, progressMode } from '../init/progress.js';
 import { quickCheckLines } from '../init/quick-check.js';
 import { planEmbed, runEmbed, resolvePin, findExistingWidget, resolveHtmlCandidate, hasViteConfig, type EmbedPlan } from '../embed/embed.js';
@@ -594,8 +594,17 @@ export async function initCommand(cwd: string, options: Record<string, string | 
 
     let next: NextCase;
     if (isJoin) next = { kind: 'join' };
-    else if (widget.kind === 'extension') next = { kind: 'extension', storeUrl: branding.extension.storeUrl };
-    else if (widget.kind === 'embed-skill') next = { kind: 'skill', tool };
+    else if (widget.kind === 'extension') {
+        const { edge, firefox } = branding.extension.storeUrls;
+        next = {
+            kind: 'extension',
+            storeUrl: branding.extension.storeUrl,
+            otherStores: [
+                { label: 'Microsoft Edge', url: edge },
+                { label: 'Firefox', url: firefox },
+            ].filter((s) => s.url !== ''),
+        };
+    } else if (widget.kind === 'embed-skill') next = { kind: 'skill', tool };
     else next = { kind: 'embedded' };
 
     if (json) {
@@ -631,6 +640,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
             shareStack: share,
             keySaved,
             nextStep: nextStepText(next, product),
+            ...(next.kind === 'extension' ? { stores: branding.extension.storeUrls } : {}),
         }));
         process.exit(0);
     }
@@ -645,7 +655,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
     const shNote = pinsayShNote(cwd);
     if (shNote) console.log(dim(shNote));
     console.log('');
-    for (const line of renderNext(nextStepText(next, product))) console.log(line);
+    for (const line of renderNext(nextStepText(next, product), otherStoreLines(next))) console.log(line);
     process.exit(0);
 }
 
