@@ -71,6 +71,12 @@ before(async () => {
                             isSuccess: true,
                         }),
                     );
+                } else if (apiKey === 'ptr_ratelimited') {
+                    res.writeHead(429, { 'Retry-After': '30' });
+                    res.end(JSON.stringify({ message: 'Too many requests' }));
+                } else if (apiKey === 'ptr_ratelimited_nohdr') {
+                    res.writeHead(429);
+                    res.end(JSON.stringify({ message: 'Too many requests' }));
                 } else {
                     res.writeHead(401);
                     res.end(JSON.stringify({ message: 'Invalid API key' }));
@@ -182,6 +188,38 @@ test('init --yes with bad key exits 3', () => withTempDir(async (dir) => {
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 3);
+  }
+}));
+
+test('init --json on a 429 prints the rate-limit error as JSON and exits 4', () => withTempDir(async (dir) => {
+  try {
+    await execAsync(`node ${cliPath} init --json --key ptr_ratelimited --create "My App"`, { cwd: dir, env: envFor(dir) });
+    assert.fail('Should have exited');
+  } catch (err: any) {
+    assert.strictEqual(err.code, 4);
+    assert.strictEqual(err.stdout.trim().split('\n').length, 1, 'Should output exactly one line');
+    assert.deepStrictEqual(JSON.parse(err.stdout.trim()), { ok: false, error: { code: 4, message: 'Rate limited, retry in 30 seconds.' } });
+  }
+}));
+
+test('init --yes on a 429 without Retry-After says retry in a minute, not Invalid API key', () => withTempDir(async (dir) => {
+  try {
+    await execAsync(`node ${cliPath} init --yes --key ptr_ratelimited_nohdr --create "My App"`, { cwd: dir, env: envFor(dir) });
+    assert.fail('Should have exited');
+  } catch (err: any) {
+    assert.strictEqual(err.code, 4);
+    assert.match(err.stdout + err.stderr, /Rate limited, retry in a minute\./);
+    assert.doesNotMatch(err.stdout + err.stderr, /Invalid API key|not valid/);
+  }
+}));
+
+test('login --key on a 429 exits 4 with the wait', () => withTempDir(async (dir) => {
+  try {
+    await execAsync(`node ${cliPath} login --key ptr_ratelimited --local-credentials`, { cwd: dir, env: envFor(dir) });
+    assert.fail('Should have exited');
+  } catch (err: any) {
+    assert.strictEqual(err.code, 4);
+    assert.match(err.stderr, /Rate limited, retry in 30 seconds\./);
   }
 }));
 

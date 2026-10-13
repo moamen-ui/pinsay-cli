@@ -2,7 +2,7 @@ import { api, ApiError } from '../api.js';
 import { resolveApiKey, type ApiKeySource } from '../credentials.js';
 import { runDeviceLogin } from '../device-login.js';
 import { ask } from '../prompt.js';
-import { exitWithError, isOutage } from '../errors.js';
+import { exitWithError, isOutage, isRateLimited } from '../errors.js';
 
 /**
  * Sign-in for `init` (SPEC B3 + B5's quick-access rule). Lead-only: it decides which key a run trusts, and it is
@@ -69,7 +69,7 @@ export async function exchangeKey(server: string, apiKey: string): Promise<{ tok
   try {
     login = await api<any>(server, '/api/auth/login-with-key', { method: 'POST', body: { apiKey } });
   } catch (err) {
-    if (isOutage(err)) throw err;
+    if (isOutage(err) || isRateLimited(err)) throw err;
     if (err instanceof ApiError) throw new InvalidKeyError();
     throw err;
   }

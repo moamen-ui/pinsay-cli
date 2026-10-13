@@ -7,7 +7,7 @@ import * as path from 'node:path';
 import * as http from 'node:http';
 import { fileURLToPath } from 'node:url';
 import { describeError, NetworkError, ProjectNotFoundError } from '../src/errors.js';
-import { ApiError } from '../src/api.js';
+import { ApiError, parseRetryAfter } from '../src/api.js';
 import { rmTempDir } from './rm-temp.js';
 
 const cliPath = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../dist/cli.js');
@@ -111,4 +111,19 @@ test('rejected saved key: list exits 3', async () => {
             assert.ok(r.stderr.includes('Your saved key no longer works'), r.stderr);
         });
     });
+});
+
+test('describeError maps 429 to exit 4 with the Retry-After wait', () => {
+    assert.deepStrictEqual(describeError(new ApiError(429, 'x', 30)), { code: 4, message: 'Rate limited, retry in 30 seconds.' });
+    assert.strictEqual(describeError(new ApiError(429, 'x', 1)).message, 'Rate limited, retry in 1 second.');
+    assert.deepStrictEqual(describeError(new ApiError(429, 'x')), { code: 4, message: 'Rate limited, retry in a minute.' });
+});
+
+test('parseRetryAfter reads seconds and HTTP dates', () => {
+    assert.strictEqual(parseRetryAfter('30'), 30);
+    assert.strictEqual(parseRetryAfter(' 5 '), 5);
+    assert.strictEqual(parseRetryAfter('0'), 1);
+    assert.strictEqual(parseRetryAfter(null), undefined);
+    assert.strictEqual(parseRetryAfter('soon'), undefined);
+    assert.strictEqual(parseRetryAfter(new Date(1_000_000 + 12_000).toUTCString(), 1_000_000), 12);
 });

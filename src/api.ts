@@ -1,7 +1,18 @@
 export class ApiError extends Error {
-    constructor(public code: number, message: string) {
+    /** `retryAfter`: seconds from the `Retry-After` header, set only on HTTP 429 when the server sent one. */
+    constructor(public code: number, message: string, public retryAfter?: number) {
         super(message);
     }
+}
+
+/** `Retry-After` → seconds (≥ 1): integer seconds or an HTTP date; undefined when missing or unreadable. */
+export function parseRetryAfter(value: string | null | undefined, now: number = Date.now()): number | undefined {
+    if (!value) return undefined;
+    const v = value.trim();
+    if (/^\d+$/.test(v)) return Math.max(1, parseInt(v, 10));
+    const at = Date.parse(v);
+    if (Number.isNaN(at)) return undefined;
+    return Math.max(1, Math.ceil((at - now) / 1000));
 }
 
 /** fetch itself failed: DNS, connection refused, offline, or no answer within API_TIMEOUT_MS. */
@@ -37,7 +48,7 @@ export async function api<T>(server: string, path: string, options: { method?: s
             const body = await res.json();
             if (body.message) msg = body.message;
         } catch {}
-        throw new ApiError(res.status, msg);
+        throw new ApiError(res.status, msg, res.status === 429 ? parseRetryAfter(res.headers.get('retry-after')) : undefined);
     }
     
     if (res.status === 204) return {} as T;

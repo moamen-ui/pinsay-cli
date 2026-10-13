@@ -29,6 +29,16 @@ export function isOutage(err: unknown): boolean {
     return err instanceof NetworkError || (err instanceof ApiError && err.code >= 500);
 }
 
+/** HTTP 429: the server is throttling us. Temporary, like an outage: exit 4, never "invalid key". */
+export function isRateLimited(err: unknown): err is ApiError {
+    return err instanceof ApiError && err.code === 429;
+}
+
+export function rateLimitMessage(retryAfter?: number): string {
+    if (retryAfter === undefined) return 'Rate limited, retry in a minute.';
+    return `Rate limited, retry in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`;
+}
+
 function hostOf(server?: string): string {
     try { return server ? new URL(server).host : 'the server'; } catch { return server ?? 'the server'; }
 }
@@ -40,6 +50,7 @@ export function describeError(err: unknown, server?: string): { code: number; me
         return { code: 4, message: `Can't reach ${err.host}. Check your internet connection and try again.` };
     }
     if (err instanceof ApiError) {
+        if (err.code === 429) return { code: 4, message: rateLimitMessage(err.retryAfter) };
         if (err.code >= 500) return { code: 4, message: `${hostOf(server)} is having trouble right now (HTTP ${err.code}). Try again in a minute.` };
         if (err.code === 401) return { code: 3, message: 'Your saved key no longer works (expired or revoked). Sign in again: npx pinsay-cli login' };
         if (err.code === 403) return { code: 3, message: "Your account isn't allowed to do this. A workspace admin can." };
