@@ -182,7 +182,7 @@ export async function applyCommand(
     const markVal = parsed['mark'];
     let markId: number | 'all';
     if (markVal === true) {
-      console.error('--mark requires an ID or "all"');
+      console.error('--mark requires a comment number or "all"');
       process.exit(2);
     } else if (String(markVal).toLowerCase() === 'all') {
       markId = 'all';
@@ -266,7 +266,7 @@ export async function applyCommand(
   if (parsed['fail'] !== undefined) {
     const failVal = parsed['fail'];
     if (failVal === true) {
-      console.error('--fail requires a comment ID');
+      console.error('--fail requires a comment number');
       process.exit(2);
     }
     const failN = parseCommentNumber(failVal);

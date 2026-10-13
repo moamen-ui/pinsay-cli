@@ -190,8 +190,12 @@ export async function getCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
+  if (parsed['id'] !== undefined) {
+    console.error("--id was removed: pass the comment's number, e.g. pinsay-cli get 12 (internal ids are not accepted).");
+    process.exit(2);
+  }
   const { server, token, project } = await getClient(cwd, parsed, { requireProject: true });
-  const numStr = positionals[1] || (typeof parsed['id'] === 'string' ? parsed['id'] : undefined);
+  const numStr = positionals[1] || (typeof parsed['number'] === 'string' ? parsed['number'] : undefined);
   if (!numStr) {
     console.error('Usage: pinsay get <number>');
     process.exit(2);

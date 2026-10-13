@@ -315,7 +315,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--json', 'Full view as JSON, with the resolved source'],
         ],
         all: [
-            ['--id <number>', 'The comment number (same as the argument)'],
+            ['--number <n>', "The comment's number in this project (same as the argument)"],
             ['--key <key>', 'API key'],
             ['--json', 'Full view as JSON, with the resolved source'],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
