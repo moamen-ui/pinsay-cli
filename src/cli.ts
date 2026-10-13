@@ -94,7 +94,7 @@ Tools
 
 Run npx pinsay-cli <command> --help for examples.
 Flags: --no-color  No colours or styling (also NO_COLOR=1)
-Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace · 3 key or permission · 4 can't reach PinSay · 5 CLI too old`;
+Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace · 3 key or permission · 4 can't reach PinSay, or comment not found · 5 CLI too old`;
 
 /** One help row: the flag or example command, its description, and whether the flag is an old spelling. */
 type HelpFlag = [flag: string, text: string, old?: boolean];
@@ -367,7 +367,8 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         notes: [
             'Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace',
-            "            3 key or permission · 4 can't reach PinSay · 5 CLI too old",
+            "            3 key or permission · 4 can't reach PinSay, or comment not found",
+            '            5 CLI too old',
         ],
     },
     reply: {
@@ -407,7 +408,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         notes: [
             'Exit codes: 0 ok · 1 a check failed · 3 key or permission',
-            "            4 can't reach PinSay · 5 CLI too old",
+            "            4 can't reach PinSay, or comment not found · 5 CLI too old",
         ],
     },
     update: {

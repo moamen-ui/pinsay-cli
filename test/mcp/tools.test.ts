@@ -708,13 +708,39 @@ describe('mcp: tools handlers and helpers', () => {
       };
 
       const res = await handleReply({ number: 10, body: 'Probe reply' }, ctx);
-      assert.deepEqual(res, { replyId: 777 });
+      assert.deepEqual(res, { number: 10, replyId: 777 });
       assert.equal(postedBody, 'Probe reply');
     } finally {
       await stub.close();
     }
   });
+
+  test('number arguments: legacy id/ids get the rename message, a missing number never prints undefined', async () => {
+    const ctx: McpContext = { cwd: tmpDir, server: 'http://127.0.0.1:1', project: 'test-project', token: 'jwt-token' };
+    const renamed = /"id" was renamed: pass "number", the comment's #number in this project \(see pinsay_list_comments\)/;
+    const missing = /Missing comment number: pass "number"/;
+    const calls: [string, () => Promise<any>, RegExp][] = [
+      ['get legacy id', () => handleGetComment({ id: 528 } as any, ctx), renamed],
+      ['get missing', () => handleGetComment({} as any, ctx), missing],
+      ['mark legacy id', () => handleMarkApplied({ id: 5, reply: 'x' } as any, ctx), renamed],
+      ['mark missing', () => handleMarkApplied({ reply: 'x' } as any, ctx), missing],
+      ['reply legacy id', () => handleReply({ id: 5, body: 'x' } as any, ctx), renamed],
+      ['reply missing', () => handleReply({ body: 'x' } as any, ctx), missing],
+      ['status legacy id', () => handleSetStatus({ id: 5, status: 'open' } as any, ctx), renamed],
+      ['status missing', () => handleSetStatus({ status: 'open' } as any, ctx), missing],
+      ['commit legacy ids', () => handleCommitAndMark({ ids: [5], reply: 'x' } as any, ctx), renamed],
+      ['commit missing', () => handleCommitAndMark({ reply: 'x' } as any, ctx), missing],
+    ];
+    for (const [name, call, re] of calls) {
+      await assert.rejects(call, (err: any) => {
+        assert.match(err.message, re, name);
+        assert.doesNotMatch(err.message, /undefined/, name);
+        return true;
+      });
+    }
+  });
 });
+
 
 test('partitionItem drops unknown and forbidden fields nested under element', () => {
   // The top-level guarantee was already tested; element was a SPREAD, so anything the server put

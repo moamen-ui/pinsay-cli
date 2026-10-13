@@ -355,7 +355,7 @@ export async function handleGetComment(
 ): Promise<any> {
   const number = parseCommentNumber(args?.number);
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
   }
 
   let id: number;
@@ -399,7 +399,7 @@ export async function handleMarkApplied(
   const number = parseCommentNumber(args?.number);
   const reply = args?.reply;
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (typeof reply !== 'string') {
     throw mcpError('forbidden', 'number and reply are required');
@@ -451,6 +451,9 @@ export async function handleCommitAndMark(
   const numbers = args?.numbers;
   const reply = args?.reply;
   const files = args?.files;
+  if (numbers === undefined || numbers === null) {
+    throw mcpError('forbidden', invalidNumberMessage(undefined, (args as any)?.ids ?? (args as any)?.id));
+  }
   const tool = args?.tool || ctx.configAiTool;
   const models = parseModelsArgs(args);
 
@@ -694,7 +697,7 @@ export async function handleReply(
   const number = parseCommentNumber(args?.number);
   const body = args?.body;
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (typeof body !== 'string') {
     throw mcpError('forbidden', 'number and body are required');
@@ -720,7 +723,7 @@ export async function handleReply(
     token: ctx.token,
   });
 
-  return { replyId: res?.id ?? res?.data?.id ?? null };
+  return { number, replyId: res?.id ?? res?.data?.id ?? null };
 }
 
 export async function handleSetStatus(
@@ -731,7 +734,7 @@ export async function handleSetStatus(
   const statusStr = String(args?.status || '').toLowerCase();
 
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (!statusStr) {
     throw mcpError('forbidden', 'number and status are required');

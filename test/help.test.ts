@@ -52,6 +52,7 @@ test('top-level --help is grouped and short', async () => {
     assert.ok(lines.includes(group), `top-level help misses the "${group}" group`);
   }
   assert.match(stdout, /Exit codes: 0 ok/);
+  assert.match(stdout, /4 can't reach PinSay, or comment not found/);
 });
 
 test('init --help --all lists every flag, old ones marked (old)', async () => {

@@ -17,7 +17,13 @@ export function parseCommentNumber(input: unknown): number | null {
   return Number.isSafeInteger(n) ? n : null;
 }
 
-export function invalidNumberMessage(input: unknown): string {
+export function invalidNumberMessage(input: unknown, legacyId?: unknown): string {
+  if (input === undefined || input === null) {
+    if (legacyId !== undefined && legacyId !== null) {
+      return '"id" was renamed: pass "number", the comment\'s #number in this project (see pinsay_list_comments).';
+    }
+    return 'Missing comment number: pass "number", the comment\'s #number in this project (see pinsay_list_comments).';
+  }
   return `Invalid comment number: ${String(input)}. Expected a number like 12 or #12.`;
 }
 
