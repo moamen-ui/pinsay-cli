@@ -741,7 +741,6 @@ describe('mcp: tools handlers and helpers', () => {
   });
 });
 
-
 test('partitionItem drops unknown and forbidden fields nested under element', () => {
   // The top-level guarantee was already tested; element was a SPREAD, so anything the server put
   // there rode through — payload flags included — while that test still passed.

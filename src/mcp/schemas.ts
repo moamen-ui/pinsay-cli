@@ -238,7 +238,7 @@ export const TOOL_PINSAY_REPLY = {
   description:
     `Post a reply on a comment, visible to its author and the other stakeholders, with tool/model ` +
     `attribution. Does not change the comment's status; to close a comment out with a reply, use ` +
-    `pinsay_mark_applied or pinsay_commit_and_mark. Returns {replyId}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
+    `pinsay_mark_applied or pinsay_commit_and_mark. Returns {number, replyId}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
