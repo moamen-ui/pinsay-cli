@@ -9,7 +9,7 @@ import type {
 
 export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`npx pinsay-cli get <id> --json\`).
+Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`npx pinsay-cli get <number> --json\`).
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |
@@ -183,7 +183,7 @@ export function buildApplyPrompt(
       item.element?.pageRef ||
       '/';
 
-    lines.push(`### #${item.id} — ${env} — ${route}`);
+    lines.push(`### #${item.number} — ${env} — ${route}`);
     // Server-computed metadata, not comment text — kept OUTSIDE the untrusted fence below, so the
     // value is re-sanitized here to a bare BCP-47-ish token regardless of what the server sent.
     const safeLang = String(item.language ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16);
@@ -307,7 +307,7 @@ export function buildApplyPrompt(
 
   lines.push('## When you finish an item');
   lines.push(
-    'Run exactly: `npx pinsay-cli apply --mark <id> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`',
+    'Run exactly: `npx pinsay-cli apply --mark <number> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`',
   );
   lines.push(
     '(Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`',

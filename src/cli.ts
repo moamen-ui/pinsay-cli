@@ -94,7 +94,7 @@ Tools
 
 Run npx pinsay-cli <command> --help for examples.
 Flags: --no-color  No colours or styling (also NO_COLOR=1)
-Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace · 3 key or permission · 4 can't reach PinSay · 5 CLI too old`;
+Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace · 3 key or permission · 4 can't reach PinSay, or comment not found · 5 CLI too old`;
 
 /** One help row: the flag or example command, its description, and whether the flag is an old spelling. */
 type HelpFlag = [flag: string, text: string, old?: boolean];
@@ -246,7 +246,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         purpose: "Who you are, this folder's project, comments waiting",
         usage:
             'npx pinsay-cli status\n' +
-            '       npx pinsay-cli status <id> <open|ready|applied|archived>\n' +
+            '       npx pinsay-cli status <number> <open|ready|applied|archived>\n' +
             '       npx pinsay-cli status --deployed [sha]',
         common: [
             ['--json', 'Overview as JSON'],
@@ -263,7 +263,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         examples: [
             ['npx pinsay-cli status', "Who you are and what's waiting"],
-            ['npx pinsay-cli status 42 ready', 'Mark comment 42 ready'],
+            ['npx pinsay-cli status 42 ready', 'Mark comment #42 ready'],
             ['npx pinsay-cli status --deployed', "Mark this build's applied comments live"],
         ],
     },
@@ -310,19 +310,22 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
     },
     get: {
         purpose: 'Show one comment',
-        usage: 'npx pinsay-cli get <id>',
+        usage: 'npx pinsay-cli get <number>',
         common: [
             ['--json', 'Full view as JSON, with the resolved source'],
         ],
         all: [
-            ['--id <id>', 'The comment id (same as the argument)'],
+            ['--number <n>', "The comment's number in this project (same as the argument)"],
             ['--key <key>', 'API key'],
             ['--json', 'Full view as JSON, with the resolved source'],
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
-            ['npx pinsay-cli get 42', 'Show comment 42'],
+            ['npx pinsay-cli get 42', 'Show comment #42'],
             ['npx pinsay-cli get 42 --json', 'The same view as JSON'],
+        ],
+        notes: [
+            '<number> is the comment\'s number in this project (#12 or 12).',
         ],
     },
     apply: {
@@ -331,7 +334,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         common: [
             ['--tool <name>', 'claude, opencode, cursor, or clipboard'],
             ['--plan', 'List the files without edits'],
-            ['--mark <id>|all', 'Commit and mark applied (needs --models)'],
+            ['--mark <number>|all', 'Commit and mark applied (needs --models)'],
             ['--reply <text>', 'Reply recorded with --mark'],
             ['--models <list>', '"<id>=<role>", mandatory with --mark'],
             ['--status <status>', 'Filter the queue (open, ready, applied, archived)'],
@@ -341,14 +344,14 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         all: [
             ['--tool <name>', 'claude, opencode, cursor, or clipboard'],
             ['--plan', 'List the files without edits'],
-            ['--mark <id>|all', 'Commit and mark applied (needs --models)'],
+            ['--mark <number>|all', 'Commit and mark applied (needs --models)'],
             ['--reply <text>', 'Reply recorded with --mark'],
             ['--models <list>', '"<id>=<role>", mandatory with --mark'],
             ['--model <id>', 'One model id, merged after --models'],
             ['--commit <sha>', 'With --no-commit: the commit with the fix'],
             ['--no-commit', 'Mark without committing'],
             ['--dry-run', 'Print what --mark would do; change nothing'],
-            ['--fail <id>', 'Mark apply failed with a reply'],
+            ['--fail <number>', 'Mark apply failed with a reply'],
             ['--reason <text>', 'Why it failed (required with --fail)'],
             ['--status <status>', 'Filter the queue (open, ready, applied, archived)'],
             ['--env <env>', 'Filter (local, staging, production)'],
@@ -360,16 +363,17 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         examples: [
             ['npx pinsay-cli apply', 'Print the AI apply prompt for pending feedback'],
             ['npx pinsay-cli apply --tool claude', 'Hand the prompt to claude'],
-            ['npx pinsay-cli apply --mark 42 --models "<model>=implementer"', 'Commit and mark comment 42 applied'],
+            ['npx pinsay-cli apply --mark 42 --models "<model>=implementer"', 'Commit and mark comment #42 applied'],
         ],
         notes: [
             'Exit codes: 0 ok · 1 error · 2 bad usage / paused workspace',
-            "            3 key or permission · 4 can't reach PinSay · 5 CLI too old",
+            "            3 key or permission · 4 can't reach PinSay, or comment not found",
+            '            5 CLI too old',
         ],
     },
     reply: {
         purpose: 'Reply to a comment',
-        usage: 'npx pinsay-cli reply <id> "<text>"',
+        usage: 'npx pinsay-cli reply <number> "<text>"',
         common: [
             ['--key <key>', 'API key'],
         ],
@@ -378,7 +382,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--no-color', 'No colours or styling (also NO_COLOR=1)'],
         ],
         examples: [
-            ['npx pinsay-cli reply 42 "shipping in v2"', 'Reply to comment 42'],
+            ['npx pinsay-cli reply 42 "shipping in v2"', 'Reply to comment #42'],
             ['npx pinsay-cli reply 7 "duplicate of 42"', 'The reply shows under the comment'],
         ],
     },
@@ -404,7 +408,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         notes: [
             'Exit codes: 0 ok · 1 a check failed · 3 key or permission',
-            "            4 can't reach PinSay · 5 CLI too old",
+            "            4 can't reach PinSay, or comment not found · 5 CLI too old",
         ],
     },
     update: {

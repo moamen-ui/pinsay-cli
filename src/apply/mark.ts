@@ -15,6 +15,8 @@ import {
 
 export type MarkAppliedOptions = {
   id: number | 'all';
+  /** #number for messages; set with a numeric id. */
+  number?: number;
   reply: string;
   noCommit?: boolean;
   /** With `noCommit`: the commit that already holds the fix (default `HEAD`). Its sha and URL are recorded. */
@@ -40,6 +42,7 @@ export type MarkAppliedResult = {
   sha?: string;
   commitUrl?: string | null;
   patchedIds: number[];
+  patchedNumbers: number[];
 };
 
 export async function markApplied(
@@ -51,7 +54,7 @@ export async function markApplied(
     if (options.id === 'all') {
       console.error('Nothing staged');
     } else {
-      console.error(`Nothing staged for #${options.id}`);
+      console.error(`Nothing staged for #${options.number ?? options.id}`);
     }
     process.exit(1);
   }
@@ -80,7 +83,11 @@ export async function markApplied(
   }
 
   if (options.dryRun) {
-    console.log(`[dry-run] Would mark comment ${options.id} as applied`);
+    console.log(
+      options.id === 'all'
+        ? '[dry-run] Would mark all matching comments as applied'
+        : `[dry-run] Would mark comment #${options.number ?? options.id} as applied`,
+    );
     console.log(`[dry-run] Reply: ${options.reply}`);
     console.log(`[dry-run] AppliedBy: ${appliedByLabel}`);
     console.log(`[dry-run] Models: ${describeModels(models)}`);
@@ -88,12 +95,14 @@ export async function markApplied(
     return {
       committed: false,
       patchedIds: typeof options.id === 'number' ? [options.id] : [],
+      patchedNumbers: options.number !== undefined ? [options.number] : [],
     };
   }
 
   let commitUrl: string | null = null;
   let sha: string | undefined;
   const patchedIds: number[] = [];
+  const patchedNumbers: number[] = [];
 
   if (options.id === 'all') {
     // Single commit style: fetch the comments this run is marking — the same filter the plan used
@@ -107,9 +116,9 @@ export async function markApplied(
         'No comments matched --mark all (queue filter: ' +
           describeFilter(options.filter) +
           '). Nothing was committed or marked; your staged changes are untouched. ' +
-          'Re-run with the same --status/--env you used for --plan, or mark each comment by id.',
+          'Re-run with the same --status/--env you used for --plan, or mark each comment by number.',
       );
-      return { committed: false, nothingMatched: true, patchedIds: [] };
+      return { committed: false, nothingMatched: true, patchedIds: [], patchedNumbers: [] };
     }
     const commitMsg = `Apply ${count} pending ${projectCtx.productName} comments`;
 
@@ -147,11 +156,13 @@ export async function markApplied(
         token: ctx.token,
       });
       patchedIds.push(item.id);
+      patchedNumbers.push(item.number);
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: item.id } }, ctx.cwd);
     }
   } else {
     // Separate commit style: commit single comment
     const id = options.id;
+    const number = options.number ?? options.id;
     let commentBody = '';
     try {
       const commentRes = await api<any>(ctx.server, `/api/comments/${id}`, {
@@ -163,7 +174,7 @@ export async function markApplied(
     }
 
     const shortBody = commentBody.slice(0, 60);
-    const commitMsg = `Apply ${projectCtx.productName} comment #${id} — ${shortBody}`;
+    const commitMsg = `Apply ${projectCtx.productName} comment #${number} — ${shortBody}`;
 
     if (!options.noCommit) {
       const commitRes = commitAll(commitMsg, ctx.cwd);
@@ -195,6 +206,7 @@ export async function markApplied(
       token: ctx.token,
     });
     patchedIds.push(id);
+    patchedNumbers.push(number);
     await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
   }
 
@@ -203,6 +215,7 @@ export async function markApplied(
     sha,
     commitUrl,
     patchedIds,
+    patchedNumbers,
   };
 }
 
@@ -212,6 +225,8 @@ export async function markFailed(
   ctx: ApplyClientContext,
   tool?: string,
   model?: string | AiModelEntry[],
+  /** #number for messages; set with a numeric id. */
+  number?: number,
 ): Promise<void> {
   const replyBody = `Could not apply: ${reason}`;
   const models = typeof model === 'string' ? (model ? [normalizeEntry({ model })] : []) : (model ?? []);

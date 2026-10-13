@@ -13,7 +13,8 @@ const context: ApplyProjectContext = {
 
 function item(overrides: Partial<QueueItem>): QueueItem {
   return {
-    id: 1,
+    id: 9,
+    number: 1,
     status: 2,
     environment: 1,
     body: 'Fix this',

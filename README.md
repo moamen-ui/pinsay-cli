@@ -62,6 +62,18 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.11.1
+
+- MCP tools: passing the old `id` argument now says it was renamed to `number` instead of a generic error.
+- `pinsay_reply` returns the comment `number` with the `replyId`.
+- `--help` exit-code legend: exit 4 also covers "comment not found".
+
+### 0.11.0
+
+- Comments are numbered per project: `#1`, `#2`, … in `list`, `get`, `status`, `apply`, `reply` and the dashboard. Pass that number (or `--number`); the internal id is no longer accepted, and `get --id` is removed.
+- `--json` output has both `number` and `internalId`.
+- MCP tools take `number` / `numbers` instead of ids.
+
 ### 0.10.0
 
 - The API key lives only in the repo: `--global` (login, init, logout, remove) is gone, and a key saved on the machine is no longer read.

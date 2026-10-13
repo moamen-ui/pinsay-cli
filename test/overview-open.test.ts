@@ -113,7 +113,12 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
       return;
     }
 
-    if (req.method === 'PATCH' && url === '/api/comments/12') {
+    if (req.method === 'GET' && url === '/api/projects/my-app/comments/by-number/12') {
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 77, number: 12, body: 'C12' } }));
+      return;
+    }
+
+    if (req.method === 'PATCH' && url === '/api/comments/77') {
       patchCalled = true;
       let body = '';
       req.on('data', (c) => (body += c));
@@ -122,7 +127,7 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
           const parsed = JSON.parse(body);
           patchedStatus = parsed.status;
         } catch {}
-        res.end(JSON.stringify({ isSuccess: true, data: { id: 12, status: 2 } }));
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 77, number: 12, status: 2 } }));
       });
       return;
     }
@@ -160,7 +165,7 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
         { key: 'my-app', name: 'My App', pending: 3 },
       ]);
 
-      // 3. status 12 ready still PATCHes /api/comments/12
+      // 3. status 12 ready resolves #12 in my-app and PATCHes its internal id (/api/comments/77)
       const patchRes = await run(['status', '12', 'ready'], dir, env);
       assert.strictEqual(patchRes.code, 0, patchRes.stderr);
       assert.strictEqual(patchCalled, true);

@@ -32,14 +32,17 @@ test('mcp: tools catalogue matches exactly the 10 frozen names', () => {
 });
 
 test('mcp: per-tool required arrays match contract', () => {
-  assert.deepEqual([...(TOOL_PINSAY_GET_COMMENT.inputSchema.required || [])].sort(), ['id']);
-  assert.deepEqual([...(TOOL_PINSAY_MARK_APPLIED.inputSchema.required || [])].sort(), ['id', 'reply']);
+  assert.deepEqual([...(TOOL_PINSAY_GET_COMMENT.inputSchema.required || [])].sort(), ['number']);
+  assert.deepEqual(
+    [...(TOOL_PINSAY_MARK_APPLIED.inputSchema.required || [])].sort(),
+    ['number', 'reply'],
+  );
   assert.deepEqual(
     [...(TOOL_PINSAY_COMMIT_AND_MARK.inputSchema.required || [])].sort(),
-    ['ids', 'reply'],
+    ['numbers', 'reply'],
   );
-  assert.deepEqual([...(TOOL_PINSAY_REPLY.inputSchema.required || [])].sort(), ['body', 'id']);
-  assert.deepEqual([...(TOOL_PINSAY_SET_STATUS.inputSchema.required || [])].sort(), ['id', 'status']);
+  assert.deepEqual([...(TOOL_PINSAY_REPLY.inputSchema.required || [])].sort(), ['body', 'number']);
+  assert.deepEqual([...(TOOL_PINSAY_SET_STATUS.inputSchema.required || [])].sort(), ['number', 'status']);
   assert.deepEqual([...(TOOL_PINSAY_RESOLVE_SOURCE.inputSchema.required || [])].sort(), ['hash']);
 });
 
@@ -47,9 +50,9 @@ test('mcp: schema properties match contract table exactly', () => {
   const propKeys = (tool: { inputSchema: { properties: Record<string, any> } }) =>
     Object.keys(tool.inputSchema.properties).sort();
 
-  assert.deepEqual(propKeys(TOOL_PINSAY_COMMIT_AND_MARK), ['files', 'ids', 'model', 'models', 'project', 'reply', 'tool']);
+  assert.deepEqual(propKeys(TOOL_PINSAY_COMMIT_AND_MARK), ['files', 'model', 'models', 'numbers', 'project', 'reply', 'tool']);
   assert.deepEqual(propKeys(TOOL_PINSAY_DOCTOR), ['project']);
-  assert.deepEqual(propKeys(TOOL_PINSAY_GET_COMMENT), ['id']);
+  assert.deepEqual(propKeys(TOOL_PINSAY_GET_COMMENT), ['number', 'project']);
   assert.deepEqual(propKeys(TOOL_PINSAY_GET_QUEUE), ['environment', 'project']);
   assert.deepEqual(propKeys(TOOL_PINSAY_LIST_COMMENTS), [
     'environment',
@@ -59,10 +62,36 @@ test('mcp: schema properties match contract table exactly', () => {
     'status',
   ]);
   assert.deepEqual(propKeys(TOOL_PINSAY_LIST_PROJECTS), []);
-  assert.deepEqual(propKeys(TOOL_PINSAY_MARK_APPLIED), ['commitUrl', 'id', 'model', 'models', 'reply', 'tool']);
-  assert.deepEqual(propKeys(TOOL_PINSAY_REPLY), ['body', 'id', 'model', 'models', 'tool']);
+  assert.deepEqual(propKeys(TOOL_PINSAY_MARK_APPLIED), ['commitUrl', 'model', 'models', 'number', 'project', 'reply', 'tool']);
+  assert.deepEqual(propKeys(TOOL_PINSAY_REPLY), ['body', 'model', 'models', 'number', 'project', 'tool']);
   assert.deepEqual(propKeys(TOOL_PINSAY_RESOLVE_SOURCE), ['hash']);
-  assert.deepEqual(propKeys(TOOL_PINSAY_SET_STATUS), ['id', 'status']);
+  assert.deepEqual(propKeys(TOOL_PINSAY_SET_STATUS), ['number', 'project', 'status']);
+});
+
+test('mcp: the five comment tools require number/numbers and none has an id/ids property', () => {
+  const single = [
+    TOOL_PINSAY_GET_COMMENT,
+    TOOL_PINSAY_MARK_APPLIED,
+    TOOL_PINSAY_REPLY,
+    TOOL_PINSAY_SET_STATUS,
+  ];
+  for (const tool of single) {
+    assert.ok(
+      (tool.inputSchema.required || []).includes('number'),
+      `${tool.name} must require number`,
+    );
+    assert.ok(!('id' in tool.inputSchema.properties), `${tool.name} must not have an id property`);
+    assert.ok(!('ids' in tool.inputSchema.properties), `${tool.name} must not have an ids property`);
+  }
+  assert.ok((TOOL_PINSAY_COMMIT_AND_MARK.inputSchema.required || []).includes('numbers'));
+  assert.ok(
+    !('id' in TOOL_PINSAY_COMMIT_AND_MARK.inputSchema.properties),
+    'pinsay_commit_and_mark must not have an id property',
+  );
+  assert.ok(
+    !('ids' in TOOL_PINSAY_COMMIT_AND_MARK.inputSchema.properties),
+    'pinsay_commit_and_mark must not have an ids property',
+  );
 });
 
 test('mcp: documented enums and constraints match contract', () => {
@@ -75,7 +104,7 @@ test('mcp: documented enums and constraints match contract', () => {
   assert.equal(listCommentsProps.page.minimum, 1);
 
   const commitAndMarkProps = TOOL_PINSAY_COMMIT_AND_MARK.inputSchema.properties;
-  assert.equal(commitAndMarkProps.ids.type, 'array');
+  assert.equal(commitAndMarkProps.numbers.type, 'array');
 });
 
 test('mcp: every tool description contains untrusted and the mandatory warning fragment', () => {

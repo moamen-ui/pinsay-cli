@@ -98,7 +98,10 @@ export type QueueItemReply = {
 };
 
 export type QueueItem = {
+  /** Internal id: used only for API calls; never shown. */
   id: number;
+  /** The comment's number in its project (#12). */
+  number: number;
   status: number | string;
   environment: number | string;
   body: string;
@@ -156,7 +159,10 @@ export type AiCommentView = {
   createdAt: string;
   element: AiElementView;
   environment: number | string;
-  id: number;
+  /** The comment's number in its project (#12) — the only reference people and agents type. */
+  number: number;
+  /** Internal database id, for support only. Never pass it to a command. */
+  internalId: number;
   isBugReport: boolean;
   pickedActions: AiPickedActionView[];
   replies: AiReplyView[];
