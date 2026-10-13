@@ -102,6 +102,28 @@ test('get --id 5: removed flag -> exit 2, stderr has --id was removed', async ()
   });
 });
 
+test('get --number 999: unknown number -> exit 4, stderr has No comment #999 in project my-app.', async () => {
+  await withProject(async (dir, configDir) => {
+    await withStub(stubHandler, async (serverUrl) => {
+      const env = { PINSAY_SERVER: serverUrl, PINSAY_CONFIG_DIR: configDir };
+      const r = await run(['get', '--number', '999'], dir, env);
+      assert.strictEqual(r.code, 4, r.stderr);
+      assert.ok(r.stderr.includes('No comment #999 in project my-app.'), r.stderr);
+    });
+  });
+});
+
+test('get --id=5: removed flag -> exit 2, stderr has --id was removed', async () => {
+  await withProject(async (dir, configDir) => {
+    await withStub(stubHandler, async (serverUrl) => {
+      const env = { PINSAY_SERVER: serverUrl, PINSAY_CONFIG_DIR: configDir };
+      const r = await run(['get', '--id=5'], dir, env);
+      assert.strictEqual(r.code, 2, r.stderr);
+      assert.ok(r.stderr.includes('--id was removed'), r.stderr);
+    });
+  });
+});
+
 test('reply 999 "hello there": unknown number -> exit 4', async () => {
   await withProject(async (dir, configDir) => {
     await withStub(stubHandler, async (serverUrl) => {

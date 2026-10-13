@@ -190,7 +190,7 @@ export async function getCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  if (parsed['id'] !== undefined) {
+  if (Object.keys(parsed).some((key) => /^--id(=|$)/.test(`--${key}`))) {
     console.error("--id was removed: pass the comment's number, e.g. pinsay-cli get 12 (internal ids are not accepted).");
     process.exit(2);
   }
