@@ -9,7 +9,7 @@ import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import { buildApplyPrompt } from './prompt.js';
 import { readConfig, isMultiProject } from '../config.js';
-import { stackFileRelPath } from '../stack/stackfile.js';
+import { stackFileRelPath, mergeStack, formatStackJson } from '../stack/stackfile.js';
 import type { ApplyClientContext, ApplyProjectContext, ApplyRunResult, QueueItem } from './types.js';
 
 export type ApplyRunOptions = {
@@ -61,8 +61,12 @@ export async function ensureToolRegistered(
         },
       );
       if (res) {
+        // Merge, never overwrite: the server does not store the local-only `design` block (nor this
+        // machine's frontend/backend reading), so writing its response as-is dropped the design tokens.
+        const merged = mergeStack(stackData, (res as any)?.data ?? res);
+        if (!merged.aiTools?.includes(tool)) merged.aiTools = [...(merged.aiTools ?? []), tool];
         await fs.mkdir(dirname(stackPath), { recursive: true });
-        await fs.writeFile(stackPath, JSON.stringify(res, null, 2) + '\n', 'utf8');
+        await fs.writeFile(stackPath, formatStackJson(merged), 'utf8');
         return;
       }
     } catch {}
