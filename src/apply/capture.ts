@@ -14,6 +14,8 @@ type Reductions = {
   stepLimit: number;
   consoleErrorsOnly: boolean;
   bodyTextLimit: number | null;
+  strippedFailing: number;
+  droppedFailing: number;
 };
 
 type TimelineItem = { t: number; line: string };
@@ -93,14 +95,17 @@ export function formatCaptureSection(pc: PageContextDto): string {
     }
     lines.push(`${header}.`);
 
-    const failingCalls = calls.filter(failing);
-    if (failingCalls.length > 0) {
+    const allFailing = calls.filter(failing);
+    const failingCalls = allFailing.slice(0, allFailing.length - red.droppedFailing);
+    if (allFailing.length > 0) {
       lines.push('Failing calls:');
-      for (const c of failingCalls) {
+      for (const [index, c] of failingCalls.entries()) {
+        const bare = index >= failingCalls.length - red.strippedFailing;
         let line = `  ${c.method} ${c.url} → ${statusText(c)} (${c.durationMs ?? 0} ms)`;
         if ((c.repeatCount ?? 0) > 1) line += ` ×${c.repeatCount}`;
         if (c.denied) line += ' (endpoint excluded by the project: no headers or bodies)';
         lines.push(line);
+        if (bare) continue;
         const reqHeaders = c.requestHeaders ?? [];
         if (reqHeaders.length > 0) {
           lines.push(
@@ -117,6 +122,9 @@ export function formatCaptureSection(pc: PageContextDto): string {
         if (reqBody) lines.push(reqBody);
         const resBody = bodyLine('response body', c.responseBody, red.bodyTextLimit);
         if (resBody) lines.push(resBody);
+      }
+      if (red.droppedFailing > 0) {
+        lines.push(`  … ${red.droppedFailing} more failing calls omitted`);
       }
     }
 
@@ -205,6 +213,8 @@ export function formatCaptureSection(pc: PageContextDto): string {
     stepLimit: STEPS_FULL,
     consoleErrorsOnly: false,
     bodyTextLimit: null,
+    strippedFailing: 0,
+    droppedFailing: 0,
   };
 
   let text = render(red);
@@ -227,6 +237,17 @@ export function formatCaptureSection(pc: PageContextDto): string {
 
   red.bodyTextLimit = BODY_TEXT_CUT_CHARS;
   text = render(red);
+  if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
+
+  const failingCount = calls.filter(failing).length;
+  while (text.length > CAPTURE_PROMPT_MAX_CHARS && red.strippedFailing < failingCount) {
+    red.strippedFailing += 1;
+    text = render(red);
+  }
+  while (text.length > CAPTURE_PROMPT_MAX_CHARS && red.droppedFailing < failingCount) {
+    red.droppedFailing += 1;
+    text = render(red);
+  }
   if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
 
   return `${text.slice(0, CAPTURE_PROMPT_MAX_CHARS)}\n… [capture cut to ${CAPTURE_PROMPT_MAX_CHARS} characters]`;

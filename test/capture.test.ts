@@ -314,3 +314,59 @@ test('legacy pageContext (networkEntries only) keeps the old rendering', () => {
   assert.ok(!prompt.includes('Timeline:'));
   assert.ok(!prompt.includes('Bug report:'));
 });
+
+test('60 failing calls with big bodies keep their first lines under the cap, without a hard cut', () => {
+  const big = (c: string) => ({ contentType: 'application/json', text: c.repeat(4000) });
+  const pc: PageContextDto = {
+    captureMomentAt: MOMENT,
+    windowSeconds: 30,
+    networkCalls: Array.from({ length: 60 }, (_, i) => ({
+      method: 'POST',
+      url: `https://shop.example/api/item/${i}`,
+      statusCode: 500,
+      durationMs: 10,
+      startedAt: new Date(Date.parse(MOMENT) - (60 - i) * 400).toISOString(),
+      requestBody: big('a'),
+      responseBody: big('b'),
+    })),
+  };
+  const out = formatCaptureSection(pc);
+  assert.ok(out.length <= CAPTURE_PROMPT_MAX_CHARS + 60, `length ${out.length}`);
+  assert.ok(!out.includes('[capture cut to'));
+  let firstLines = 0;
+  for (let i = 0; i < 60; i++) {
+    if (out.includes(`  POST https://shop.example/api/item/${i} → 500 (10 ms)`)) firstLines++;
+  }
+  assert.ok(firstLines >= 40, `only ${firstLines} failing call lines kept`);
+});
+
+test('repeat count, denied note, omitted body and truncated suffix are printed', () => {
+  const pc: PageContextDto = {
+    captureMomentAt: MOMENT,
+    windowSeconds: 30,
+    networkCalls: [
+      {
+        method: 'GET',
+        url: 'https://shop.example/api/a',
+        statusCode: 503,
+        durationMs: 5,
+        startedAt: '2026-10-13T09:59:59.000Z',
+        repeatCount: 3,
+        denied: true,
+      },
+      {
+        method: 'GET',
+        url: 'https://shop.example/api/b',
+        statusCode: 500,
+        durationMs: 5,
+        startedAt: '2026-10-13T09:59:59.500Z',
+        requestBody: { omitted: 'binary' },
+        responseBody: { contentType: 'text/plain', text: 'oops', truncated: true },
+      },
+    ],
+  };
+  const out = formatCaptureSection(pc);
+  assert.match(out, /→ 503 \(5 ms\) ×3 \(endpoint excluded by the project: no headers or bodies\)/);
+  assert.match(out, /request body: omitted \(binary\)/);
+  assert.match(out, /response body \(text\/plain, truncated\): oops/);
+});
