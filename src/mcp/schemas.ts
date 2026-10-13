@@ -21,7 +21,7 @@ const PROJECT_ARG_DESCRIPTION =
 export const TOOL_PINSAY_LIST_COMMENTS = {
   name: 'pinsay_list_comments',
   description:
-    `List a project's feedback comments in a lean summary view: per item id, status, environment, ` +
+    `List a project's feedback comments in a lean summary view: per item number, status, environment, ` +
     `body, route, sourcePath, authorName and createdAt, plus page and totalPages. Filters by status ` +
     `and environment; pageSize defaults to 50. The body is stakeholder text wherever it appears, ` +
     `including the top-level body field. Does not return element snapshots, replies, page context or ` +
@@ -90,19 +90,25 @@ export const TOOL_PINSAY_GET_QUEUE = {
 export const TOOL_PINSAY_GET_COMMENT = {
   name: 'pinsay_get_comment',
   description:
-    `Get one comment by id: status, environment, author, the element it points at, applied metadata ` +
+    `Get one comment by number: status, environment, author, the element it points at, applied metadata ` +
     `(appliedAt, appliedByLabel, commitUrl), untrusted {body, replies} and trusted {pickedActions}. ` +
-    `Ids are unique server-wide, so no project is needed. Does not include the project's aiRules or ` +
+    `Numbers are per project, so a multi-project repo must resolve the project first (pass ` +
+    `\`project\`, or call pinsay_list_projects). Does not include the project's aiRules or ` +
     `commitStyle; pinsay_get_queue returns those. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
-      id: {
+      number: {
         type: 'integer',
-        description: 'Comment ID',
+        minimum: 1,
+        description: 'The comment\'s number in its project (#12 → 12).',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
     },
-    required: ['id'],
+    required: ['number'],
     additionalProperties: false,
   },
 } as const;
@@ -136,7 +142,7 @@ export const TOOL_PINSAY_MARK_APPLIED = {
     `user.email as the applier, and the tool/model attribution. Runs no git command and records no ` +
     `commit sha, so a comment marked this way is never flipped to Live by ` +
     `\`npx pinsay-cli status --deployed\`. Use it when a human will commit the change; to commit ` +
-    `now, use pinsay_commit_and_mark. Returns {id, status, commitUrl}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
+    `now, use pinsay_commit_and_mark. Returns {number, status, commitUrl}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -144,9 +150,14 @@ export const TOOL_PINSAY_MARK_APPLIED = {
         type: 'string',
         description: 'Commit URL for applied changes',
       },
-      id: {
+      number: {
         type: 'integer',
-        description: 'Comment ID',
+        minimum: 1,
+        description: 'The comment\'s number in its project (#12 → 12).',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
       reply: {
         type: 'string',
@@ -166,7 +177,7 @@ export const TOOL_PINSAY_MARK_APPLIED = {
       },
       models: MODELS_PROPERTY,
     },
-    required: ['id', 'reply'],
+    required: ['number', 'reply'],
     additionalProperties: false,
   },
 } as const;
@@ -178,10 +189,10 @@ export const TOOL_PINSAY_COMMIT_AND_MARK = {
     `and recording its commit URL. Paths in files are relative to the repository root and must exist ` +
     `inside it; they are staged first. Omit files to commit what is already staged (errors when nothing ` +
     `is). The commit takes everything in the index, not only files. The project's commitStyle decides ` +
-    `the commits: "single" makes one commit for all ids; "separate" makes one commit per id, and with ` +
-    `more than one id files is required and each entry is prefixed "<id>:" to assign it to that ` +
-    `comment (e.g. "12:src/Button.tsx"; unprefixed entries go to the first id). Never pushes. ` +
-    `Returns [{id, commitUrl}]. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
+    `the commits: "single" makes one commit for all numbers; "separate" makes one commit per number, and with ` +
+    `more than one number files is required and each entry is prefixed "<number>:" to assign it to that ` +
+    `comment (e.g. "12:src/Button.tsx"; unprefixed entries go to the first number). Never pushes. ` +
+    `Returns [{number, commitUrl}]. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -190,10 +201,10 @@ export const TOOL_PINSAY_COMMIT_AND_MARK = {
         items: { type: 'string' },
         description: 'Files to stage and commit (relative to repository root)',
       },
-      ids: {
+      numbers: {
         type: 'array',
-        items: { type: 'integer' },
-        description: 'Comment IDs to mark applied',
+        items: { type: 'integer', minimum: 1 },
+        description: 'Comment numbers to mark applied',
       },
       project: {
         type: 'string',
@@ -217,7 +228,7 @@ export const TOOL_PINSAY_COMMIT_AND_MARK = {
       },
       models: MODELS_PROPERTY,
     },
-    required: ['ids', 'reply'],
+    required: ['numbers', 'reply'],
     additionalProperties: false,
   },
 } as const;
@@ -235,9 +246,14 @@ export const TOOL_PINSAY_REPLY = {
         type: 'string',
         description: 'Reply body text',
       },
-      id: {
+      number: {
         type: 'integer',
-        description: 'Comment ID',
+        minimum: 1,
+        description: 'The comment\'s number in its project (#12 → 12).',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
       tool: {
         type: 'string',
@@ -253,7 +269,7 @@ export const TOOL_PINSAY_REPLY = {
       },
       models: MODELS_PROPERTY,
     },
-    required: ['id', 'body'],
+    required: ['number', 'body'],
     additionalProperties: false,
   },
 } as const;
@@ -263,13 +279,18 @@ export const TOOL_PINSAY_SET_STATUS = {
   description:
     `Set a comment's status to open, ready or archived. "applied" is not accepted here: only ` +
     `pinsay_mark_applied and pinsay_commit_and_mark set it, because they also record the reply and ` +
-    `the commit. Returns {id, status}. ${UNTRUSTED_NOTICE}`,
+    `the commit. Returns {number, status}. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
-      id: {
+      number: {
         type: 'integer',
-        description: 'Comment ID',
+        minimum: 1,
+        description: 'The comment\'s number in its project (#12 → 12).',
+      },
+      project: {
+        type: 'string',
+        description: PROJECT_ARG_DESCRIPTION,
       },
       status: {
         type: 'string',
@@ -277,7 +298,7 @@ export const TOOL_PINSAY_SET_STATUS = {
         description: 'Status to set',
       },
     },
-    required: ['id', 'status'],
+    required: ['number', 'status'],
     additionalProperties: false,
   },
 } as const;
@@ -357,24 +378,24 @@ export const SAMPLE_INPUTS: Record<string, Record<string, any>> = {
     environment: 'local',
   },
   pinsay_get_comment: {
-    id: 12,
+    number: 12,
   },
   pinsay_mark_applied: {
-    id: 12,
+    number: 12,
     reply: 'Updated CTA button styling',
     commitUrl: 'https://github.com/org/repo/commit/abc123',
   },
   pinsay_commit_and_mark: {
-    ids: [12],
+    numbers: [12],
     reply: 'Applied button fix',
     files: ['src/components/Button.tsx'],
   },
   pinsay_reply: {
-    id: 12,
+    number: 12,
     body: 'Looking into this layout issue now',
   },
   pinsay_set_status: {
-    id: 12,
+    number: 12,
     status: 'ready',
   },
   pinsay_resolve_source: {

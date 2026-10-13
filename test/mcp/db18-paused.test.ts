@@ -40,6 +40,11 @@ test('mcp: a 423 from the server comes back as a tool error carrying the server 
       res.end(JSON.stringify({ isSuccess: false, message: 'This workspace is paused. It is read-only until an admin resumes it.' }));
       return;
     }
+    if (req.url === '/api/projects/test-project/comments/by-number/42') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 42, number: 42 } }));
+      return;
+    }
     if (req.url === '/api/resolve-source' || req.url?.startsWith('/api/')) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ isSuccess: true, data: {} }));
@@ -80,7 +85,7 @@ test('mcp: a 423 from the server comes back as a tool error carrying the server 
 
     const callResult = (await client.callTool({
       name: 'pinsay_get_comment',
-      arguments: { id: 42 },
+      arguments: { number: 42 },
     })) as any;
 
     assert.equal(callResult.isError, true);

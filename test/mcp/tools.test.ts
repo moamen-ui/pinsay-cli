@@ -55,6 +55,7 @@ describe('mcp: tools handlers and helpers', () => {
   test('partitionItem: untrusted has exactly body, replies, snapshot; trusted has pickedActions', () => {
     const rawQueueItem = {
       id: 42,
+      number: 7,
       status: 2,
       environment: 1,
       createdAt: '2026-09-12T10:00:00Z',
@@ -87,6 +88,11 @@ describe('mcp: tools handlers and helpers', () => {
     };
 
     const partitioned = partitionItem(rawQueueItem);
+
+    // 0. The comment is referenced by its per-project number and its internal id — no bare id
+    assert.equal(partitioned.number, 7);
+    assert.equal(partitioned.internalId, 42);
+    assert.ok(!('id' in partitioned));
 
     // 1. untrusted has exactly { body, replies, snapshot }
     assert.deepEqual(Object.keys(partitioned.untrusted).sort(), [
@@ -140,6 +146,7 @@ describe('mcp: tools handlers and helpers', () => {
   test('reshapeComment / handleGetComment: emits exactly the 13 whitelisted keys and drops sensitive fields', async () => {
     const rawApiComment = {
       id: 99,
+      number: 3,
       status: 2,
       environment: 1,
       createdAt: '2026-09-12T12:00:00Z',
@@ -184,6 +191,11 @@ describe('mcp: tools handlers and helpers', () => {
     };
 
     const stub = await stubServer((req, res) => {
+      if (req.url === '/api/projects/test-project/comments/by-number/3') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 99, number: 3 } }));
+        return;
+      }
       if (req.url === '/api/comments/99') {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ isSuccess: true, data: rawApiComment }));
@@ -201,7 +213,7 @@ describe('mcp: tools handlers and helpers', () => {
         token: 'jwt-token',
       };
 
-      const res = await handleGetComment({ id: 99 }, ctx);
+      const res = await handleGetComment({ number: 3 }, ctx);
 
       // Exact top-level key set comparison: exactly 13 keys
       const expectedKeys = [
@@ -220,6 +232,8 @@ describe('mcp: tools handlers and helpers', () => {
         'untrusted',
       ];
       assert.deepEqual(Object.keys(res).sort(), expectedKeys);
+      assert.equal(res.number, 3);
+      assert.equal(res.internalId, 99);
 
       // Assert untrusted and trusted partition
       assert.deepEqual(Object.keys(res.untrusted).sort(), ['body', 'replies']);
@@ -235,9 +249,79 @@ describe('mcp: tools handlers and helpers', () => {
 
       // Test 404 mapping
       await assert.rejects(
-        async () => handleGetComment({ id: 999999999 }, ctx),
+        async () => handleGetComment({ number: 999999999 }, ctx),
         (err: any) => {
           assert.equal(err.code, 'not_found');
+          return true;
+        },
+      );
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('handleGetComment: resolves the number via by-number and returns number + internalId', async () => {
+    const seen: string[] = [];
+    const stub = await stubServer((req, res) => {
+      seen.push(req.url ?? '');
+      if (req.url === '/api/projects/test-project/comments/by-number/3') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 993, number: 3 } }));
+        return;
+      }
+      if (req.url === '/api/comments/993') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(
+          JSON.stringify({
+            isSuccess: true,
+            data: { id: 993, number: 3, status: 1, environment: 1, createdAt: '2026-10-13T10:00:00Z', body: 'hi' },
+          }),
+        );
+        return;
+      }
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'Not found' }));
+    });
+
+    try {
+      const ctx: McpContext = {
+        cwd: tmpDir,
+        server: stub.url,
+        project: 'test-project',
+        token: 'jwt-token',
+      };
+
+      const res = await handleGetComment({ number: 3 }, ctx);
+      assert.ok(
+        seen.includes('/api/projects/test-project/comments/by-number/3'),
+        'must call the by-number endpoint',
+      );
+      assert.equal(res.number, 3);
+      assert.equal(res.internalId, 993);
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('handleGetComment: unknown number is a not_found error "No comment #3 in project <key>."', async () => {
+    const stub = await stubServer((_req, res) => {
+      res.writeHead(404, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'whatever the server says' }));
+    });
+
+    try {
+      const ctx: McpContext = {
+        cwd: tmpDir,
+        server: stub.url,
+        project: 'test-project',
+        token: 'jwt-token',
+      };
+
+      await assert.rejects(
+        async () => handleGetComment({ number: 3 }, ctx),
+        (err: any) => {
+          assert.equal(err.code, 'not_found');
+          assert.equal(err.message, 'No comment #3 in project test-project.');
           return true;
         },
       );
@@ -262,7 +346,12 @@ describe('mcp: tools handlers and helpers', () => {
     let patchedBody: any = null;
     let patchedUrl: string | null = null;
     const stub = await stubServer((req, res) => {
-      if (req.method === 'PATCH' && req.url === '/api/comments/42') {
+      if (req.url === '/api/projects/test-project/comments/by-number/42') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 4242, number: 42 } }));
+        return;
+      }
+      if (req.method === 'PATCH' && req.url === '/api/comments/4242') {
         let body = '';
         req.on('data', (c: any) => (body += c));
         req.on('end', () => {
@@ -291,7 +380,7 @@ describe('mcp: tools handlers and helpers', () => {
       };
 
       const res = await handleMarkApplied(
-        { id: 42, reply: 'Fixed via MCP', commitUrl: 'https://github.com/org/repo/commit/123456' },
+        { number: 42, reply: 'Fixed via MCP', commitUrl: 'https://github.com/org/repo/commit/123456' },
         ctx,
       );
 
@@ -300,13 +389,13 @@ describe('mcp: tools handlers and helpers', () => {
         .stdout.trim();
       assert.equal(headAfter, headBefore, 'pinsay_mark_applied must NEVER change HEAD or commit');
 
-      assert.equal(patchedUrl, '/api/comments/42');
+      assert.equal(patchedUrl, '/api/comments/4242');
       assert.equal(patchedBody.status, 3);
       assert.equal(patchedBody.reply, 'Fixed via MCP');
       assert.equal(patchedBody.commitUrl, 'https://github.com/org/repo/commit/123456');
 
       assert.deepEqual(res, {
-        id: 42,
+        number: 42,
         status: 'applied',
         commitUrl: 'https://github.com/org/repo/commit/123456',
       });
@@ -326,7 +415,7 @@ describe('mcp: tools handlers and helpers', () => {
     };
 
     await assert.rejects(
-      async () => handleCommitAndMark({ ids: [42], reply: 'Done' }, ctx),
+      async () => handleCommitAndMark({ numbers: [42], reply: 'Done' }, ctx),
       (err: any) => {
         assert.equal(err.code, 'git');
         assert.equal(err.message, 'Nothing staged');
@@ -362,12 +451,17 @@ describe('mcp: tools handlers and helpers', () => {
         );
         return;
       }
+      if (req.url === '/api/projects/test-project/comments/by-number/42') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 4242, number: 42 } }));
+        return;
+      }
       if (req.method === 'PATCH' && req.url?.startsWith('/api/comments/')) {
         let body = '';
         req.on('data', (c: any) => (body += c));
         req.on('end', () => {
           const parsed = JSON.parse(body || '{}');
-          patchedCommentId = 42;
+          patchedCommentId = Number(req.url?.split('/').pop());
           patchedStatus = parsed.status;
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ isSuccess: true }));
@@ -392,14 +486,14 @@ describe('mcp: tools handlers and helpers', () => {
       };
 
       const res = await handleCommitAndMark(
-        { ids: [42], reply: 'Applied fix', files: ['src/a.txt'] },
+        { numbers: [42], reply: 'Applied fix', files: ['src/a.txt'] },
         ctx,
       );
 
-      assert.equal(patchedCommentId, 42);
+      assert.equal(patchedCommentId, 4242);
       assert.equal(patchedStatus, 3);
       assert.equal(res.length, 1);
-      assert.equal(res[0].id, 42);
+      assert.equal(res[0].number, 42);
 
       // Verify commit was made
       const logRes = childProcess.spawnSync('git', ['log', '-1', '--pretty=%s'], {
@@ -435,6 +529,16 @@ describe('mcp: tools handlers and helpers', () => {
       }
       // No /api/projects/:key/capture-config stub — loadProjectContext's fetch fails and falls
       // back to the default commitStyle ('Single'), exactly like a project with no capture config.
+      if (req.url === '/api/projects/test-project/comments/by-number/10') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 110, number: 10 } }));
+        return;
+      }
+      if (req.url === '/api/projects/test-project/comments/by-number/11') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 111, number: 11 } }));
+        return;
+      }
       if (req.method === 'PATCH' && req.url?.startsWith('/api/comments/')) {
         let body = '';
         req.on('data', (c: any) => (body += c));
@@ -463,7 +567,7 @@ describe('mcp: tools handlers and helpers', () => {
       };
 
       const res = await handleCommitAndMark(
-        { ids: [10, 11], reply: 'Applied both', files: ['src/b.txt'] },
+        { numbers: [10, 11], reply: 'Applied both', files: ['src/b.txt'] },
         ctx,
       );
 
@@ -525,7 +629,12 @@ describe('mcp: tools handlers and helpers', () => {
   test('handleSetStatus: rejects status applied with forbidden; allows open, ready, archived', async () => {
     let patchedStatus: number | null = null;
     const stub = await stubServer((req, res) => {
-      if (req.method === 'PATCH' && req.url === '/api/comments/10') {
+      if (req.url === '/api/projects/test-project/comments/by-number/10') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 1010, number: 10 } }));
+        return;
+      }
+      if (req.method === 'PATCH' && req.url === '/api/comments/1010') {
         let body = '';
         req.on('data', (c: any) => (body += c));
         req.on('end', () => {
@@ -550,7 +659,7 @@ describe('mcp: tools handlers and helpers', () => {
 
       // Applied must be rejected
       await assert.rejects(
-        async () => handleSetStatus({ id: 10, status: 'applied' }, ctx),
+        async () => handleSetStatus({ number: 10, status: 'applied' }, ctx),
         (err: any) => {
           assert.equal(err.code, 'forbidden');
           assert.match(err.message, /only settable via mark tools/i);
@@ -559,8 +668,8 @@ describe('mcp: tools handlers and helpers', () => {
       );
 
       // Ready must succeed
-      const readyRes = await handleSetStatus({ id: 10, status: 'ready' }, ctx);
-      assert.deepEqual(readyRes, { id: 10, status: 'ready' });
+      const readyRes = await handleSetStatus({ number: 10, status: 'ready' }, ctx);
+      assert.deepEqual(readyRes, { number: 10, status: 'ready' });
       assert.equal(patchedStatus, 2);
     } finally {
       await stub.close();
@@ -570,7 +679,12 @@ describe('mcp: tools handlers and helpers', () => {
   test('handleReply: posts to /api/comments/:id/replies and returns replyId', async () => {
     let postedBody: string | null = null;
     const stub = await stubServer((req, res) => {
-      if (req.method === 'POST' && req.url === '/api/comments/10/replies') {
+      if (req.url === '/api/projects/test-project/comments/by-number/10') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: { id: 1010, number: 10 } }));
+        return;
+      }
+      if (req.method === 'POST' && req.url === '/api/comments/1010/replies') {
         let body = '';
         req.on('data', (c: any) => (body += c));
         req.on('end', () => {
@@ -593,7 +707,7 @@ describe('mcp: tools handlers and helpers', () => {
         token: 'jwt-token',
       };
 
-      const res = await handleReply({ id: 10, body: 'Probe reply' }, ctx);
+      const res = await handleReply({ number: 10, body: 'Probe reply' }, ctx);
       assert.deepEqual(res, { replyId: 777 });
       assert.equal(postedBody, 'Probe reply');
     } finally {

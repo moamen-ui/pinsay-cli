@@ -10,6 +10,7 @@ import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
+import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveModelsFromArgs, modelsBody, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext, ApplyPageDto, PageContextDto } from '../apply/types.js';
 
@@ -130,7 +131,8 @@ export function partitionItem(item: any): any {
       : String(item?.body ?? '');
 
   return {
-    id: item.id,
+    number: item.number,
+    internalId: item.id,
     status: item.status,
     environment: item.environment,
     createdAt: item.createdAt ?? '',
@@ -155,7 +157,7 @@ export function partitionItem(item: any): any {
  * Reshapes an AiCommentView so untrusted and trusted fields are partitioned.
  *
  * Top-level keys are exactly:
- * id, status, environment, createdAt, authorName, isBugReport, element,
+ * number, internalId, status, environment, createdAt, authorName, isBugReport, element,
  * appliedAt, appliedByLabel, commitUrl, untrusted, trusted
  */
 export function reshapeComment(raw: any, page?: any): any {
@@ -224,7 +226,8 @@ export async function handleListComments(
 
   const rawItems: any[] = res?.items ?? [];
   const items = rawItems.map((item: any) => ({
-    id: item.id,
+    number: item.number,
+    internalId: item.id,
     status: item.status,
     environment: item.environment,
     body: item.body ?? '',
@@ -312,6 +315,7 @@ export async function handleGetQueue(
       );
       rawItems = (res?.items ?? []).map((item: any) => ({
         id: item.id,
+        number: item.number,
         status: item.status,
         environment: item.environment,
         body: item.body ?? '',
@@ -346,12 +350,23 @@ export async function handleGetQueue(
 }
 
 export async function handleGetComment(
-  args: { id: number },
+  args: { number: number },
   ctx: McpContext,
 ): Promise<any> {
-  const id = Number(args?.id);
-  if (!id || isNaN(id)) {
-    throw mcpError('not_found', 'Comment ID is required');
+  const number = parseCommentNumber(args?.number);
+  if (number === null) {
+    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+  }
+
+  let id: number;
+  try {
+    const resolved = await fetchCommentByNumber<any>(ctx.server, ctx.token, ctx.project, number);
+    id = resolved.id;
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      throw mcpError('not_found', err.message);
+    }
+    throw err;
   }
 
   try {
@@ -361,7 +376,7 @@ export async function handleGetComment(
     return reshapeComment(raw, raw?.page);
   } catch (err: any) {
     if (err instanceof ApiError && err.code === 404) {
-      throw mcpError('not_found', `Comment #${id} not found`);
+      throw mcpError('not_found', `Comment #${number} not found`);
     }
     throw err;
   }
@@ -378,13 +393,27 @@ function parseModelsArgs(args: { model?: unknown; models?: unknown } | undefined
 }
 
 export async function handleMarkApplied(
-  args: { id: number; reply: string; commitUrl?: string; tool?: string; model?: string; models?: unknown },
+  args: { number: number; reply: string; commitUrl?: string; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
-  const id = Number(args?.id);
+  const number = parseCommentNumber(args?.number);
   const reply = args?.reply;
-  if (!id || isNaN(id) || typeof reply !== 'string') {
-    throw mcpError('forbidden', 'id and reply are required');
+  if (number === null) {
+    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+  }
+  if (typeof reply !== 'string') {
+    throw mcpError('forbidden', 'number and reply are required');
+  }
+
+  let id: number;
+  try {
+    const resolved = await fetchCommentByNumber<any>(ctx.server, ctx.token, ctx.project, number);
+    id = resolved.id;
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      throw mcpError('not_found', err.message);
+    }
+    throw err;
   }
 
   const email = getUserEmail(ctx.cwd);
@@ -409,24 +438,33 @@ export async function handleMarkApplied(
   await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
   return {
-    id,
+    number,
     status: 'applied',
     commitUrl,
   };
 }
 
 export async function handleCommitAndMark(
-  args: { ids: number[]; reply: string; files?: string[]; tool?: string; model?: string; models?: unknown },
+  args: { numbers: number[]; reply: string; files?: string[]; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
-  const ids = args?.ids;
+  const numbers = args?.numbers;
   const reply = args?.reply;
   const files = args?.files;
   const tool = args?.tool || ctx.configAiTool;
   const models = parseModelsArgs(args);
 
-  if (!Array.isArray(ids) || ids.length === 0 || typeof reply !== 'string') {
-    throw mcpError('git', 'ids (non-empty array) and reply (string) are required');
+  if (!Array.isArray(numbers) || numbers.length === 0 || typeof reply !== 'string') {
+    throw mcpError('git', 'numbers (non-empty array) and reply (string) are required');
+  }
+
+  const parsedNumbers: number[] = [];
+  for (const x of numbers) {
+    const n = parseCommentNumber(x);
+    if (n === null) {
+      throw mcpError('forbidden', invalidNumberMessage(x));
+    }
+    parsedNumbers.push(n);
   }
 
   // Validate files if present
@@ -452,6 +490,21 @@ export async function handleCommitAndMark(
     }
   }
 
+  // Each number is per project: resolve it to the comment's internal id first, then the existing
+  // /api/comments/{id} calls below run with that id exactly as before.
+  const comments: { number: number; id: number }[] = [];
+  for (const n of parsedNumbers) {
+    try {
+      const resolved = await fetchCommentByNumber<any>(ctx.server, ctx.token, ctx.project, n);
+      comments.push({ number: n, id: resolved.id });
+    } catch (err) {
+      if (err instanceof CommentNotFoundError) {
+        throw mcpError('not_found', err.message);
+      }
+      throw err;
+    }
+  }
+
   const clientCtx: ApplyClientContext = {
     server: ctx.server,
     project: ctx.project,
@@ -465,20 +518,20 @@ export async function handleCommitAndMark(
   const email = getUserEmail(ctx.cwd);
   const appliedByLabel = email;
   const remote = getRemoteUrl(ctx.cwd);
-  const results: { id: number; commitUrl: string | null }[] = [];
+  const results: { number: number; commitUrl: string | null }[] = [];
 
   if (commitStyle === 'separate') {
-    if (ids.length > 1) {
+    if (comments.length > 1) {
       if (!Array.isArray(files) || files.length === 0) {
         throw mcpError(
           'git',
-          'files is required when commitStyle is Separate and multiple ids are provided',
+          'files is required when commitStyle is Separate and multiple numbers are provided',
         );
       }
 
-      for (let i = 0; i < ids.length; i++) {
-        const id = ids[i];
-        const prefix = `${id}:`;
+      for (let i = 0; i < comments.length; i++) {
+        const { number, id } = comments[i];
+        const prefix = `${number}:`;
         const filesForId: string[] = [];
 
         for (const f of files) {
@@ -490,7 +543,7 @@ export async function handleCommitAndMark(
         }
 
         if (filesForId.length === 0) {
-          throw mcpError('git', `No files specified for comment #${id}`);
+          throw mcpError('git', `No files specified for comment #${number}`);
         }
 
         const addRes = spawnSync('git', ['add', '--', ...filesForId], {
@@ -507,7 +560,7 @@ export async function handleCommitAndMark(
           shortBody = (c?.body ?? '').slice(0, 60);
         } catch {}
 
-        const commitMsg = `Apply ${projectCtx.productName} comment #${id} — ${shortBody}`;
+        const commitMsg = `Apply ${projectCtx.productName} comment #${number} — ${shortBody}`;
         const commitRes = commitAll(commitMsg, ctx.cwd);
         if (!commitRes.success) {
           throw mcpError('git', commitRes.error || 'Commit failed');
@@ -535,11 +588,11 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
-      results.push({ id, commitUrl });
+      results.push({ number, commitUrl });
       }
     } else {
-      // Single id with Separate style
-      const id = ids[0];
+      // Single number with Separate style
+      const { number, id } = comments[0];
       if (Array.isArray(files) && files.length > 0) {
         const cleanFiles = files.map((f) => (f.includes(':') ? f.split(':').slice(1).join(':') : f));
         const addRes = spawnSync('git', ['add', '--', ...cleanFiles], {
@@ -557,7 +610,7 @@ export async function handleCommitAndMark(
         shortBody = (c?.body ?? '').slice(0, 60);
       } catch {}
 
-      const commitMsg = `Apply ${projectCtx.productName} comment #${id} — ${shortBody}`;
+      const commitMsg = `Apply ${projectCtx.productName} comment #${number} — ${shortBody}`;
       const commitRes = commitAll(commitMsg, ctx.cwd);
       if (!commitRes.success) {
         throw mcpError('git', commitRes.error || 'Commit failed');
@@ -583,10 +636,10 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
-      results.push({ id, commitUrl });
+      results.push({ number, commitUrl });
     }
   } else {
-    // Single commit style for all ids
+    // Single commit style for all numbers
     if (Array.isArray(files) && files.length > 0) {
       const cleanFiles = files.map((f) => (f.includes(':') ? f.split(':').slice(1).join(':') : f));
       const addRes = spawnSync('git', ['add', '--', ...cleanFiles], {
@@ -598,7 +651,7 @@ export async function handleCommitAndMark(
       }
     }
 
-    const commitMsg = `Apply ${ids.length} pending ${projectCtx.productName} comments`;
+    const commitMsg = `Apply ${comments.length} pending ${projectCtx.productName} comments`;
     const commitRes = commitAll(commitMsg, ctx.cwd);
     if (!commitRes.success) {
       throw mcpError('git', commitRes.error || 'Commit failed');
@@ -607,7 +660,7 @@ export async function handleCommitAndMark(
     const sha = headSha(ctx.cwd);
     const commitUrl = commitUrlFor(sha, remote);
 
-    for (const id of ids) {
+    for (const { number, id } of comments) {
       await api(ctx.server, `/api/comments/${id}`, {
         method: 'PATCH',
         body: {
@@ -627,7 +680,7 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
-      results.push({ id, commitUrl });
+      results.push({ number, commitUrl });
     }
   }
 
@@ -635,13 +688,27 @@ export async function handleCommitAndMark(
 }
 
 export async function handleReply(
-  args: { id: number; body: string; tool?: string; model?: string; models?: unknown },
+  args: { number: number; body: string; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
 ): Promise<any> {
-  const id = Number(args?.id);
+  const number = parseCommentNumber(args?.number);
   const body = args?.body;
-  if (!id || isNaN(id) || typeof body !== 'string') {
-    throw mcpError('forbidden', 'id and body are required');
+  if (number === null) {
+    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+  }
+  if (typeof body !== 'string') {
+    throw mcpError('forbidden', 'number and body are required');
+  }
+
+  let id: number;
+  try {
+    const resolved = await fetchCommentByNumber<any>(ctx.server, ctx.token, ctx.project, number);
+    id = resolved.id;
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      throw mcpError('not_found', err.message);
+    }
+    throw err;
   }
 
   const tool = args?.tool || ctx.configAiTool;
@@ -657,14 +724,17 @@ export async function handleReply(
 }
 
 export async function handleSetStatus(
-  args: { id: number; status: string },
+  args: { number: number; status: string },
   ctx: McpContext,
 ): Promise<any> {
-  const id = Number(args?.id);
+  const number = parseCommentNumber(args?.number);
   const statusStr = String(args?.status || '').toLowerCase();
 
-  if (!id || isNaN(id) || !statusStr) {
-    throw mcpError('forbidden', 'id and status are required');
+  if (number === null) {
+    throw mcpError('forbidden', invalidNumberMessage(args?.number));
+  }
+  if (!statusStr) {
+    throw mcpError('forbidden', 'number and status are required');
   }
 
   if (statusStr === 'applied') {
@@ -676,13 +746,24 @@ export async function handleSetStatus(
     throw mcpError('forbidden', `Invalid status: ${args.status}`);
   }
 
+  let id: number;
+  try {
+    const resolved = await fetchCommentByNumber<any>(ctx.server, ctx.token, ctx.project, number);
+    id = resolved.id;
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      throw mcpError('not_found', err.message);
+    }
+    throw err;
+  }
+
   await api(ctx.server, `/api/comments/${id}`, {
     method: 'PATCH',
     body: { status: statusNum },
     token: ctx.token,
   });
 
-  return { id, status: statusStr };
+  return { number, status: statusStr };
 }
 
 export async function handleResolveSource(
@@ -746,12 +827,16 @@ export async function handleListProjects(
   return { projects: listProjects(config) };
 }
 
-/** Tools that act on a whole project's queue rather than a single comment id — these are the
- *  ones a multi-project repo needs a resolved `project` for. */
+/** Tools that need a resolved `project` in a multi-project repo: they act on a whole project's
+ *  queue, or reference a comment by its number — and a number is per project. */
 const PROJECT_SCOPED_TOOLS = new Set([
   'pinsay_list_comments',
   'pinsay_get_queue',
+  'pinsay_get_comment',
+  'pinsay_mark_applied',
   'pinsay_commit_and_mark',
+  'pinsay_reply',
+  'pinsay_set_status',
   'pinsay_doctor',
 ]);
 
