@@ -214,7 +214,7 @@ test('a very large report is capped and keeps every failing call line', () => {
       `missing failing call ${i}`,
     );
   }
-  assert.ok(!out.includes('STACK'), 'reduced console entries drop their stacks');
+  assert.ok((out.match(/\[error\]/g) ?? []).length <= 10, 'reduced console keeps at most 10 errors');
 });
 
 test('a hostile response body cannot break out of the page-context fence', () => {
@@ -369,4 +369,95 @@ test('repeat count, denied note, omitted body and truncated suffix are printed',
   assert.match(out, /→ 503 \(5 ms\) ×3 \(endpoint excluded by the project: no headers or bodies\)/);
   assert.match(out, /request body: omitted \(binary\)/);
   assert.match(out, /response body \(text\/plain, truncated\): oops/);
+});
+
+// QA case #18 (inject.mjs LARGE): 80 ok calls with 700-char bodies, 20 failing with 3000-char bodies,
+// 50 console errors of 1,500+ chars with 5-line stacks, 100 steps.
+test('T71: case #18 keeps the first line of every failing call and never cuts the section', () => {
+  const t = (ms: number) => new Date(Date.parse(MOMENT) + ms).toISOString();
+  const call = (i: number, status: number, body: string) => ({
+    method: 'POST',
+    url: `http://app.test/api/c${i}`,
+    statusCode: status,
+    durationMs: 10,
+    occurredAt: t(-2000 + i),
+    startedAt: t(-2500 + i),
+    repeatCount: 1,
+    requestHeaders: [],
+    responseHeaders: [],
+    requestBody: { contentType: 'text/plain', sizeBytes: body.length, text: body, truncated: false, omitted: null },
+    responseBody: { contentType: 'text/plain', sizeBytes: body.length, text: body, truncated: false, omitted: null },
+  });
+  const pc = {
+    captureMomentAt: MOMENT,
+    windowSeconds: 30,
+    droppedEntryCount: 0,
+    networkCalls: [
+      ...Array.from({ length: 80 }, (_, i) => call(i + 10, 200, 'ok-body ' + 'y'.repeat(700))),
+      ...Array.from({ length: 20 }, (_, i) => call(i + 100, 500, `FAIL-${i} ` + 'f'.repeat(3000))),
+    ],
+    consoleEntries: Array.from({ length: 50 }, (_, i) => ({
+      level: 'error',
+      message: `console error ${i} ` + 'z'.repeat(1500),
+      stack: 'at a\nat b\nat c\nat d\nat e',
+      occurredAt: t(-1000 + i),
+    })),
+    stepEntries: Array.from({ length: 100 }, (_, i) => ({
+      kind: 'click',
+      occurredAt: t(-900 + i),
+      selector: `#s${i}`,
+      label: `step ${i}`,
+    })),
+  } as unknown as PageContextDto;
+  const out = formatCaptureSection(pc);
+  assert.ok(out.length <= CAPTURE_PROMPT_MAX_CHARS + 60, `length ${out.length}`);
+  for (let i = 0; i < 20; i++) {
+    assert.ok(out.includes(`POST http://app.test/api/c${i + 100} → 500 (10 ms)`), `failing call ${i}`);
+  }
+  assert.ok(!out.includes('more failing calls omitted'));
+  assert.ok(!out.includes('[capture cut to'));
+});
+
+test('T71: a 1,500-char console message is cut to 300 chars plus an ellipsis', () => {
+  const pc: PageContextDto = {
+    captureMomentAt: MOMENT,
+    windowSeconds: 30,
+    networkCalls: [],
+    consoleEntries: [{ level: 'error', message: 'e'.repeat(1500), occurredAt: '2026-10-13T09:59:59.000Z' }],
+  };
+  const line = formatCaptureSection(pc)
+    .split('\n')
+    .find((l) => l.includes('[error]'))!;
+  assert.ok(line.endsWith(`${'e'.repeat(300)}…`));
+  assert.ok(!line.includes('e'.repeat(301)));
+});
+
+test('T71: a masked click prints "click (masked element)"', () => {
+  const pc: PageContextDto = {
+    captureMomentAt: MOMENT,
+    windowSeconds: 30,
+    networkCalls: [],
+    stepEntries: [{ kind: 'click', occurredAt: '2026-10-13T09:59:59.000Z', selector: '#secret', masked: true }],
+  };
+  const out = formatCaptureSection(pc);
+  assert.match(out, /-1\.0s click \(masked element\)/);
+  assert.ok(!out.includes('#secret'));
+});
+
+test('T71: a bug item without pageContext says nothing was captured', () => {
+  const item = {
+    id: 1,
+    status: 'Open',
+    environment: 'Staging',
+    body: 'Fix the error',
+    authorName: 'Stakeholder',
+    createdAt: '2026-10-13T10:00:00Z',
+    isBugReport: true,
+    element: { selector: 'button#pay', sourcePath: 'src/Pay.tsx', classes: 'btn' },
+    replies: [],
+    pickedActions: [],
+    aiRules: [],
+  };
+  const prompt = buildApplyPrompt([item as any], context as any);
+  assert.ok(prompt.includes('Page context: nothing was captured for this bug report.'));
 });

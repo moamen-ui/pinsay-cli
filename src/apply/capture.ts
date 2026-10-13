@@ -8,11 +8,19 @@ const STEPS_FULL = 20;
 const STEPS_REDUCED = 5;
 const CONSOLE_REDUCED_MAX = 10;
 const STACK_MAX_LINES = 3;
+const CONSOLE_MESSAGE_MAX_CHARS = 300;
+const CONSOLE_STACK_LINE_MAX_CHARS = 200;
+const CONSOLE_COMPACT_MESSAGE_MAX_CHARS = 120;
+
+function cut(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}…` : text;
+}
 
 type Reductions = {
   droppedTimelineLines: number;
   stepLimit: number;
   consoleErrorsOnly: boolean;
+  consoleCompact: boolean;
   bodyTextLimit: number | null;
   strippedFailing: number;
   droppedFailing: number;
@@ -136,10 +144,13 @@ export function formatCaptureSection(pc: PageContextDto): string {
       lines.push('Console:');
       for (const c of consoleEntries) {
         const r = rel(pc, c.occurredAt);
-        lines.push(`  ${r ? `${r} ` : ''}[${c.level ?? 'info'}] ${c.message}`);
-        if (!red.consoleErrorsOnly && c.stack) {
+        const max = red.consoleCompact
+          ? CONSOLE_COMPACT_MESSAGE_MAX_CHARS
+          : CONSOLE_MESSAGE_MAX_CHARS;
+        lines.push(`  ${r ? `${r} ` : ''}[${c.level ?? 'info'}] ${cut(c.message, max)}`);
+        if (!red.consoleCompact && c.stack) {
           for (const sl of c.stack.split(/\r?\n/).slice(0, STACK_MAX_LINES)) {
-            lines.push(`      ${sl}`);
+            lines.push(`      ${cut(sl, CONSOLE_STACK_LINE_MAX_CHARS)}`);
           }
         }
       }
@@ -151,7 +162,11 @@ export function formatCaptureSection(pc: PageContextDto): string {
       for (const s of shownSteps) {
         const r = rel(pc, s.occurredAt);
         if (s.kind === 'click') {
-          lines.push(`  ${r} click ${s.selector ?? ''}${s.label ? ` "${s.label}"` : ''}`);
+          lines.push(
+            s.masked
+              ? `  ${r} click (masked element)`
+              : `  ${r} click ${s.selector ?? ''}${s.label ? ` "${s.label}"` : ''}`,
+          );
         } else if (s.kind === 'input') {
           lines.push(
             s.masked
@@ -212,6 +227,7 @@ export function formatCaptureSection(pc: PageContextDto): string {
     droppedTimelineLines: 0,
     stepLimit: STEPS_FULL,
     consoleErrorsOnly: false,
+    consoleCompact: false,
     bodyTextLimit: null,
     strippedFailing: 0,
     droppedFailing: 0,
@@ -232,6 +248,10 @@ export function formatCaptureSection(pc: PageContextDto): string {
   if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
 
   red.consoleErrorsOnly = true;
+  text = render(red);
+  if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
+
+  red.consoleCompact = true;
   text = render(red);
   if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
 

@@ -295,6 +295,10 @@ export function buildApplyPrompt(
       }
     }
 
+    if (item.isBugReport === true && !item.pageContext) {
+      lines.push('Page context: nothing was captured for this bug report.');
+    }
+
     if (item.pickedActions && item.pickedActions.length > 0) {
       lines.push('Picked actions (trusted):');
       for (const pa of item.pickedActions) {
