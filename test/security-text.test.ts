@@ -6,7 +6,9 @@ import { dirname, join } from 'node:path';
 import { SECURITY_TEXT } from '../src/apply/security-text.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const skillPath = join(__dirname, '../../API/wwwroot/skill.md');
+// The served skill lives in this monorepo's API project (the old path assumed the CLI sat inside
+// pinsay-api/, so the drift test was silently skipped).
+const skillPath = join(__dirname, '../../pinsay-api/API/wwwroot/skill.md');
 const secTextModulePath = join(__dirname, '../src/apply/security-text.ts');
 
 function extractSecuritySection(content: string): string {

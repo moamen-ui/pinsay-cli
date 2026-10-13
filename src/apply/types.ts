@@ -27,14 +27,31 @@ export type PageContextEntry = {
   stack?: string;
   count?: number;
   occurredAt?: string;
+  source?: string | null;
 };
 
 export type NetworkContextEntry = {
   method: string;
   url: string;
-  statusCode: number;
+  statusCode: number | null;
   durationMs?: number;
   occurredAt?: string;
+};
+
+export type CapturedHeader = { name: string; value: string };
+export type CapturedBody = {
+  contentType?: string | null; sizeBytes?: number | null; text?: string | null;
+  truncated?: boolean; omitted?: string | null;
+};
+export type NetworkCall = {
+  method: string; url: string; statusCode: number | null; durationMs?: number; occurredAt?: string;
+  startedAt?: string | null; kind?: string | null; error?: string | null; denied?: boolean; repeatCount?: number;
+  requestHeaders?: CapturedHeader[]; responseHeaders?: CapturedHeader[];
+  requestBody?: CapturedBody | null; responseBody?: CapturedBody | null;
+};
+export type UserStep = {
+  kind: string; occurredAt?: string; selector?: string | null; label?: string | null;
+  valueLength?: number | null; masked?: boolean; path?: string | null; title?: string | null;
 };
 
 export type PageContextDto = {
@@ -44,6 +61,12 @@ export type PageContextDto = {
   lastEventAt?: string;
   consoleEntries?: PageContextEntry[];
   networkEntries?: NetworkContextEntry[];
+  captureMomentAt?: string | null;
+  windowSeconds?: number | null;
+  bodyCaptureEnabled?: boolean;
+  droppedEntryCount?: number;
+  networkCalls?: NetworkCall[] | null;
+  stepEntries?: UserStep[] | null;
 };
 
 export type QueueItemElement = {
