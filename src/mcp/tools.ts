@@ -177,7 +177,8 @@ export function reshapeComment(raw: any, page?: any): any {
     : [];
 
   return {
-    id: view.id,
+    number: view.number,
+    internalId: view.internalId,
     status: view.status,
     environment: view.environment,
     createdAt: view.createdAt,

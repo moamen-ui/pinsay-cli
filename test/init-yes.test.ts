@@ -112,6 +112,8 @@ before(async () => {
             res.end('skill content');
         } else if (req.url?.startsWith('/api/projects/') && req.url.endsWith('/stack')) {
             res.end(JSON.stringify({}));
+        } else if (req.url === '/api/projects/my-app/comments/by-number/1') {
+            res.end(JSON.stringify({ isSuccess: true, data: { id: 1, number: 1, body: 'Changed the button color in Header.tsx' } }));
         } else if (req.url === '/api/events') {
             res.end(JSON.stringify({}));
         } else {

@@ -83,6 +83,7 @@ test('markApplied in Separate style commits and patches single comment with comm
     const result = await markApplied(
       {
         id: 10,
+        number: 3,
         reply: 'Fixed the console log statement',
       },
       ctx,
@@ -94,10 +95,12 @@ test('markApplied in Separate style commits and patches single comment with comm
       result.commitUrl,
       `https://github.com/myorg/myrepo/commit/${result.sha}`,
     );
+    assert.deepEqual(result.patchedIds, [10]);
+    assert.deepEqual(result.patchedNumbers, [3]);
 
     // Verify git commit message
     const logRes = spawnSync('git', ['log', '-1', '--pretty=%s'], { cwd: dir, encoding: 'utf8' });
-    assert.equal(logRes.stdout.trim(), 'Apply PinSay comment #10 — Fix console log');
+    assert.equal(logRes.stdout.trim(), 'Apply PinSay comment #3 — Fix console log');
 
     // Verify PATCH body sent to server
     assert.ok(patchedBody, 'PATCH request must have been made');
@@ -353,7 +356,7 @@ test('markApplied all with zero matching comments commits nothing and leaves the
 test('markApplied all uses the --status/--env filter the plan was built with', async () => {
   const dir = await stagedRepo();
   const seen = { queueUrls: [] as string[], patched: [] as number[] };
-  const stub = await stubServer(queueStub([{ id: 212 }, { id: 213 }], seen));
+  const stub = await stubServer(queueStub([{ id: 212, number: 7 }, { id: 213, number: 8 }], seen));
   try {
     const ctx: ApplyClientContext = { server: stub.url, project: 'my-app', token: 't', cwd: dir };
     const result = await markApplied(
@@ -363,6 +366,8 @@ test('markApplied all uses the --status/--env filter the plan was built with', a
 
     assert.equal(result.committed, true);
     assert.equal(result.nothingMatched, undefined);
+    assert.deepEqual(result.patchedIds, [212, 213]);
+    assert.deepEqual(result.patchedNumbers, [7, 8]);
     assert.deepEqual(seen.patched, [212, 213]);
     assert.match(seen.queueUrls[0], /status=1/);
     assert.match(seen.queueUrls[0], /environment=3/);

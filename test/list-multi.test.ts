@@ -17,7 +17,7 @@ let server: http.Server;
 let serverUrl: string;
 
 const COMMENTS_BY_PROJECT: Record<string, unknown[]> = {
-  a: [{ id: 1, status: 1, environment: 1, authorName: 'Alice', body: 'Fix the header', route: '/' }],
+  a: [{ id: 8, number: 1, status: 1, environment: 1, authorName: 'Alice', body: 'Fix the header', route: '/' }],
   b: [],
 };
 

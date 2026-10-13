@@ -74,6 +74,7 @@ export async function fetchQueue(
 
       return {
         id: item.id,
+        number: item.number,
         status: item.status,
         environment: item.environment,
         body: item.body ?? '',
@@ -161,6 +162,7 @@ export async function fetchQueue(
       const items: any[] = res?.items ?? [];
       return items.map((item: any): QueueItem => ({
         id: item.id,
+        number: item.number,
         status: item.status,
         environment: item.environment,
         body: item.body ?? '',

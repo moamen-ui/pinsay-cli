@@ -137,7 +137,7 @@ describe('mcp: tools handlers and helpers', () => {
     assert.ok(!serialized.includes('editedBy'), 'must not contain editedBy');
   });
 
-  test('reshapeComment / handleGetComment: emits exactly the 12 whitelisted keys and drops sensitive fields', async () => {
+  test('reshapeComment / handleGetComment: emits exactly the 13 whitelisted keys and drops sensitive fields', async () => {
     const rawApiComment = {
       id: 99,
       status: 2,
@@ -203,7 +203,7 @@ describe('mcp: tools handlers and helpers', () => {
 
       const res = await handleGetComment({ id: 99 }, ctx);
 
-      // Exact top-level key set comparison: exactly 12 keys
+      // Exact top-level key set comparison: exactly 13 keys
       const expectedKeys = [
         'appliedAt',
         'appliedByLabel',
@@ -212,8 +212,9 @@ describe('mcp: tools handlers and helpers', () => {
         'createdAt',
         'element',
         'environment',
-        'id',
+        'internalId',
         'isBugReport',
+        'number',
         'status',
         'trusted',
         'untrusted',

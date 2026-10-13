@@ -1,6 +1,7 @@
 import { findRepoRoot, readConfig, resolveProject, listProjects, type PinSayConfig } from '../config.js';
 import { resolveSource } from '../vite/resolve.js';
 import { api } from '../api.js';
+import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { resolveServer } from '../server.js';
@@ -44,11 +45,10 @@ function mapEnvironmentToString(env: number | string): string {
  * when something is missing. Exported so other commands share the exact same resolution and the
  * same exit codes — a second copy would drift the moment one of them gained a flag.
  *
- * Does NOT resolve a project by default: comment-id-based commands (`get`, `status <id>`, `reply`)
- * need none — comment ids are unique server-wide — and forcing project resolution on them broke
- * the moment a repo went multi-project (there is no longer always exactly one). Pass
- * `requireProject: true` for a command that needs one (see `resolveProjectOrExit` for the
- * ambiguous case a multi-project repo can hit).
+ * Does NOT resolve a project by default: comment commands (`get`, `status <number>`, `reply`) pass
+ * `requireProject: true` because a comment is referenced by its number inside one project — the
+ * number is per project, so the project is part of every reference (see `resolveProjectOrExit` for
+ * the ambiguous case a multi-project repo can hit).
  */
 export async function getClient(
   cwd: string,
@@ -118,7 +118,7 @@ function printCommentLine(item: any): void {
   const env = mapEnvironmentToString(item.environment);
   const author = item.authorName || 'Anonymous';
   const loc = item.route || item.sourcePath || '';
-  console.log(`#${item.id} [${st}] [${env}] ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
+  console.log(`#${item.number} [${st}] [${env}] ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
 }
 
 export async function listCommand(
@@ -139,7 +139,7 @@ export async function listCommand(
   if (resolved.ok) {
     const items = await fetchCommentsFor(server, token, resolved.project.key, statusNum, envNum);
     if (parsed['json'] === true) {
-      console.log(JSON.stringify(items, null, 2));
+      console.log(JSON.stringify(items.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest })), null, 2));
       process.exit(0);
     }
     if (items.length === 0) {
@@ -169,7 +169,7 @@ export async function listCommand(
   }
 
   if (parsed['json'] === true) {
-    console.log(JSON.stringify(grouped.map((g) => ({ project: g.key, comments: g.comments })), null, 2));
+    console.log(JSON.stringify(grouped.map((g) => ({ project: g.key, comments: g.comments.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest })) })), null, 2));
     process.exit(0);
   }
 
@@ -190,26 +190,28 @@ export async function getCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  // Comment ids are unique server-wide — no project needed, and none is asked for.
-  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
-  const idStr = positionals[1] || (typeof parsed['id'] === 'string' ? parsed['id'] : undefined);
-  if (!idStr) {
-    console.error('Usage: pinsay get <id>');
+  const { server, token, project } = await getClient(cwd, parsed, { requireProject: true });
+  const numStr = positionals[1] || (typeof parsed['id'] === 'string' ? parsed['id'] : undefined);
+  if (!numStr) {
+    console.error('Usage: pinsay get <number>');
     process.exit(2);
   }
 
-  const id = parseInt(idStr, 10);
-  if (isNaN(id)) {
-    console.error(`Invalid comment ID: ${idStr}`);
+  const n = parseCommentNumber(numStr);
+  if (n === null) {
+    console.error(invalidNumberMessage(numStr));
     process.exit(2);
   }
 
   let raw: any;
   try {
-    raw = await api<any>(server, `/api/comments/${id}`, { token });
-  } catch (err: any) {
-    console.error(`Comment #${id} not found.`);
-    process.exit(4);
+    raw = await fetchCommentByNumber(server, token, project, n);
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      console.error(err.message);
+      process.exit(4);
+    }
+    throw err;
   }
 
   const view = toAiCommentView(raw);
@@ -225,7 +227,7 @@ export async function getCommand(
     process.exit(0);
   }
 
-  console.log(`Comment #${view.id} [${mapStatusToString(view.status)}] [${mapEnvironmentToString(view.environment)}]`);
+  console.log(`Comment #${n} [${mapStatusToString(view.status)}] [${mapEnvironmentToString(view.environment)}]`);
   console.log(`Author: ${view.authorName || 'Anonymous'} | Created: ${view.createdAt}`);
   if (view.element.route || view.element.sourcePath) {
     console.log(`Location: ${view.element.route || ''} ${view.element.sourcePath ? `(${view.element.sourcePath})` : ''}`);
@@ -240,7 +242,7 @@ export async function getCommand(
     // was renamed since the comment was captured, and the previous manifest still knows the name
     // it had — which is the one fact that turns a dead end into a grep.
     console.log(
-      `⚠ comment #${view.id}: source hash ${resolvedHuman.hash} is not in the current manifest — ` +
+      `⚠ comment #${view.number}: source hash ${resolvedHuman.hash} is not in the current manifest — ` +
         `${resolvedHuman.hint} (renamed or moved since; run \`npx pinsay-cli map --from-source\` after a rename)`,
     );
   }
@@ -264,18 +266,18 @@ export async function statusCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
-  const idStr = positionals[1];
+  const { server, token, project } = await getClient(cwd, parsed, { requireProject: true });
+  const numStr = positionals[1];
   const newStatusStr = positionals[2];
 
-  if (!idStr || !newStatusStr) {
-    console.error('Usage: pinsay status <id> <open|ready|applied|archived>');
+  if (!numStr || !newStatusStr) {
+    console.error('Usage: pinsay status <number> <open|ready|applied|archived>');
     process.exit(2);
   }
 
-  const id = parseInt(idStr, 10);
-  if (isNaN(id)) {
-    console.error(`Invalid comment ID: ${idStr}`);
+  const n = parseCommentNumber(numStr);
+  if (n === null) {
+    console.error(invalidNumberMessage(numStr));
     process.exit(2);
   }
 
@@ -288,18 +290,29 @@ export async function statusCommand(
   if (statusNum === 3 /* Applied */) {
     console.error(
       "Marking a comment as 'applied' is not permitted via `pinsay status`.\n" +
-        "Use `pinsay apply --mark <id> --reply \"<explanation>\"` (or `pinsay reply <id> \"<text>\"`) to record a properly structured reply.",
+        "Use `pinsay apply --mark <number> --reply \"<explanation>\"` (or `pinsay reply <number> \"<text>\"`) to record a properly structured reply.",
     );
     process.exit(2);
   }
 
-  await api(server, `/api/comments/${id}`, {
+  let raw: any;
+  try {
+    raw = await fetchCommentByNumber(server, token, project, n);
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      console.error(err.message);
+      process.exit(4);
+    }
+    throw err;
+  }
+
+  await api(server, `/api/comments/${raw.id}`, {
     method: 'PATCH',
     body: { status: statusNum },
     token,
   });
 
-  console.log(`Updated comment #${id} status to ${mapStatusToString(statusNum)}.`);
+  console.log(`Updated comment #${n} status to ${mapStatusToString(statusNum)}.`);
   process.exit(0);
 }
 
@@ -308,27 +321,38 @@ export async function replyCommand(
   parsed: Record<string, string | boolean>,
   positionals: string[] = [],
 ): Promise<void> {
-  const { server, token } = await getClient(cwd, parsed, { requireProject: false });
-  const idStr = positionals[1];
+  const { server, token, project } = await getClient(cwd, parsed, { requireProject: true });
+  const numStr = positionals[1];
   const body = positionals[2];
 
-  if (!idStr || !body) {
-    console.error('Usage: pinsay reply <id> "<text>"');
+  if (!numStr || !body) {
+    console.error('Usage: pinsay reply <number> "<text>"');
     process.exit(2);
   }
 
-  const id = parseInt(idStr, 10);
-  if (isNaN(id)) {
-    console.error(`Invalid comment ID: ${idStr}`);
+  const n = parseCommentNumber(numStr);
+  if (n === null) {
+    console.error(invalidNumberMessage(numStr));
     process.exit(2);
   }
 
-  await api(server, `/api/comments/${id}/replies`, {
+  let raw: any;
+  try {
+    raw = await fetchCommentByNumber(server, token, project, n);
+  } catch (err) {
+    if (err instanceof CommentNotFoundError) {
+      console.error(err.message);
+      process.exit(4);
+    }
+    throw err;
+  }
+
+  await api(server, `/api/comments/${raw.id}/replies`, {
     method: 'POST',
     body: { body },
     token,
   });
 
-  console.log(`Added reply to comment #${id}.`);
+  console.log(`Added reply to comment #${n}.`);
   process.exit(0);
 }

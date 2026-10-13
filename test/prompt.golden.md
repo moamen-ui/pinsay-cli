@@ -49,7 +49,7 @@ element-scoped, and reviewable.
 
 ## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (`aiRules`) are attached to each item in this prompt and to the comment detail (`npx pinsay-cli get <id> --json`).
+Active AI rules (`aiRules`) are attached to each item in this prompt and to the comment detail (`npx pinsay-cli get <number> --json`).
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |
@@ -98,7 +98,7 @@ Picked actions (trusted):
 - Make primary: Swap the outline button classes for the filled/primary variant.
 
 ## When you finish an item
-Run exactly: `npx pinsay-cli apply --mark <id> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`
+Run exactly: `npx pinsay-cli apply --mark <number> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`
 (Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`
 once at the end). Never run git push. `--models` is MANDATORY and MUST list EVERY model that touched the item and its role:
 the planner/reviewer (your own model id) and each worker model you delegated to (`implementer`). NEVER guess or hardcode

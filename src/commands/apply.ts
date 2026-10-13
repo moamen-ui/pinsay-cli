@@ -2,6 +2,7 @@ import { findRepoRoot, readConfig, resolveProject, listProjects } from '../confi
 import { api } from '../api.js';
 import { compareSemver, tooOldMessage } from '../checks.js';
 import { checkAndNotifyUpdates } from '../lib/notify-update.js';
+import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { runApply } from '../apply/run.js';
@@ -119,11 +120,13 @@ export async function applyCommand(
   const projectFlag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
   const resolved = resolveProject(config, cwd, root, projectFlag);
 
-  // `--mark <id>`/`--fail <id>` act on a comment id, unique server-wide — no project needed.
-  // `--mark all` and the default/`--plan`/`--json` queue views DO need one, unless there are
-  // several projects and none was picked out, in which case they cover every configured project.
+  // `--mark <n>`/`--fail <n>` act on a comment's per-project number, so — like `--mark all` —
+  // they need exactly one project to resolve it in. The default/`--plan`/`--json` queue views DO
+  // need one too, unless there are several projects and none was picked out, in which case they
+  // cover every configured project.
   const markVal = parsed['mark'];
-  const needsOneProject = markVal === undefined || String(markVal).toLowerCase() === 'all';
+  const failVal = parsed['fail'];
+  const needsOneProject = true;
 
   if (needsOneProject && !resolved.ok) {
     if (resolved.reason === 'not-found') {
@@ -134,9 +137,9 @@ export async function applyCommand(
       console.error('No project configured. Run `npx pinsay-cli init` or pass --project.');
       process.exit(2);
     }
-    // ambiguous: `--mark all` cannot guess which project's queue to commit, but the default/
-    // --plan/--json views can safely mean "every project".
-    if (markVal !== undefined) {
+    // ambiguous: `--mark all` and a comment number cannot guess which project to act in, but the
+    // default/`--plan`/`--json` views can safely mean "every project".
+    if (markVal !== undefined || failVal !== undefined) {
       console.error(`Several projects configured — pass --project <key> (one of: ${resolved.keys.join(', ')})`);
       process.exit(2);
     }
@@ -174,7 +177,7 @@ export async function applyCommand(
     workspaceName,
   };
 
-  // 1. Handling --mark <id>|all
+  // 1. Handling --mark <number>|all
   if (parsed['mark'] !== undefined) {
     const markVal = parsed['mark'];
     let markId: number | 'all';
@@ -184,12 +187,12 @@ export async function applyCommand(
     } else if (String(markVal).toLowerCase() === 'all') {
       markId = 'all';
     } else {
-      const parsedNum = parseInt(String(markVal), 10);
-      if (isNaN(parsedNum)) {
-        console.error(`Invalid --mark argument: ${markVal}. Expected an integer or "all".`);
+      const n = parseCommentNumber(markVal);
+      if (n === null) {
+        console.error(invalidNumberMessage(markVal));
         process.exit(2);
       }
-      markId = parsedNum;
+      markId = n;
     }
 
     const reply = typeof parsed['reply'] === 'string' ? parsed['reply'] : '';
@@ -221,11 +224,28 @@ export async function applyCommand(
     }
     const models = markModels;
 
+    let markNumber: number | undefined;
+    if (markId !== 'all') {
+      let comment: any;
+      try {
+        comment = await fetchCommentByNumber(server, token, project, markId);
+      } catch (err) {
+        if (err instanceof CommentNotFoundError) {
+          console.error(err.message);
+          process.exit(4);
+        }
+        throw err;
+      }
+      markId = comment.id;
+      markNumber = comment.number;
+    }
+
     const markStatus = typeof parsed['status'] === 'string' ? parsed['status'] : undefined;
     const markEnv = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
     const marked = await markApplied(
       {
         id: markId,
+        number: markNumber,
         reply,
         noCommit,
         commit: commitRef,
@@ -242,16 +262,16 @@ export async function applyCommand(
     process.exit(marked.nothingMatched ? 1 : 0);
   }
 
-  // 2. Handling --fail <id>
+  // 2. Handling --fail <number>
   if (parsed['fail'] !== undefined) {
     const failVal = parsed['fail'];
     if (failVal === true) {
       console.error('--fail requires a comment ID');
       process.exit(2);
     }
-    const failId = parseInt(String(failVal), 10);
-    if (isNaN(failId)) {
-      console.error(`Invalid --fail argument: ${failVal}. Expected integer ID.`);
+    const failN = parseCommentNumber(failVal);
+    if (failN === null) {
+      console.error(invalidNumberMessage(failVal));
       process.exit(2);
     }
 
@@ -271,7 +291,18 @@ export async function applyCommand(
     }
     const failModels = parseModelFlags(parsed);
 
-    await markFailed(failId, reason, clientCtx, failTool, failModels);
+    let comment: any;
+    try {
+      comment = await fetchCommentByNumber(server, token, project, failN);
+    } catch (err) {
+      if (err instanceof CommentNotFoundError) {
+        console.error(err.message);
+        process.exit(4);
+      }
+      throw err;
+    }
+
+    await markFailed(comment.id, reason, clientCtx, failTool, failModels, comment.number);
     process.exit(0);
   }
 

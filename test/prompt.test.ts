@@ -111,7 +111,8 @@ import { dirname } from 'node:path';
 
 test('buildApplyPrompt matches golden file', () => {
   const item = {
-    id: 12,
+    id: 7,
+    number: 12,
     status: 'Staging',
     environment: 'Staging',
     page: { path: '/checkout' },
