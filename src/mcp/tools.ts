@@ -29,7 +29,8 @@ export type McpError = {
   // DB-18: 'paused' — a 423 (workspace paused / scheduled for deletion) mapped by server.ts's
   // ApiError handling; thrown as a plain ApiError from api(), never constructed via mcpError()
   // directly, but listed here so callers narrowing on `code` see it in the type.
-  code: 'auth' | 'not_found' | 'forbidden' | 'server_too_old' | 'git' | 'network' | 'paused';
+  // 'invalid_input': a missing or malformed tool argument (QA-BUG-01). 'forbidden' is only an HTTP 403 from the API.
+  code: 'auth' | 'invalid_input' | 'not_found' | 'forbidden' | 'server_too_old' | 'git' | 'network' | 'paused';
   message: string;
 };
 
@@ -355,7 +356,7 @@ export async function handleGetComment(
 ): Promise<any> {
   const number = parseCommentNumber(args?.number);
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
+    throw mcpError('invalid_input', invalidNumberMessage(args?.number, (args as any)?.id));
   }
 
   let id: number;
@@ -387,7 +388,7 @@ function parseModelsArgs(args: { model?: unknown; models?: unknown } | undefined
   try {
     return resolveModelsFromArgs(args);
   } catch (err) {
-    if (err instanceof ModelsError) throw mcpError('forbidden', err.message);
+    if (err instanceof ModelsError) throw mcpError('invalid_input', err.message);
     throw err;
   }
 }
@@ -399,10 +400,10 @@ export async function handleMarkApplied(
   const number = parseCommentNumber(args?.number);
   const reply = args?.reply;
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
+    throw mcpError('invalid_input', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (typeof reply !== 'string') {
-    throw mcpError('forbidden', 'number and reply are required');
+    throw mcpError('invalid_input', 'number and reply are required');
   }
 
   let id: number;
@@ -452,7 +453,7 @@ export async function handleCommitAndMark(
   const reply = args?.reply;
   const files = args?.files;
   if (numbers === undefined || numbers === null) {
-    throw mcpError('forbidden', invalidNumberMessage(undefined, (args as any)?.ids ?? (args as any)?.id));
+    throw mcpError('invalid_input', invalidNumberMessage(undefined, (args as any)?.ids ?? (args as any)?.id));
   }
   const tool = args?.tool || ctx.configAiTool;
   const models = parseModelsArgs(args);
@@ -465,7 +466,7 @@ export async function handleCommitAndMark(
   for (const x of numbers) {
     const n = parseCommentNumber(x);
     if (n === null) {
-      throw mcpError('forbidden', invalidNumberMessage(x));
+      throw mcpError('invalid_input', invalidNumberMessage(x));
     }
     parsedNumbers.push(n);
   }
@@ -697,10 +698,10 @@ export async function handleReply(
   const number = parseCommentNumber(args?.number);
   const body = args?.body;
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
+    throw mcpError('invalid_input', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (typeof body !== 'string') {
-    throw mcpError('forbidden', 'number and body are required');
+    throw mcpError('invalid_input', 'number and body are required');
   }
 
   let id: number;
@@ -734,19 +735,19 @@ export async function handleSetStatus(
   const statusStr = String(args?.status || '').toLowerCase();
 
   if (number === null) {
-    throw mcpError('forbidden', invalidNumberMessage(args?.number, (args as any)?.id));
+    throw mcpError('invalid_input', invalidNumberMessage(args?.number, (args as any)?.id));
   }
   if (!statusStr) {
-    throw mcpError('forbidden', 'number and status are required');
+    throw mcpError('invalid_input', 'number and status are required');
   }
 
   if (statusStr === 'applied') {
-    throw mcpError('forbidden', 'Status "applied" is only settable via mark tools');
+    throw mcpError('invalid_input', 'Status "applied" is only settable via mark tools');
   }
 
   const statusNum = mapStatusToNumber(statusStr);
   if (statusNum === undefined) {
-    throw mcpError('forbidden', `Invalid status: ${args.status}`);
+    throw mcpError('invalid_input', `Invalid status: ${args.status}`);
   }
 
   let id: number;
@@ -775,7 +776,7 @@ export async function handleResolveSource(
 ): Promise<any> {
   const hash = args?.hash;
   if (!hash || typeof hash !== 'string') {
-    throw mcpError('forbidden', 'hash is required');
+    throw mcpError('invalid_input', 'hash is required');
   }
 
   const manifestPath = join(ctx.cwd, '.pinsay/manifest.json');
@@ -872,7 +873,7 @@ export async function executeTool(
     }
     if (resolved.reason === 'ambiguous') {
       throw mcpError(
-        'forbidden',
+        'invalid_input',
         `Several projects configured — pass "project" (one of: ${resolved.keys.join(', ')}). Call pinsay_list_projects to see them.`,
       );
     }

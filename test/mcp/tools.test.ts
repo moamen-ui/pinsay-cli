@@ -626,7 +626,7 @@ describe('mcp: tools handlers and helpers', () => {
     assert.deepEqual(unknown, { path: null, reason: 'unknown-hash' });
   });
 
-  test('handleSetStatus: rejects status applied with forbidden; allows open, ready, archived', async () => {
+  test('handleSetStatus: rejects status applied with invalid_input; allows open, ready, archived', async () => {
     let patchedStatus: number | null = null;
     const stub = await stubServer((req, res) => {
       if (req.url === '/api/projects/test-project/comments/by-number/10') {
@@ -661,7 +661,7 @@ describe('mcp: tools handlers and helpers', () => {
       await assert.rejects(
         async () => handleSetStatus({ number: 10, status: 'applied' }, ctx),
         (err: any) => {
-          assert.equal(err.code, 'forbidden');
+          assert.equal(err.code, 'invalid_input');
           assert.match(err.message, /only settable via mark tools/i);
           return true;
         },
@@ -733,6 +733,7 @@ describe('mcp: tools handlers and helpers', () => {
     ];
     for (const [name, call, re] of calls) {
       await assert.rejects(call, (err: any) => {
+        assert.equal(err.code, 'invalid_input', name);
         assert.match(err.message, re, name);
         assert.doesNotMatch(err.message, /undefined/, name);
         return true;
