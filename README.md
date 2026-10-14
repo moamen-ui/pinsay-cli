@@ -62,6 +62,10 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.11.2
+
+- MCP tools answer a missing or malformed argument (e.g. the legacy `id`) with error code `invalid_input` instead of `forbidden`; `forbidden` now means only an HTTP 403 from PinSay.
+
 ### 0.11.1
 
 - MCP tools: passing the old `id` argument now says it was renamed to `number` instead of a generic error.
