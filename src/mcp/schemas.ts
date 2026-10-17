@@ -91,10 +91,10 @@ export const TOOL_PINSAY_GET_COMMENT = {
   name: 'pinsay_get_comment',
   description:
     `Get one comment by number: status, environment, author, the element it points at, applied metadata ` +
-    `(appliedAt, appliedByLabel, commitUrl), untrusted {body, replies} and trusted {pickedActions}. ` +
+    `(appliedAt, appliedByLabel, commitUrl), untrusted {body, replies} and trusted {pickedActions, aiRules}. ` +
     `Numbers are per project, so a multi-project repo must resolve the project first (pass ` +
-    `\`project\`, or call pinsay_list_projects). Does not include the project's aiRules or ` +
-    `commitStyle; pinsay_get_queue returns those. ${UNTRUSTED_NOTICE}`,
+    `\`project\`, or call pinsay_list_projects). Includes the active aiRules for this comment ` +
+    `(Workspace, Project, Role of the member running the agent, Personal of its author); commitStyle comes from pinsay_get_queue. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {

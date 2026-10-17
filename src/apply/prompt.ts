@@ -62,19 +62,23 @@ function truncateSnapshot(snapshot: string, maxBytes = 2048): string {
   return `${truncated}\n... [truncated]`;
 }
 
-function sortRules(rules: AiRuleApplyDto[]): AiRuleApplyDto[] {
+export function sortRules(rules: AiRuleApplyDto[]): AiRuleApplyDto[] {
   const scopeOrder: Record<string, number> = {
     workspace: 1,
     project: 2,
-    personal: 3,
+    role: 3,
+    personal: 4,
   };
 
-  return [...rules].sort((a, b) => {
-    const pA = a.priority ?? scopeOrder[a.scope.toLowerCase()] ?? 2;
-    const pB = b.priority ?? scopeOrder[b.scope.toLowerCase()] ?? 2;
-    if (pA !== pB) return pA - pB;
-    return a.title.localeCompare(b.title);
-  });
+  return [...rules]
+    .map((r, i): [AiRuleApplyDto, number] => [r, i])
+    .sort(([a, ia], [b, ib]) => {
+      const pA = a.priority ?? scopeOrder[a.scope.toLowerCase()] ?? 2;
+      const pB = b.priority ?? scopeOrder[b.scope.toLowerCase()] ?? 2;
+      if (pA !== pB) return pA - pB;
+      return ia - ib;
+    })
+    .map(([r]) => r);
 }
 
 /**
@@ -124,7 +128,7 @@ export function buildApplyPrompt(
     lines.push('- None active');
   } else {
     for (const r of sorted) {
-      const scopeLabel = r.scope || (r.isPersonal ? 'Personal' : 'Workspace');
+      const scopeLabel = r.scope === 'Role' && r.roleName ? `Role: ${r.roleName}` : (r.scope || (r.isPersonal ? 'Personal' : 'Workspace'));
       lines.push(`- [${scopeLabel}] ${r.title}: ${r.prompt}`);
     }
   }

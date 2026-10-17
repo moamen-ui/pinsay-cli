@@ -9,6 +9,7 @@ import {
   partitionItem,
   reshapeComment,
   handleGetComment,
+  handleGetQueue,
   handleMarkApplied,
   handleCommitAndMark,
   handleReply,
@@ -32,6 +33,53 @@ async function stubServer(
 
 describe('mcp: tools handlers and helpers', () => {
   let tmpDir: string;
+
+  test('partitionItem and reshapeComment carry a Role rule with its roleName', () => {
+    const rules = [
+      { title: 'R', prompt: 'P', scope: 'Role', priority: 3, isPersonal: false, roleName: 'Backend' },
+      { title: 'W', prompt: 'Q', scope: 'Workspace', priority: 1, isPersonal: false },
+    ];
+    const expected = [
+      { scope: 'Role', priority: 3, title: 'R', prompt: 'P', roleName: 'Backend' },
+      { scope: 'Workspace', priority: 1, title: 'W', prompt: 'Q' },
+    ];
+    assert.deepEqual(partitionItem({ id: 1, number: 1, aiRules: rules }).trusted.aiRules, expected);
+    assert.deepEqual(partitionItem({ id: 1, number: 1 }).trusted.aiRules, []);
+    assert.deepEqual(reshapeComment({ id: 1, number: 1, aiRules: rules }).trusted.aiRules, expected);
+  });
+
+  test('handleGetQueue: the 403 fallback fills aiRules from the member rules', async () => {
+    const stub = await stubServer((req, res) => {
+      const send = (code: number, data: unknown) => {
+        res.writeHead(code, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: code === 200, data }));
+      };
+      if (req.url === '/api/branding') return send(200, { productName: 'PinSay' });
+      if (req.url?.startsWith('/api/admin/projects/test-project/apply-queue')) return send(403, null);
+      if (req.url?.startsWith('/api/projects/test-project/comments?view=summary')) {
+        return send(200, { items: [{ id: 5, number: 5, status: 2, environment: 1, body: 'x', createdAt: '' }] });
+      }
+      if (req.url?.startsWith('/api/ai-rules/project/test-project')) {
+        return send(200, {
+          adminRules: [{ title: 'P', prompt: 'pp', isActive: true, projectId: 3 }],
+          myRules: [],
+          roleRules: [{ title: 'R', prompt: 'pr', isActive: true, roleName: 'Backend' }],
+          roleName: 'Backend',
+        });
+      }
+      send(404, null);
+    });
+    try {
+      const res = await handleGetQueue({}, { cwd: tmpDir, server: stub.url, project: 'test-project', token: 'jwt' });
+      assert.deepEqual(res.aiRules, [
+        { scope: 'Project', priority: 2, title: 'P', prompt: 'pp' },
+        { scope: 'Role', priority: 3, title: 'R', prompt: 'pr', roleName: 'Backend' },
+      ]);
+      assert.deepEqual(res.items[0].trusted.aiRules.map((r: any) => r.scope), ['Project', 'Role']);
+    } finally {
+      await stub.close();
+    }
+  });
 
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'pinsay-mcp-test-'));
@@ -106,7 +154,7 @@ describe('mcp: tools handlers and helpers', () => {
     assert.equal(partitioned.untrusted.replies[0].body, 'Looking at it');
 
     // 2. trusted has pickedActions
-    assert.deepEqual(Object.keys(partitioned.trusted).sort(), ['pickedActions']);
+    assert.deepEqual(Object.keys(partitioned.trusted).sort(), ['aiRules', 'pickedActions']);
     assert.deepEqual(partitioned.trusted.pickedActions, [
       {
         text: 'Make primary',
@@ -237,7 +285,7 @@ describe('mcp: tools handlers and helpers', () => {
 
       // Assert untrusted and trusted partition
       assert.deepEqual(Object.keys(res.untrusted).sort(), ['body', 'replies']);
-      assert.deepEqual(Object.keys(res.trusted).sort(), ['pickedActions']);
+      assert.deepEqual(Object.keys(res.trusted).sort(), ['aiRules', 'pickedActions']);
 
       // Zero sensitive keys anywhere
       const serialized = JSON.stringify(res);

@@ -1,5 +1,6 @@
 import { api, ApiError } from '../api.js';
 import { ProjectNotFoundError } from '../errors.js';
+import { fetchMemberRules } from './member-rules.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
 
 export type QueueFilter = {
@@ -159,6 +160,7 @@ export async function fetchQueue(
         throw fallbackErr;
       }
 
+      const memberRules = await fetchMemberRules(ctx);
       const items: any[] = res?.items ?? [];
       return items.map((item: any): QueueItem => ({
         id: item.id,
@@ -181,7 +183,7 @@ export async function fetchQueue(
         },
         replies: [],
         pickedActions: [],
-        aiRules: [],
+        aiRules: memberRules,
         isBugReport: false,
         pageContextId: null,
         page: item.route ? { route: item.route } : undefined,

@@ -16,6 +16,7 @@ import { ApiError } from '../api.js';
 import { fetchQueue } from '../apply/queue.js';
 import { loadProjectContext } from '../apply/context.js';
 import { buildApplyPrompt } from '../apply/prompt.js';
+import { fetchMemberRules } from '../apply/member-rules.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import type { ApplyClientContext } from '../apply/types.js';
 
@@ -115,7 +116,10 @@ export function createMcpServer(ctx: McpContext): Server {
       stackObj = JSON.parse(readFileSync(stackPath, 'utf8'));
     } catch {}
 
-    const merged = { ...configObj, ...stackObj };
+    const merged: Record<string, any> = { ...configObj, ...stackObj };
+    if (ctx.token && ctx.project) {
+      merged.aiRules = await fetchMemberRules({ server: ctx.server, project: ctx.project, token: ctx.token });
+    }
 
     return {
       contents: [

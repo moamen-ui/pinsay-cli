@@ -6,9 +6,10 @@ export type PickedActionDto = {
 export type AiRuleApplyDto = {
   title: string;
   prompt: string;
-  scope: string; // "Workspace" | "Project" | "Personal"
-  priority: number; // 1 = Workspace, 2 = Project, 3 = Personal
+  scope: string; // "Workspace" | "Project" | "Role" | "Personal"
+  priority: number; // 1 = Workspace, 2 = Project, 3 = Role, 4 = Personal
   isPersonal: boolean;
+  roleName?: string | null; // set on Role rules
 };
 
 export type ApplyPageDto = {
@@ -150,6 +151,17 @@ export type AiPickedActionView = {
   text: string;
 };
 
+/** One active AI rule on a comment, in the API's order (Workspace → Project → Role → Personal). */
+export type AiRuleView = {
+  title: string;
+  prompt: string;
+  scope: string;
+  priority: number;
+  isPersonal: boolean;
+  /** Set on Role rules only. */
+  roleName?: string;
+};
+
 export type AiCommentView = {
   appliedAt: string | null;
   appliedByLabel: string | null;
@@ -165,6 +177,7 @@ export type AiCommentView = {
   internalId: number;
   isBugReport: boolean;
   pickedActions: AiPickedActionView[];
+  aiRules: AiRuleView[];
   replies: AiReplyView[];
   status: number | string;
 };

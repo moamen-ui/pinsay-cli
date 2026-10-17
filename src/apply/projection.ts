@@ -2,6 +2,7 @@ import type {
   AiCommentView,
   AiElementView,
   AiPickedActionView,
+  AiRuleView,
   AiReplyView,
 } from './types.js';
 
@@ -69,6 +70,17 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
       }))
     : [];
 
+  const aiRules: AiRuleView[] = Array.isArray(raw?.aiRules)
+    ? raw.aiRules.map((r: any): AiRuleView => ({
+        title: String(r?.title ?? ''),
+        prompt: String(r?.prompt ?? ''),
+        scope: String(r?.scope ?? ''),
+        priority: Number(r?.priority ?? 0),
+        isPersonal: Boolean(r?.isPersonal),
+        ...(r?.roleName ? { roleName: String(r.roleName) } : {}),
+      }))
+    : [];
+
   const bodyValue =
     typeof raw?.body === 'object' && raw?.body !== null
       ? String(raw.body.value ?? '')
@@ -90,6 +102,7 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
     internalId: raw?.id,
     isBugReport: Boolean(raw?.isBugReport),
     pickedActions,
+    aiRules,
     replies,
     status: raw?.status,
   };

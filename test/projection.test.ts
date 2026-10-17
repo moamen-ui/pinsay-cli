@@ -59,6 +59,7 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
         internalAdminId: 123,
       },
     ],
+    aiRules: [{ title: 'R', prompt: 'P', scope: 'Role', priority: 3, isPersonal: false, roleName: 'Backend', extra: 'x' }],
     pageContext: {
       secretTokens: ['bearer-12345'],
       dbDumps: { leaked: true },
@@ -81,6 +82,7 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
     'isBugReport',
     'number',
     'pickedActions',
+    'aiRules',
     'replies',
     'status',
   ].sort();
@@ -107,6 +109,7 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
   assert.deepEqual(Object.keys(projected.element).sort(), expectedElementKeys);
   assert.deepEqual(Object.keys(projected.replies[0]).sort(), expectedReplyKeys);
   assert.deepEqual(Object.keys(projected.pickedActions[0]).sort(), expectedPickedActionKeys);
+  assert.deepEqual(Object.keys(projected.aiRules[0]).sort(), ['isPersonal', 'priority', 'prompt', 'roleName', 'scope', 'title']);
 
   // Body untrusted structure
   assert.equal(projected.body.value, 'Change header color to indigo');
@@ -122,4 +125,8 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
   assert.ok(!jsonStr.includes('ownerId'), 'ownerId must be absent');
   assert.ok(!jsonStr.includes('editedBy'), 'editedBy must be absent');
   assert.ok(!jsonStr.includes('secretTokens'), 'pageContext secrets must be absent');
+});
+
+test('toAiCommentView: a raw comment without aiRules projects aiRules: []', () => {
+  assert.deepEqual(toAiCommentView({ id: 1, body: 'x' }).aiRules, []);
 });

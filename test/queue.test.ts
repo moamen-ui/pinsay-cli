@@ -199,3 +199,57 @@ test('fetchQueue: a 403 then a 404 on the summary fallback is ProjectNotFoundErr
     await stub.close();
   }
 });
+
+async function memberRulesFallback(rulesHandler: (res: any) => void) {
+  resetFallbackWarning();
+  const stub = await stubServer((req, res) => {
+    if (req.url?.startsWith('/api/admin/projects/dev-project/apply-queue')) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false, message: 'Forbidden' }));
+      return;
+    }
+    if (req.url?.startsWith('/api/projects/dev-project/comments?view=summary')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { items: [{ id: 7, status: 2, environment: 1, body: 'x', createdAt: '' }] } }));
+      return;
+    }
+    if (req.url?.startsWith('/api/ai-rules/project/dev-project')) return rulesHandler(res);
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+  const origError = console.error;
+  console.error = () => {};
+  try {
+    return await fetchQueue({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+  } finally {
+    console.error = origError;
+    await stub.close();
+  }
+}
+
+test('fetchQueue 403 fallback carries the member rules (admin + role)', async () => {
+  const items = await memberRulesFallback((res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        isSuccess: true,
+        data: {
+          adminRules: [{ title: 'W', prompt: 'pw', isActive: true, projectId: null }],
+          myRules: [],
+          roleRules: [{ title: 'R', prompt: 'pr', isActive: true, roleId: 1, roleName: 'Backend' }],
+          roleName: 'Backend',
+        },
+      }),
+    );
+  });
+  assert.deepEqual(items[0].aiRules.map((r) => r.scope), ['Workspace', 'Role']);
+  assert.equal(items[0].aiRules[1].roleName, 'Backend');
+});
+
+test('fetchQueue 403 fallback: a failing rules endpoint gives aiRules: []', async () => {
+  const items = await memberRulesFallback((res) => {
+    res.writeHead(500, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+  assert.deepEqual(items[0].aiRules, []);
+});

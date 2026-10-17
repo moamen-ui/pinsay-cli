@@ -103,7 +103,7 @@ test('multiSelect: defaults arrive pre-ticked', async () => {
   assert.deepStrictEqual(await pending, ['cursor']);
 });
 
-import { buildApplyPrompt } from '../src/apply/prompt.js';
+import { buildApplyPrompt, sortRules } from '../src/apply/prompt.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -157,4 +157,29 @@ test('buildApplyPrompt matches golden file', () => {
   // git may check the golden file out with CRLF line endings on Windows — normalise before comparing.
   const expected = readFileSync(goldenPath, 'utf8').replace(/\r\n/g, '\n');
   assert.strictEqual(actual.trim(), expected.trim());
+});
+
+test('rules render Workspace, Project, Role (named), Personal; ties keep input order', () => {
+  const rule = (title: string, scope: string, priority: number | undefined, extra: object = {}) =>
+    ({ title, prompt: `do ${title}`, scope, priority, isPersonal: scope === 'Personal', ...extra }) as any;
+  const context = { productName: 'PinSay', projectName: 'x', projectKey: 'x', commitStyle: 'Single', stack: {} };
+  const out = buildApplyPrompt(
+    [],
+    {
+      ...context,
+      aiRules: [
+        rule('p4', 'Personal', 4),
+        rule('r3', 'Role', 3, { roleName: 'Backend' }),
+        rule('p2', 'Project', 2),
+        rule('w1b', 'Workspace', 1),
+        rule('w1a', 'Workspace', 1),
+      ],
+    } as any,
+  );
+  const order = ['[Workspace] w1b', '[Workspace] w1a', '[Project] p2', '[Role: Backend] r3', '[Personal] p4'].map((s) => out.indexOf(s));
+  assert.ok(order.every((i) => i >= 0), 'every rule renders');
+  assert.deepEqual([...order].sort((a, b) => a - b), order);
+
+  const sorted = sortRules([rule('p', 'Personal', 4), { title: 'r', prompt: '', scope: 'Role', isPersonal: false } as any, rule('w', 'Workspace', 1)]);
+  assert.deepEqual(sorted.map((r) => r.title), ['w', 'r', 'p']);
 });

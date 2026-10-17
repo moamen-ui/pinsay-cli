@@ -8,6 +8,8 @@ import { exitCodeFor } from '../commands/doctor.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
+import { sortRules } from '../apply/prompt.js';
+import { fetchMemberRules } from '../apply/member-rules.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
@@ -96,6 +98,18 @@ function pickElement(raw: any): Record<string, unknown> {
   };
 }
 
+function mapRulesForMcp(rules: any): any[] {
+  return Array.isArray(rules)
+    ? rules.map((r: any) => ({
+        scope: r.scope,
+        priority: r.priority,
+        title: r.title,
+        prompt: r.prompt,
+        ...(r.roleName ? { roleName: r.roleName } : {}),
+      }))
+    : [];
+}
+
 export function partitionItem(item: any): any {
   const elementRaw = item?.element || {};
   const snapshot = elementRaw?.snapshot;
@@ -150,6 +164,7 @@ export function partitionItem(item: any): any {
     },
     trusted: {
       pickedActions,
+      aiRules: mapRulesForMcp(item?.aiRules),
     },
   };
 }
@@ -197,6 +212,7 @@ export function reshapeComment(raw: any, page?: any): any {
     },
     trusted: {
       pickedActions: view.pickedActions,
+      aiRules: mapRulesForMcp(view.aiRules),
     },
   };
 }
@@ -266,12 +282,6 @@ export async function handleGetQueue(
   const projectCtx = await loadProjectContext(clientCtx);
   const commitStyle =
     (projectCtx.commitStyle || 'Single').toLowerCase() === 'separate' ? 'separate' : 'single';
-  const aiRules = (projectCtx.aiRules || []).map((r: any) => ({
-    scope: r.scope,
-    priority: r.priority,
-    title: r.title,
-    prompt: r.prompt,
-  }));
 
   const envNum = mapEnvironmentToNumber(args?.environment);
   const statusNum = 2; // ready to apply
@@ -314,6 +324,7 @@ export async function handleGetQueue(
         `/api/projects/${encodeURIComponent(ctx.project)}/comments?${summaryQuery}`,
         { token: ctx.token },
       );
+      const memberRules = await fetchMemberRules({ server: ctx.server, project: ctx.project, token: ctx.token });
       rawItems = (res?.items ?? []).map((item: any) => ({
         id: item.id,
         number: item.number,
@@ -329,7 +340,7 @@ export async function handleGetQueue(
         },
         replies: [],
         pickedActions: [],
-        aiRules: [],
+        aiRules: memberRules,
         isBugReport: false,
         page: item.route ? { route: item.route } : undefined,
       }));
@@ -339,6 +350,12 @@ export async function handleGetQueue(
   }
 
   const items = rawItems.map(partitionItem);
+  const ruleMap = new Map<string, any>();
+  for (const r of [...(projectCtx.aiRules || []), ...rawItems.flatMap((i: any) => i.aiRules ?? [])]) {
+    const key = `${r.scope}:${r.title}`;
+    if (!ruleMap.has(key)) ruleMap.set(key, r);
+  }
+  const aiRules = mapRulesForMcp(sortRules(Array.from(ruleMap.values())));
   const result: any = {
     commitStyle,
     aiRules,
