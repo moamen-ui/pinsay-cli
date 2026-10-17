@@ -5,6 +5,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, type Server } from 'node:http';
 import { fetchQueue, resetFallbackWarning } from '../src/apply/queue.js';
+import { buildApplyPrompt } from '../src/apply/prompt.js';
 import { ProjectNotFoundError } from '../src/errors.js';
 import type { ApplyClientContext } from '../src/apply/types.js';
 
@@ -252,4 +253,43 @@ test('fetchQueue 403 fallback: a failing rules endpoint gives aiRules: []', asyn
     res.end(JSON.stringify({ isSuccess: false }));
   });
   assert.deepEqual(items[0].aiRules, []);
+});
+
+test('fetchQueue admin path keeps roleName on a Role rule', async () => {
+  const stub = await stubServer((req, res) => {
+    if (req.url?.startsWith('/api/admin/projects/dev-project/apply-queue')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          isSuccess: true,
+          data: {
+            items: [
+              {
+                id: 1,
+                number: 1,
+                status: 2,
+                environment: 1,
+                body: 'x',
+                aiRules: [{ title: 'API only', prompt: 'p', scope: 'Role', priority: 3, isPersonal: false, roleName: 'Backend' }],
+              },
+            ],
+          },
+        }),
+      );
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+  try {
+    const items = await fetchQueue({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    assert.equal(items[0].aiRules[0].roleName, 'Backend');
+    const out = buildApplyPrompt(
+      items,
+      { productName: 'PinSay', projectName: 'x', projectKey: 'dev-project', commitStyle: 'Single', stack: {} } as any,
+    );
+    assert.ok(out.includes('[Role: Backend]'));
+  } finally {
+    await stub.close();
+  }
 });

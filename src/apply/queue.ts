@@ -115,6 +115,7 @@ export async function fetchQueue(
               scope: String(r.scope ?? 'Workspace'),
               priority: typeof r.priority === 'number' ? r.priority : 1,
               isPersonal: Boolean(r.isPersonal),
+              ...(r.roleName ? { roleName: String(r.roleName) } : {}),
             }))
           : [],
         isBugReport: Boolean(item.isBugReport),
