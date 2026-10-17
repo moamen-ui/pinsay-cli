@@ -62,6 +62,12 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.12.0
+
+- Role AI rules: rules an admin ties to a workspace role now apply everywhere rules do — the apply prompt, `get --json` and the MCP tools. The prompt's precedence table gains the Role tier (Workspace → Project → Role → Personal), and role rules are labelled `[Role: <role name>]`.
+- `get --json` and the MCP comment/queue outputs carry the effective rules (`aiRules`, with `roleName` on role rules; MCP exposes them under `trusted.aiRules`).
+- Member (non-admin) keys: when the admin apply-queue is refused, the CLI fetches the workspace's, project's and the caller's role rules from the read-only ai-rules endpoint.
+
 ### 0.11.2
 
 - MCP tools answer a missing or malformed argument (e.g. the legacy `id`) with error code `invalid_input` instead of `forbidden`; `forbidden` now means only an HTTP 403 from PinSay.
