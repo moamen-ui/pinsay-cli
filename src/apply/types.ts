@@ -236,6 +236,8 @@ export type ApplyProjectContext = {
 
 export type ApplyPromptOptions = {
   plan?: boolean;
+  /** Saved media per comment number (runApply saves them first; keeps buildApplyPrompt pure). */
+  savedMedia?: Map<number, SavedCommentMedia>;
   /**
    * Resolves a stamped source hash to the file that produced it.
    *

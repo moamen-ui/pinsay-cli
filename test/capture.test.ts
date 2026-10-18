@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CAPTURE_PROMPT_MAX_CHARS, formatCaptureSection } from '../src/apply/capture.js';
+import { CAPTURE_PROMPT_MAX_CHARS, formatCaptureSection, formatRecordingSection } from '../src/apply/capture.js';
 import { buildApplyPrompt } from '../src/apply/prompt.js';
 import type { PageContextDto } from '../src/apply/types.js';
 
@@ -460,4 +460,20 @@ test('T71: a bug item without pageContext says nothing was captured', () => {
   };
   const prompt = buildApplyPrompt([item as any], context as any);
   assert.ok(prompt.includes('Page context: nothing was captured for this bug report.'));
+});
+
+test('formatRecordingSection: reload, masked click, failure before the first step', () => {
+  const pc: PageContextDto = {
+    mode: 'recording',
+    stepEntries: [
+      { kind: 'click', masked: true, occurredAt: '2026-10-18T10:00:05Z' },
+      { kind: 'reload', occurredAt: '2026-10-18T10:00:10Z' },
+    ],
+    networkCalls: [{ method: 'GET', url: '/api/me', statusCode: 401, durationMs: 12, occurredAt: '2026-10-18T10:00:01Z' }],
+  };
+  const out = formatRecordingSection(pc, new Map());
+  assert.match(out, /^Recorded bug: 2 steps\.$/m);
+  assert.match(out, /Before the first step:\n {2}GET \/api\/me → 401 \(12 ms\)/);
+  assert.match(out, /1\. Clicked a masked element/);
+  assert.match(out, /2\. Reloaded the page/);
 });

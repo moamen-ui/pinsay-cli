@@ -8,9 +8,10 @@ import { shareAllowed } from '../consent.js';
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import { buildApplyPrompt } from './prompt.js';
+import { pruneMedia, saveIfRooted } from './media.js';
 import { readConfig, isMultiProject } from '../config.js';
 import { stackFileRelPath, mergeStack, formatStackJson } from '../stack/stackfile.js';
-import type { ApplyClientContext, ApplyProjectContext, ApplyRunResult, QueueItem } from './types.js';
+import type { ApplyClientContext, ApplyProjectContext, ApplyRunResult, QueueItem, SavedCommentMedia } from './types.js';
 
 export type ApplyRunOptions = {
   plan?: boolean;
@@ -128,6 +129,14 @@ export async function runApply(
 
   const items = await fetchQueue(ctx, filter);
 
+  // PLAN § S2: the agent opens the comment's files by path.
+  await pruneMedia(ctx.cwd);
+  const savedMedia = new Map<number, SavedCommentMedia>();
+  for (const item of items) {
+    const saved = await saveIfRooted(item, { root: ctx.cwd, projectKey: ctx.project, server: ctx.server, token: ctx.token });
+    if (saved) savedMedia.set(item.number, saved);
+  }
+
   // Rebuild the manifest before resolving only when the queue contains stamped hashes that are
   // completely unknown (not found in either the current manifest or manifest.prev.json).
   //
@@ -145,6 +154,7 @@ export async function runApply(
 
   const prompt = buildApplyPrompt(items, context, {
     plan: options.plan,
+    savedMedia,
     resolveSource: (hash) => resolveSource(ctx.cwd, hash),
   });
 

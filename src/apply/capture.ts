@@ -1,4 +1,4 @@
-import type { CapturedBody, NetworkCall, PageContextDto } from './types.js';
+import type { CapturedBody, NetworkCall, PageContextDto, UserStep } from './types.js';
 
 export const CAPTURE_PROMPT_MAX_CHARS = 12000;
 
@@ -270,5 +270,86 @@ export function formatCaptureSection(pc: PageContextDto): string {
   }
   if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
 
+  return `${text.slice(0, CAPTURE_PROMPT_MAX_CHARS)}\n… [capture cut to ${CAPTURE_PROMPT_MAX_CHARS} characters]`;
+}
+
+function stepDescription(s: UserStep): string {
+  const selector = s.selector ?? '';
+  switch (s.kind) {
+    case 'click':
+      if (s.masked) return 'Clicked a masked element';
+      return s.label ? `Clicked "${s.label}"` : `Clicked ${selector}`;
+    case 'input':
+      if (s.masked) return 'Typed in a masked field';
+      return `Typed ${s.valueLength ?? 0} characters in ${selector}`;
+    case 'change':
+      if (s.masked) return 'Changed a masked field';
+      return `Changed ${selector}${s.label ? ` to "${s.label}"` : ''}`;
+    case 'route':
+      return `Went to ${s.path ?? ''}${s.title ? ` "${s.title}"` : ''}`;
+    case 'reload':
+      return 'Reloaded the page';
+    default:
+      return `${s.kind} ${selector}`.trim();
+  }
+}
+
+/** A recorded bug (`mode === 'recording'`): the steps to reproduce, each with what failed after it. */
+export function formatRecordingSection(pc: PageContextDto, stepScreens: Map<number, string>): string {
+  const steps = sortOldest(pc.stepEntries ?? [], (s) => s.occurredAt);
+  const failures: Array<{ at: string | undefined; line: string }> = [];
+  for (const c of pc.networkCalls ?? []) {
+    if (!failing(c)) continue;
+    const repeat = c.repeatCount && c.repeatCount > 1 ? ` ×${c.repeatCount}` : '';
+    failures.push({
+      at: callTime(c),
+      line: `${c.method} ${c.url} → ${statusText(c)} (${c.durationMs ?? 0} ms)${repeat}`,
+    });
+  }
+  for (const e of pc.consoleEntries ?? []) {
+    if (e.level !== 'error') continue;
+    failures.push({ at: e.occurredAt, line: `console.error ${cut(e.message, CONSOLE_MESSAGE_MAX_CHARS)}` });
+  }
+  const ordered = sortOldest(failures, (f) => f.at);
+
+  const before: string[] = [];
+  const after: string[][] = steps.map(() => []);
+  const stepTimes = steps.map((s) => timeMs(s.occurredAt));
+  for (const f of ordered) {
+    const t = timeMs(f.at);
+    let idx = -1;
+    if (Number.isNaN(t)) idx = steps.length - 1;
+    else stepTimes.forEach((st, i) => { if (!Number.isNaN(st) && st <= t) idx = i; });
+    if (idx < 0) before.push(f.line);
+    else after[idx].push(f.line);
+  }
+
+  const lines: string[] = [];
+  const started = timeMs(pc.recordingStartedAt);
+  const ended = timeMs(pc.recordingEndedAt);
+  lines.push(
+    Number.isNaN(started) || Number.isNaN(ended)
+      ? `Recorded bug: ${steps.length} steps.`
+      : `Recorded bug: ${steps.length} steps over ${Math.round((ended - started) / 1000)} s.`,
+  );
+  const droppedNet = pc.droppedNetworkCount ?? 0;
+  const droppedCon = pc.droppedConsoleCount ?? 0;
+  if (droppedNet > 0 || droppedCon > 0) {
+    lines.push(`Not recorded (over the plan's limits): ${droppedNet} network calls, ${droppedCon} console entries.`);
+  }
+  if (before.length > 0) {
+    lines.push('Before the first step:');
+    for (const l of before) lines.push(`  ${l}`);
+  }
+  lines.push('Steps to reproduce:');
+  steps.forEach((s, i) => {
+    lines.push(`  ${i + 1}. ${stepDescription(s)}`);
+    const shot = s.screenshotOrdinal != null ? stepScreens.get(s.screenshotOrdinal) : undefined;
+    if (shot) lines.push(`     screenshot: ${shot}`);
+    for (const l of after[i]) lines.push(`     after this step: ${l}`);
+  });
+
+  const text = lines.join('\n');
+  if (text.length <= CAPTURE_PROMPT_MAX_CHARS) return text;
   return `${text.slice(0, CAPTURE_PROMPT_MAX_CHARS)}\n… [capture cut to ${CAPTURE_PROMPT_MAX_CHARS} characters]`;
 }
