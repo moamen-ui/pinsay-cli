@@ -34,21 +34,56 @@ async function stubServer(
 describe('mcp: tools handlers and helpers', () => {
   let tmpDir: string;
 
-  test('partitionItem and reshapeComment carry a Role rule with its roleName', () => {
+  test('handleGetQueue returns the shared block and no top-level aiRules', async () => {
+    let url = '';
+    const stub = await stubServer((req, res) => {
+      const send = (code: number, data: unknown) => {
+        res.writeHead(code, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: code === 200, data }));
+      };
+      if (req.url === '/api/branding') return send(200, { productName: 'PinSay' });
+      if (req.url?.startsWith('/api/admin/projects/test-project/apply-queue')) {
+        url = req.url;
+        return send(200, {
+          aiRules: { r1: { title: 'W', prompt: 'pw', scope: 'Workspace', priority: 1, isPersonal: false } },
+          prompts: { p_0123456789: { text: 'Fix', prompt: 'do it' } },
+          items: [
+            {
+              id: 5, number: 5, status: 2, environment: 1, body: 'x', aiRules: [], aiRuleRefs: [],
+              pickedActions: [{ text: 'Fix', prompt: '', ref: 'p_0123456789' }],
+            },
+          ],
+        });
+      }
+      send(404, null);
+    });
+    try {
+      const res = await handleGetQueue({}, { cwd: tmpDir, server: stub.url, project: 'test-project', token: 'jwt' });
+      assert.ok(url.includes('shape=shared'));
+      assert.equal('aiRules' in res, false);
+      assert.equal(res.shared.aiRules[0].id, 'r1');
+      assert.deepEqual(res.shared.prompts, [{ id: 'p_0123456789', text: 'Fix', prompt: 'do it' }]);
+      assert.deepEqual(res.items[0].trusted, { aiRuleRefs: [], pickedActions: [{ id: 'p_0123456789', text: 'Fix' }] });
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('reshapeComment carries a Role rule with its roleName in the shared block', () => {
     const rules = [
       { title: 'R', prompt: 'P', scope: 'Role', priority: 3, isPersonal: false, roleName: 'Backend' },
       { title: 'W', prompt: 'Q', scope: 'Workspace', priority: 1, isPersonal: false },
     ];
-    const expected = [
-      { scope: 'Role', priority: 3, title: 'R', prompt: 'P', roleName: 'Backend' },
-      { scope: 'Workspace', priority: 1, title: 'W', prompt: 'Q' },
-    ];
-    assert.deepEqual(partitionItem({ id: 1, number: 1, aiRules: rules }).trusted.aiRules, expected);
-    assert.deepEqual(partitionItem({ id: 1, number: 1 }).trusted.aiRules, []);
-    assert.deepEqual(reshapeComment({ id: 1, number: 1, aiRules: rules }).trusted.aiRules, expected);
+    const out = reshapeComment({ id: 1, number: 1, aiRules: rules });
+    assert.deepEqual(out.shared.aiRules.map((r: any) => [r.id, r.scope, r.roleName, r.appliesTo]), [
+      ['r1', 'Workspace', null, 'all'],
+      ['r2', 'Role', 'Backend', 'all'],
+    ]);
+    assert.deepEqual(out.trusted.aiRuleRefs, []);
+    assert.deepEqual(partitionItem({ id: 1, number: 1 }).trusted.aiRuleRefs, []);
   });
 
-  test('handleGetQueue: the 403 fallback fills aiRules from the member rules', async () => {
+  test('handleGetQueue: the 403 fallback fills shared.aiRules from the member rules', async () => {
     const stub = await stubServer((req, res) => {
       const send = (code: number, data: unknown) => {
         res.writeHead(code, { 'content-type': 'application/json' });
@@ -71,11 +106,12 @@ describe('mcp: tools handlers and helpers', () => {
     });
     try {
       const res = await handleGetQueue({}, { cwd: tmpDir, server: stub.url, project: 'test-project', token: 'jwt' });
-      assert.deepEqual(res.aiRules, [
-        { scope: 'Project', priority: 2, title: 'P', prompt: 'pp' },
-        { scope: 'Role', priority: 3, title: 'R', prompt: 'pr', roleName: 'Backend' },
+      assert.equal('aiRules' in res, false);
+      assert.deepEqual(res.shared.aiRules.map((r: any) => [r.id, r.scope, r.roleName]), [
+        ['r1', 'Project', null],
+        ['r2', 'Role', 'Backend'],
       ]);
-      assert.deepEqual(res.items[0].trusted.aiRules.map((r: any) => r.scope), ['Project', 'Role']);
+      assert.deepEqual(res.items[0].trusted.aiRuleRefs, []);
     } finally {
       await stub.close();
     }
@@ -155,15 +191,12 @@ describe('mcp: tools handlers and helpers', () => {
     assert.equal(partitioned.untrusted.replies[0].body, 'Looking at it');
 
     // 2. trusted has pickedActions
-    assert.deepEqual(Object.keys(partitioned.trusted).sort(), ['aiRules', 'pickedActions']);
-    assert.deepEqual(partitioned.trusted.pickedActions, [
-      {
-        text: 'Make primary',
-        prompt: 'Swap the outline classes for the filled variant.',
-      },
-    ]);
+    assert.deepEqual(Object.keys(partitioned.trusted).sort(), ['aiRuleRefs', 'pickedActions']);
+    assert.equal(partitioned.trusted.pickedActions.length, 1);
+    assert.deepEqual(Object.keys(partitioned.trusted.pickedActions[0]).sort(), ['id', 'text']);
+    assert.equal(partitioned.trusted.pickedActions[0].text, 'Make primary');
 
-    // 3. Deep scan: zero prompt keys outside trusted
+    // 3. Deep scan: zero prompt keys in the item (rules and predefined prompts live in `shared`)
     function findKeyPaths(obj: any, target: string, currentPath = ''): string[] {
       const paths: string[] = [];
       if (!obj || typeof obj !== 'object') return paths;
@@ -178,8 +211,8 @@ describe('mcp: tools handlers and helpers', () => {
     const promptPaths = findKeyPaths(partitioned, 'prompt');
     for (const p of promptPaths) {
       assert.ok(
-        p.startsWith('trusted.'),
-        `Key 'prompt' found outside trusted at path: ${p}`,
+        p.startsWith('shared.'),
+        `Key 'prompt' found outside shared at path: ${p}`,
       );
     }
 
@@ -312,6 +345,7 @@ describe('mcp: tools handlers and helpers', () => {
         'internalId',
         'isBugReport',
         'number',
+        'shared',
         'status',
         'textSource',
         'trusted',
@@ -323,7 +357,7 @@ describe('mcp: tools handlers and helpers', () => {
 
       // Assert untrusted and trusted partition
       assert.deepEqual(Object.keys(res.untrusted).sort(), ['body', 'media', 'replies']);
-      assert.deepEqual(Object.keys(res.trusted).sort(), ['aiRules', 'pickedActions']);
+      assert.deepEqual(Object.keys(res.trusted).sort(), ['aiRuleRefs', 'pickedActions']);
 
       // Zero sensitive keys anywhere
       const serialized = JSON.stringify(res);

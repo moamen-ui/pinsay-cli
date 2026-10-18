@@ -62,6 +62,11 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### Unreleased
+
+- `apply --json` and MCP output: shared block. AI rules and predefined prompts come once per response in `shared` (`aiRules` with `id` and `appliesTo`, `prompts` by `id`); each item names its author's Personal rules (`aiRuleRefs`) and its picked prompts (`pickedActions[].id`). `apply --json` prints `{ shared, items }` (was a bare array; with several projects, each entry gains `shared`). The apply prompt lists rules and prompts once with ids. Works with older servers too.
+- Rich comments: `get`, `apply` and the MCP tools save a comment's screenshot, annotation, recording step screenshots and voice messages (and its replies' files) under `.pinsay/media/<project>/<number>/` and name each file's path; voice messages come with their text. Folders older than 7 days are pruned; `apply --mark` deletes the marked comment's folder.
+
 ### 0.12.0
 
 - Role AI rules: rules an admin ties to a workspace role now apply everywhere rules do — the apply prompt, `get --json` and the MCP tools. The prompt's precedence table gains the Role tier (Workspace → Project → Role → Personal), and role rules are labelled `[Role: <role name>]`.

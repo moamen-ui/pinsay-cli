@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { api } from '../api.js';
 import { postEvent } from '../events.js';
 import { shareAllowed } from '../consent.js';
-import { fetchQueue, type QueueFilter } from './queue.js';
+import { fetchQueueShared, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
 import { buildApplyPrompt } from './prompt.js';
 import { pruneMedia, saveIfRooted } from './media.js';
@@ -127,7 +127,7 @@ export async function runApply(
   if (options.status !== undefined) filter.status = options.status;
   if (options.environment !== undefined) filter.environment = options.environment;
 
-  const items = await fetchQueue(ctx, filter);
+  const { shared, items } = await fetchQueueShared(ctx, filter);
 
   // PLAN § S2: the agent opens the comment's files by path.
   await pruneMedia(ctx.cwd);
@@ -155,6 +155,7 @@ export async function runApply(
   const prompt = buildApplyPrompt(items, context, {
     plan: options.plan,
     savedMedia,
+    shared,
     resolveSource: (hash) => resolveSource(ctx.cwd, hash),
   });
 
@@ -199,5 +200,5 @@ export async function runApply(
     }
   }
 
-  return { prompt, items, context };
+  return { prompt, shared, items, context };
 }

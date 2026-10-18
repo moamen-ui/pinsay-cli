@@ -7,8 +7,8 @@ import { resolveToken, readApiKey } from '../auth.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { runApply } from '../apply/run.js';
 import { markApplied, markFailed } from '../apply/mark.js';
-import { fetchQueue } from '../apply/queue.js';
-import { toAiCommentView } from '../apply/projection.js';
+import { fetchQueueShared } from '../apply/queue.js';
+import { toSharedItemView } from '../apply/projection.js';
 import { pruneMedia, saveIfRooted } from '../apply/media.js';
 import { resolveModels, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext } from '../apply/types.js';
@@ -309,7 +309,7 @@ export async function applyCommand(
 
   // 3. Handling query with --json
   if (parsed['json'] === true && !parsed['plan'] && !parsed['tool']) {
-    const items = await fetchQueue(clientCtx, {
+    const { shared, items } = await fetchQueueShared(clientCtx, {
       status: typeof parsed['status'] === 'string' ? parsed['status'] : undefined,
       environment: typeof parsed['env'] === 'string' ? parsed['env'] : undefined,
     });
@@ -317,9 +317,9 @@ export async function applyCommand(
     const projections = [];
     for (const item of items) {
       const saved = await saveIfRooted(item, { root, projectKey: project, server, token });
-      projections.push(toAiCommentView(item, undefined, saved));
+      projections.push(toSharedItemView(item, saved));
     }
-    console.log(JSON.stringify(projections, null, 2));
+    console.log(JSON.stringify({ shared, items: projections }, null, 2));
     process.exit(0);
   }
 
@@ -388,16 +388,16 @@ async function applyAllProjects(
 
   if (parsed['json'] === true && !plan) {
     await pruneMedia(root);
-    const all: Array<{ project: string; path: string; items: unknown[] }> = [];
+    const all: Array<{ project: string; path: string; shared: unknown; items: unknown[] }> = [];
     for (const p of projects) {
       const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root, workspaceName };
-      const items = await fetchQueue(clientCtx, { status, environment });
+      const { shared, items } = await fetchQueueShared(clientCtx, { status, environment });
       const projections = [];
       for (const item of items) {
         const saved = await saveIfRooted(item, { root, projectKey: p.key, server, token });
-        projections.push(toAiCommentView(item, undefined, saved));
+        projections.push(toSharedItemView(item, saved));
       }
-      all.push({ project: p.key, path: p.path, items: projections });
+      all.push({ project: p.key, path: p.path, shared, items: projections });
     }
     console.log(JSON.stringify(all, null, 2));
     process.exit(0);

@@ -2,6 +2,7 @@ import { api, ApiError } from '../api.js';
 import { ProjectNotFoundError } from '../errors.js';
 import { fetchMemberRules } from './member-rules.js';
 import { normalizeMedia } from './media.js';
+import { sharedFromApi, sharedFromParts, type SharedBlock } from './shared.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
 
 export type QueueFilter = {
@@ -46,6 +47,14 @@ export async function fetchQueue(
   ctx: ApplyClientContext,
   filter?: QueueFilter,
 ): Promise<QueueItem[]> {
+  return (await fetchQueueShared(ctx, filter)).items;
+}
+
+/** Same as `fetchQueue`, plus the AI rules and predefined prompts once (`shared`); items carry refs only. */
+export async function fetchQueueShared(
+  ctx: ApplyClientContext,
+  filter?: QueueFilter,
+): Promise<{ shared: SharedBlock; items: QueueItem[] }> {
   const statusNum = filter?.status !== undefined ? mapStatusToNumber(filter.status) : 2;
   const envNum = mapEnvironmentToNumber(filter?.environment);
 
@@ -54,10 +63,12 @@ export async function fetchQueue(
   if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
   const qs = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
 
+  const adminQs = `?${[...queryParts, 'shape=shared'].join('&')}`;
+
   try {
     const res = await api<any>(
       ctx.server,
-      `/api/admin/projects/${encodeURIComponent(ctx.project)}/apply-queue${qs}`,
+      `/api/admin/projects/${encodeURIComponent(ctx.project)}/apply-queue${adminQs}`,
       { token: ctx.token },
     );
 
@@ -65,7 +76,7 @@ export async function fetchQueue(
     const pages: Record<string, ApplyPageDto> = res?.pages ?? {};
     const pageContexts: Record<string, PageContextDto> = res?.pageContexts ?? {};
 
-    return items.map((item: any): QueueItem => {
+    const mapped = items.map((item: any): QueueItem => {
       const pageRef = item?.element?.pageRef;
       const page: ApplyPageDto | undefined = pageRef ? pages[pageRef] : undefined;
       const pageContextId = item?.pageContextId;
@@ -143,6 +154,10 @@ export async function fetchQueue(
           : undefined,
       };
     });
+    const parts =
+      sharedFromApi(res, mapped.length) ??
+      sharedFromParts(mapped.map((i) => ({ aiRules: i.aiRules, pickedActions: i.pickedActions })));
+    return { shared: parts.shared, items: applyRefs(mapped, parts.refs) };
   } catch (err: any) {
     if (err instanceof ApiError && err.code === 404) throw new ProjectNotFoundError(ctx.project, ctx.workspaceName);
     if (err instanceof ApiError && err.code === 403) {
@@ -168,7 +183,7 @@ export async function fetchQueue(
 
       const memberRules = await fetchMemberRules(ctx);
       const items: any[] = res?.items ?? [];
-      return items.map((item: any): QueueItem => ({
+      const mapped = items.map((item: any): QueueItem => ({
         id: item.id,
         number: item.number,
         status: item.status,
@@ -195,7 +210,18 @@ export async function fetchQueue(
         page: item.route ? { route: item.route } : undefined,
         pageContext: undefined,
       }));
+      const parts = sharedFromParts(mapped.map((i) => ({ aiRules: i.aiRules, pickedActions: i.pickedActions })));
+      return { shared: parts.shared, items: applyRefs(mapped, parts.refs) };
     }
     throw err;
   }
+}
+
+function applyRefs(items: QueueItem[], refs: Array<{ aiRuleRefs: string[]; actionIds: string[] }>): QueueItem[] {
+  return items.map((item, i) => ({
+    ...item,
+    aiRules: [],
+    aiRuleRefs: refs[i].aiRuleRefs,
+    pickedActions: item.pickedActions.map((pa, j) => ({ text: pa.text, prompt: '', id: refs[i].actionIds[j] })),
+  }));
 }

@@ -1,6 +1,7 @@
 import { SECURITY_TEXT } from './security-text.js';
 import { formatCaptureSection, formatRecordingSection } from './capture.js';
 import { stepPaths } from './media.js';
+import { promptRef, sharedFromParts, sortRules, withExtraRules } from './shared.js';
 import type {
   ApplyProjectContext,
   ApplyPromptOptions,
@@ -12,7 +13,7 @@ import type {
 
 export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (\`aiRules\`) are attached to each item in this prompt and to the comment detail (\`npx pinsay-cli get <number> --json\`).
+Active AI rules are listed once below under "Effective AI rules", each with an id (\`r1\`, \`r2\`, …). Workspace, Project and Role rules apply to every item; a Personal rule applies only to its author's comments, and those items name it under "Personal rules". The comment detail (\`npx pinsay-cli get <number> --json\`) carries the same rules.
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |
@@ -106,24 +107,7 @@ function mediaFileLines(
   return { lines, transcripts };
 }
 
-export function sortRules(rules: AiRuleApplyDto[]): AiRuleApplyDto[] {
-  const scopeOrder: Record<string, number> = {
-    workspace: 1,
-    project: 2,
-    role: 3,
-    personal: 4,
-  };
-
-  return [...rules]
-    .map((r, i): [AiRuleApplyDto, number] => [r, i])
-    .sort(([a, ia], [b, ib]) => {
-      const pA = a.priority ?? scopeOrder[a.scope.toLowerCase()] ?? 2;
-      const pB = b.priority ?? scopeOrder[b.scope.toLowerCase()] ?? 2;
-      if (pA !== pB) return pA - pB;
-      return ia - ib;
-    })
-    .map(([r]) => r);
-}
+export { sortRules };
 
 /**
  * Builds a complete, self-contained apply prompt for AI tools.
@@ -142,6 +126,14 @@ export function buildApplyPrompt(
 ): string {
   const lines: string[] = [];
 
+  const parts = opts?.shared
+    ? null
+    : sharedFromParts(
+        items.map((i) => ({ aiRules: i.aiRules ?? [], pickedActions: i.pickedActions ?? [] })),
+        context.aiRules ?? [],
+      );
+  const shared = opts?.shared ? withExtraRules(opts.shared, context.aiRules ?? []) : parts!.shared;
+
   if (opts?.plan) {
     lines.push('> PLAN ONLY: list files you would change per item; make NO edits\n');
   }
@@ -156,24 +148,27 @@ export function buildApplyPrompt(
   lines.push('');
   lines.push('## Effective AI rules (Workspace → Project → Role → Personal)');
 
-  // Collect rules from all items + context
-  const ruleMap = new Map<string, AiRuleApplyDto>();
-  for (const r of context.aiRules ?? []) {
-    ruleMap.set(`${r.scope}:${r.title}`, r);
-  }
-  for (const item of items) {
-    for (const r of item.aiRules ?? []) {
-      ruleMap.set(`${r.scope}:${r.title}`, r);
-    }
-  }
-
-  const sorted = sortRules(Array.from(ruleMap.values()));
+  const sorted = sortRules(shared.aiRules as unknown as AiRuleApplyDto[]) as unknown as typeof shared.aiRules;
   if (sorted.length === 0) {
     lines.push('- None active');
   } else {
     for (const r of sorted) {
-      const scopeLabel = r.scope === 'Role' && r.roleName ? `Role: ${r.roleName}` : (r.scope || (r.isPersonal ? 'Personal' : 'Workspace'));
-      lines.push(`- [${scopeLabel}] ${r.title}: ${r.prompt}`);
+      const label =
+        r.appliesTo === 'author'
+          ? "Personal, author's comments only"
+          : r.scope === 'Role' && r.roleName
+          ? `Role: ${r.roleName}`
+          : r.scope;
+      lines.push(`- ${r.id} [${label}] ${r.title}: ${r.prompt}`);
+    }
+  }
+
+  if (shared.prompts.length > 0) {
+    lines.push('');
+    lines.push('## Predefined prompts (trusted)');
+    lines.push('Items name the prompts their author picked by id.');
+    for (const p of shared.prompts) {
+      lines.push(`- ${p.id} "${p.text}": ${p.prompt}`);
     }
   }
 
@@ -222,7 +217,7 @@ export function buildApplyPrompt(
     lines.push('No pending items in queue.');
   }
 
-  for (const item of items) {
+  for (const [itemIndex, item] of items.entries()) {
     const env = formatEnvironment(item.environment);
     const route =
       item.page?.route ||
@@ -409,10 +404,15 @@ export function buildApplyPrompt(
       lines.push('Page context: nothing was captured for this bug report.');
     }
 
+    const aiRuleRefs = opts?.shared ? item.aiRuleRefs ?? [] : parts!.refs[itemIndex].aiRuleRefs;
+    if (aiRuleRefs.length > 0) {
+      lines.push(`Personal rules (trusted): ${aiRuleRefs.join(', ')}`);
+    }
     if (item.pickedActions && item.pickedActions.length > 0) {
       lines.push('Picked actions (trusted):');
-      for (const pa of item.pickedActions) {
-        lines.push(`- ${pa.text}: ${pa.prompt}`);
+      for (const [j, pa] of item.pickedActions.entries()) {
+        const id = opts?.shared ? pa.id ?? promptRef(pa.text, pa.prompt) : parts!.refs[itemIndex].actionIds[j];
+        lines.push(`- ${pa.text} [${id}]`);
       }
     }
 

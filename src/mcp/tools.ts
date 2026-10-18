@@ -9,7 +9,7 @@ import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
-import { sortRules } from '../apply/prompt.js';
+import { promptRef, sharedFromApi, sharedFromParts, withExtraRules } from '../apply/shared.js';
 import { fetchMemberRules } from '../apply/member-rules.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
@@ -100,18 +100,6 @@ function pickElement(raw: any, screenshotPath: string | null = null): Record<str
   };
 }
 
-function mapRulesForMcp(rules: any): any[] {
-  return Array.isArray(rules)
-    ? rules.map((r: any) => ({
-        scope: r.scope,
-        priority: r.priority,
-        title: r.title,
-        prompt: r.prompt,
-        ...(r.roleName ? { roleName: r.roleName } : {}),
-      }))
-    : [];
-}
-
 function mcpMedia(rawMedia: unknown, saved: SavedMedia[] | undefined): any[] {
   return normalizeMedia(rawMedia).map((m, i) => {
     const s = saved?.[i];
@@ -162,6 +150,8 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
       }))
     : [];
 
+  const rawActions: any[] = Array.isArray(item?.pickedActions) ? item.pickedActions : [];
+
   const bodyValue =
     typeof item?.body === 'object' && item?.body !== null
       ? String(item.body.value ?? '')
@@ -200,8 +190,11 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
       snapshot: snapshot ?? null,
     },
     trusted: {
-      pickedActions,
-      aiRules: mapRulesForMcp(item?.aiRules),
+      aiRuleRefs: Array.isArray(item?.aiRuleRefs) ? item.aiRuleRefs.map(String) : [],
+      pickedActions: pickedActions.map((pa: any, j: number) => ({
+        id: rawActions[j]?.ref ?? rawActions[j]?.id ?? promptRef(pa.text, pa.prompt),
+        text: pa.text,
+      })),
     },
   };
 }
@@ -211,10 +204,16 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
  *
  * Top-level keys are exactly:
  * number, internalId, status, environment, createdAt, authorName, isBugReport, element,
- * appliedAt, appliedByLabel, commitUrl, untrusted, trusted
+ * appliedAt, appliedByLabel, commitUrl, textSource, shared, untrusted, trusted
  */
 export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia | null): any {
   const view = toAiCommentView(raw, page, saved);
+  const parts = sharedFromParts([
+    {
+      aiRules: view.aiRules.map((r) => ({ ...r, roleName: r.roleName ?? null })),
+      pickedActions: view.pickedActions,
+    },
+  ]);
   const bodyValue =
     typeof view.body === 'object' && view.body !== null
       ? String(view.body.value ?? '')
@@ -245,14 +244,15 @@ export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia |
     appliedByLabel: view.appliedByLabel,
     commitUrl: view.commitUrl,
     textSource: view.textSource,
+    shared: parts.shared,
     untrusted: {
       body: bodyValue,
       media: mcpMedia(raw?.media, saved?.media),
       replies,
     },
     trusted: {
-      pickedActions: view.pickedActions,
-      aiRules: mapRulesForMcp(view.aiRules),
+      aiRuleRefs: parts.refs[0].aiRuleRefs,
+      pickedActions: view.pickedActions.map((p, j) => ({ id: parts.refs[0].actionIds[j], text: p.text })),
     },
   };
 }
@@ -332,13 +332,15 @@ export async function handleGetQueue(
 
   let rawItems: any[] = [];
   let note: string | undefined;
+  let apiParts: ReturnType<typeof sharedFromApi> = null;
 
   try {
     const res = await api<any>(
       ctx.server,
-      `/api/admin/projects/${encodeURIComponent(ctx.project)}/apply-queue${qs}`,
+      `/api/admin/projects/${encodeURIComponent(ctx.project)}/apply-queue${qs}&shape=shared`,
       { token: ctx.token },
     );
+    apiParts = sharedFromApi(res, (res?.items ?? []).length);
     const pages: Record<string, ApplyPageDto> = res?.pages ?? {};
     const pageContexts: Record<string, PageContextDto> = res?.pageContexts ?? {};
     rawItems = (res?.items ?? []).map((item: any) => {
@@ -389,6 +391,23 @@ export async function handleGetQueue(
     }
   }
 
+  const parts =
+    apiParts ??
+    sharedFromParts(
+      rawItems.map((i: any) => ({
+        aiRules: Array.isArray(i.aiRules) ? i.aiRules : [],
+        pickedActions: Array.isArray(i.pickedActions) ? i.pickedActions : [],
+      })),
+    );
+  rawItems = rawItems.map((raw: any, i: number) => ({
+    ...raw,
+    aiRuleRefs: parts.refs[i].aiRuleRefs,
+    pickedActions: (Array.isArray(raw.pickedActions) ? raw.pickedActions : []).map((pa: any, j: number) => ({
+      ...pa,
+      ref: parts.refs[i].actionIds[j],
+    })),
+  }));
+
   const root = typeof ctx.cwd === 'string' && ctx.cwd ? ctx.cwd : undefined;
   if (root) await pruneMedia(root);
   const items = [];
@@ -396,15 +415,9 @@ export async function handleGetQueue(
     const saved = await saveIfRooted(raw, { root, projectKey: ctx.project, server: ctx.server, token: ctx.token });
     items.push(partitionItem(raw, saved));
   }
-  const ruleMap = new Map<string, any>();
-  for (const r of [...(projectCtx.aiRules || []), ...rawItems.flatMap((i: any) => i.aiRules ?? [])]) {
-    const key = `${r.scope}:${r.title}`;
-    if (!ruleMap.has(key)) ruleMap.set(key, r);
-  }
-  const aiRules = mapRulesForMcp(sortRules(Array.from(ruleMap.values())));
   const result: any = {
     commitStyle,
-    aiRules,
+    shared: withExtraRules(parts.shared, projectCtx.aiRules ?? []),
     items,
   };
   if (note) {

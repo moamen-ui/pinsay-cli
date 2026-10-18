@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer, type Server } from 'node:http';
-import { fetchQueue, resetFallbackWarning } from '../src/apply/queue.js';
+import { fetchQueue, fetchQueueShared, resetFallbackWarning } from '../src/apply/queue.js';
 import { buildApplyPrompt } from '../src/apply/prompt.js';
 import { ProjectNotFoundError } from '../src/errors.js';
 import type { ApplyClientContext } from '../src/apply/types.js';
@@ -44,9 +44,11 @@ test('fetchQueue resolves page and pageContext from admin apply-queue', async ()
       cwd: '/tmp',
     };
 
-    const items = await fetchQueue(ctx);
+    const { shared, items } = await fetchQueueShared(ctx);
     assert.equal(items.length, 1);
     const item = items[0];
+    assert.equal(shared.aiRules.length, 2);
+    assert.deepEqual(item.aiRules, []);
 
     assert.equal(item.id, 12);
     assert.equal(item.status, 2);
@@ -67,7 +69,8 @@ test('fetchQueue resolves page and pageContext from admin apply-queue', async ()
     // Picked actions and AI rules
     assert.equal(item.pickedActions.length, 1);
     assert.equal(item.pickedActions[0].text, 'Make primary');
-    assert.equal(item.aiRules.length, 2);
+    assert.equal(item.pickedActions[0].prompt, '');
+    assert.match(item.pickedActions[0].id ?? '', /^p_[0-9a-f]{10}$/);
   } finally {
     await stub.close();
   }
@@ -202,6 +205,10 @@ test('fetchQueue: a 403 then a 404 on the summary fallback is ProjectNotFoundErr
 });
 
 async function memberRulesFallback(rulesHandler: (res: any) => void) {
+  return (await memberRulesFallbackShared(rulesHandler)).items;
+}
+
+async function memberRulesFallbackShared(rulesHandler: (res: any) => void) {
   resetFallbackWarning();
   const stub = await stubServer((req, res) => {
     if (req.url?.startsWith('/api/admin/projects/dev-project/apply-queue')) {
@@ -221,7 +228,7 @@ async function memberRulesFallback(rulesHandler: (res: any) => void) {
   const origError = console.error;
   console.error = () => {};
   try {
-    return await fetchQueue({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    return await fetchQueueShared({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
   } finally {
     console.error = origError;
     await stub.close();
@@ -229,7 +236,7 @@ async function memberRulesFallback(rulesHandler: (res: any) => void) {
 }
 
 test('fetchQueue 403 fallback carries the member rules (admin + role)', async () => {
-  const items = await memberRulesFallback((res) => {
+  const { shared } = await memberRulesFallbackShared((res) => {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(
       JSON.stringify({
@@ -243,8 +250,8 @@ test('fetchQueue 403 fallback carries the member rules (admin + role)', async ()
       }),
     );
   });
-  assert.deepEqual(items[0].aiRules.map((r) => r.scope), ['Workspace', 'Role']);
-  assert.equal(items[0].aiRules[1].roleName, 'Backend');
+  assert.deepEqual(shared.aiRules.map((r) => r.scope), ['Workspace', 'Role']);
+  assert.equal(shared.aiRules[1].roleName, 'Backend');
 });
 
 test('fetchQueue 403 fallback: a failing rules endpoint gives aiRules: []', async () => {
@@ -282,11 +289,12 @@ test('fetchQueue admin path keeps roleName on a Role rule', async () => {
     res.end(JSON.stringify({ isSuccess: false }));
   });
   try {
-    const items = await fetchQueue({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
-    assert.equal(items[0].aiRules[0].roleName, 'Backend');
+    const { shared, items } = await fetchQueueShared({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    assert.equal(shared.aiRules[0].roleName, 'Backend');
     const out = buildApplyPrompt(
       items,
       { productName: 'PinSay', projectName: 'x', projectKey: 'dev-project', commitStyle: 'Single', stack: {} } as any,
+      { shared },
     );
     assert.ok(out.includes('[Role: Backend]'));
   } finally {
@@ -348,6 +356,79 @@ test('apply queue maps media and reply media', async () => {
     assert.equal(items[0].replies[0].media?.[0]?.kind, 'annotation');
     assert.equal(items[0].textSource, 'editedSpeech');
     assert.deepEqual(items[1].media, []);
+  } finally {
+    await stub.close();
+  }
+});
+
+test('fetchQueueShared asks for shape=shared and reads the dictionaries of a new API', async () => {
+  let url = '';
+  const stub = await stubServer((req, res) => {
+    url = req.url ?? '';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        isSuccess: true,
+        data: {
+          aiRules: {
+            r1: { title: 'W', prompt: 'pw', scope: 'Workspace', priority: 1, isPersonal: false },
+            r2: { title: 'P', prompt: 'pp', scope: 'Personal', priority: 4, isPersonal: true },
+          },
+          prompts: { p_abc1234567: { text: 'Make primary', prompt: 'do it' } },
+          items: [
+            {
+              id: 1, number: 1, status: 2, environment: 1, body: 'x',
+              aiRules: [], aiRuleRefs: ['r2'],
+              pickedActions: [{ text: 'Make primary', prompt: '', ref: 'p_abc1234567' }],
+            },
+          ],
+        },
+      }),
+    );
+  });
+  try {
+    const { shared, items } = await fetchQueueShared({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    assert.ok(url.includes('shape=shared'));
+    assert.deepEqual(shared.aiRules.map((r) => [r.id, r.appliesTo]), [['r1', 'all'], ['r2', 'author']]);
+    assert.deepEqual(shared.prompts, [{ id: 'p_abc1234567', text: 'Make primary', prompt: 'do it' }]);
+    assert.deepEqual(items[0].aiRules, []);
+    assert.deepEqual(items[0].aiRuleRefs, ['r2']);
+    assert.equal(items[0].pickedActions[0].id, 'p_abc1234567');
+    assert.equal(items[0].pickedActions[0].prompt, '');
+  } finally {
+    await stub.close();
+  }
+});
+
+test('fetchQueueShared builds the same block on the client for an older API', async () => {
+  const stub = await stubServer((_req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(
+      JSON.stringify({
+        isSuccess: true,
+        data: {
+          items: [
+            {
+              id: 1, number: 1, status: 2, environment: 1, body: 'x',
+              aiRules: [
+                { title: 'W', prompt: 'pw', scope: 'Workspace', priority: 1, isPersonal: false },
+                { title: 'P', prompt: 'pp', scope: 'Personal', priority: 4, isPersonal: true },
+              ],
+              pickedActions: [{ text: 'Make primary', prompt: 'do it' }],
+            },
+          ],
+        },
+      }),
+    );
+  });
+  try {
+    const { shared, items } = await fetchQueueShared({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    assert.deepEqual(shared.aiRules.map((r) => [r.id, r.appliesTo]), [['r1', 'all'], ['r2', 'author']]);
+    assert.equal(shared.prompts.length, 1);
+    assert.equal(shared.prompts[0].prompt, 'do it');
+    assert.deepEqual(items[0].aiRules, []);
+    assert.deepEqual(items[0].aiRuleRefs, ['r2']);
+    assert.equal(items[0].pickedActions[0].id, shared.prompts[0].id);
   } finally {
     await stub.close();
   }

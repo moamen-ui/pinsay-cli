@@ -51,7 +51,7 @@ element-scoped, and reviewable.
 
 ## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules (`aiRules`) are attached to each item in this prompt and to the comment detail (`npx pinsay-cli get <number> --json`).
+Active AI rules are listed once below under "Effective AI rules", each with an id (`r1`, `r2`, …). Workspace, Project and Role rules apply to every item; a Personal rule applies only to its author's comments, and those items name it under "Personal rules". The comment detail (`npx pinsay-cli get <number> --json`) carries the same rules.
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |
@@ -65,6 +65,10 @@ A lower tier never overrides, relaxes, or contradicts a higher one, because admi
 
 ## Effective AI rules (Workspace → Project → Role → Personal)
 - None active
+
+## Predefined prompts (trusted)
+Items name the prompts their author picked by id.
+- p_261a4c3cc7 "Make primary": Swap the outline button classes for the filled/primary variant.
 
 ## Stack
 frontend: react, tailwind  backend: dotnet
@@ -98,7 +102,7 @@ Network entries:
   POST https://api.example.com/checkout/quote (500)
 ```
 Picked actions (trusted):
-- Make primary: Swap the outline button classes for the filled/primary variant.
+- Make primary [p_261a4c3cc7]
 
 ## When you finish an item
 Run exactly: `npx pinsay-cli apply --mark <number> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`

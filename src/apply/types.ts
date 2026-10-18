@@ -1,6 +1,9 @@
+import type { SharedBlock } from './shared.js';
+
 export type PickedActionDto = {
   text: string;
   prompt: string;
+  id?: string;
 };
 
 export type AiRuleApplyDto = {
@@ -120,6 +123,7 @@ export type QueueItem = {
   replies: QueueItemReply[];
   pickedActions: PickedActionDto[];
   aiRules: AiRuleApplyDto[];
+  aiRuleRefs?: string[];
   customFields?: { key: string; label: string; type: number | string; value: string; suggestedTool?: string | null }[];
   isBugReport: boolean;
   pageContextId?: number | null;
@@ -216,6 +220,12 @@ export type AiCommentView = {
   textSource: string | null;
 };
 
+/** apply --json item: the comment view without per-item rules/prompts (they are in `shared`). */
+export type AiSharedItemView = Omit<AiCommentView, 'aiRules' | 'pickedActions'> & {
+  aiRuleRefs: string[];
+  pickedActions: { id: string; text: string }[];
+};
+
 export type ProjectStack = {
   frontend?: string[];
   backend?: string[] | null;
@@ -236,6 +246,8 @@ export type ApplyProjectContext = {
 
 export type ApplyPromptOptions = {
   plan?: boolean;
+  /** AI rules and predefined prompts once per response; absent: built from the items. */
+  shared?: SharedBlock;
   /** Saved media per comment number (runApply saves them first; keeps buildApplyPrompt pure). */
   savedMedia?: Map<number, SavedCommentMedia>;
   /**
@@ -266,6 +278,7 @@ export type ApplyClientContext = {
 
 export type ApplyRunResult = {
   prompt: string;
+  shared: SharedBlock;
   items: QueueItem[];
   context: ApplyProjectContext;
 };

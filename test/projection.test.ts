@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { toAiCommentView } from '../src/apply/projection.js';
+import { toAiCommentView, toSharedItemView } from '../src/apply/projection.js';
 import type { SavedCommentMedia } from '../src/apply/types.js';
 
 test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fields', () => {
@@ -189,4 +189,16 @@ test('projects media with saved paths and untrusted transcripts', () => {
 
   // A raw with no `media` gives media: [].
   assert.deepEqual(toAiCommentView({ id: 1, body: 'x', replies: [] }).media, []);
+});
+
+test('toSharedItemView drops per-item rules and prompts and keeps refs and ids', () => {
+  const view: any = toSharedItemView({
+    id: 1, number: 3, status: 2, environment: 1, body: 'x', authorName: 'A', createdAt: '',
+    element: {}, replies: [], isBugReport: false,
+    aiRules: [], aiRuleRefs: ['r2'],
+    pickedActions: [{ text: 'Fix', prompt: '', id: 'p_0123456789' }],
+  } as any);
+  assert.equal('aiRules' in view, false);
+  assert.deepEqual(view.aiRuleRefs, ['r2']);
+  assert.deepEqual(Object.keys(view.pickedActions[0]).sort(), ['id', 'text']);
 });

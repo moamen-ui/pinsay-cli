@@ -164,11 +164,10 @@ test('rules render Workspace, Project, Role (named), Personal; ties keep input o
     ({ title, prompt: `do ${title}`, scope, priority, isPersonal: scope === 'Personal', ...extra }) as any;
   const context = { productName: 'PinSay', projectName: 'x', projectKey: 'x', commitStyle: 'Single', stack: {} };
   const out = buildApplyPrompt(
-    [],
+    [richItem({ aiRules: [rule('p4', 'Personal', 4)] })],
     {
       ...context,
       aiRules: [
-        rule('p4', 'Personal', 4),
         rule('r3', 'Role', 3, { roleName: 'Backend' }),
         rule('p2', 'Project', 2),
         rule('w1b', 'Workspace', 1),
@@ -176,7 +175,7 @@ test('rules render Workspace, Project, Role (named), Personal; ties keep input o
       ],
     } as any,
   );
-  const order = ['[Workspace] w1b', '[Workspace] w1a', '[Project] p2', '[Role: Backend] r3', '[Personal] p4'].map((s) => out.indexOf(s));
+  const order = ['[Workspace] w1b', '[Workspace] w1a', '[Project] p2', '[Role: Backend] r3', "[Personal, author's comments only] p4"].map((s) => out.indexOf(s));
   assert.ok(order.every((i) => i >= 0), 'every rule renders');
   assert.deepEqual([...order].sort((a, b) => a - b), order);
 
@@ -276,4 +275,33 @@ test('failed and purged files are reported', () => {
   const out = buildApplyPrompt([richItem({ media: [a, v] })], richContext, { savedMedia: new Map([[5, saved]]) });
   assert.ok(out.includes('(download failed: HTTP 404)'));
   assert.ok(out.includes('(no longer available)'));
+});
+
+test('a shared block prints rules and predefined prompts once; items name their refs', () => {
+  const shared = {
+    aiRules: [
+      { id: 'r1', title: 'W', prompt: 'pw', scope: 'Workspace', priority: 1, roleName: null, appliesTo: 'all' },
+      { id: 'r2', title: 'R', prompt: 'pr', scope: 'Role', priority: 3, roleName: 'Backend', appliesTo: 'all' },
+      { id: 'r3', title: 'P', prompt: 'pp', scope: 'Personal', priority: 4, roleName: null, appliesTo: 'author' },
+    ],
+    prompts: [{ id: 'p_0123456789', text: 'Make primary', prompt: 'Swap the classes.' }],
+  } as any;
+  const pick = [{ text: 'Make primary', prompt: '', id: 'p_0123456789' }];
+  const out = buildApplyPrompt(
+    [
+      richItem({ number: 1, aiRules: [], aiRuleRefs: ['r3'], pickedActions: pick }),
+      richItem({ number: 2, aiRules: [], aiRuleRefs: [], pickedActions: pick }),
+    ],
+    richContext,
+    { shared },
+  );
+  assert.ok(out.includes('- r1 [Workspace] W: pw'));
+  assert.ok(out.includes('- r2 [Role: Backend] R: pr'));
+  assert.ok(out.includes("- r3 [Personal, author's comments only] P: pp"));
+  assert.equal(out.split('## Predefined prompts (trusted)').length, 2);
+  assert.ok(out.includes('- p_0123456789 "Make primary": Swap the classes.'));
+  assert.equal(out.split('Swap the classes.').length, 2);
+  assert.ok(out.includes('Personal rules (trusted): r3'));
+  assert.equal(out.split('Personal rules (trusted)').length, 2);
+  assert.equal(out.split('- Make primary [p_0123456789]').length, 3);
 });

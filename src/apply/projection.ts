@@ -1,6 +1,9 @@
 import { normalizeMedia } from './media.js';
+import { promptRef } from './shared.js';
 import type {
   AiCommentView,
+  AiSharedItemView,
+  QueueItem,
   AiElementView,
   AiMediaView,
   AiPickedActionView,
@@ -136,5 +139,14 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
     status: raw?.status,
     media: toMediaViews(raw?.media, saved?.media),
     textSource: typeof raw?.textSource === 'string' ? raw.textSource : null,
+  };
+}
+
+export function toSharedItemView(item: QueueItem, saved?: SavedCommentMedia | null): AiSharedItemView {
+  const { aiRules: _rules, pickedActions: _actions, ...rest } = toAiCommentView(item, undefined, saved);
+  return {
+    ...rest,
+    aiRuleRefs: item.aiRuleRefs ?? [],
+    pickedActions: (item.pickedActions ?? []).map((pa) => ({ id: pa.id ?? promptRef(pa.text, pa.prompt), text: pa.text })),
   };
 }
