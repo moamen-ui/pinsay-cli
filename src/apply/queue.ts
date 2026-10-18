@@ -1,6 +1,7 @@
 import { api, ApiError } from '../api.js';
 import { ProjectNotFoundError } from '../errors.js';
 import { fetchMemberRules } from './member-rules.js';
+import { normalizeMedia } from './media.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
 
 export type QueueFilter = {
@@ -100,6 +101,8 @@ export async function fetchQueue(
               body: r.body ?? '',
               createdAt: r.createdAt,
               isAi: Boolean(r.isAi),
+              media: normalizeMedia(r.media),
+              textSource: typeof r.textSource === 'string' ? r.textSource : null,
             }))
           : [],
         pickedActions: Array.isArray(item.pickedActions)
@@ -125,6 +128,8 @@ export async function fetchQueue(
         // Server-stamped comment language (R4 translate) and admin-defined fields (R4-01) —
         // both must be copied through or buildApplyPrompt silently omits them.
         language: typeof item.language === 'string' && item.language ? item.language : null,
+        media: normalizeMedia(item.media),
+        textSource: typeof item.textSource === 'string' ? item.textSource : null,
         customFields: Array.isArray(item.customFields)
           ? item.customFields
               .filter((f: any) => f && typeof f.key === 'string')

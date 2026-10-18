@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { toAiCommentView } from '../src/apply/projection.js';
+import type { SavedCommentMedia } from '../src/apply/types.js';
 
 test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fields', () => {
   const rawCommentResponse = {
@@ -80,11 +81,13 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
     'environment',
     'internalId',
     'isBugReport',
+    'media',
     'number',
     'pickedActions',
     'aiRules',
     'replies',
     'status',
+    'textSource',
   ].sort();
 
   const expectedElementKeys = [
@@ -95,6 +98,8 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
     'pageUrl',
     'parentInfo',
     'route',
+    'screenshotPath',
+    'screenshotUrl',
     'selector',
     'snapshot',
     'sourcePath',
@@ -102,7 +107,7 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
     'viewportWidth',
   ].sort();
 
-  const expectedReplyKeys = ['authorName', 'body', 'isAi'].sort();
+  const expectedReplyKeys = ['authorName', 'body', 'isAi', 'media'].sort();
   const expectedPickedActionKeys = ['prompt', 'text'].sort();
 
   assert.deepEqual(Object.keys(projected).sort(), expectedTopLevelKeys);
@@ -129,4 +134,59 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
 
 test('toAiCommentView: a raw comment without aiRules projects aiRules: []', () => {
   assert.deepEqual(toAiCommentView({ id: 1, body: 'x' }).aiRules, []);
+});
+
+test('projects media with saved paths and untrusted transcripts', () => {
+  const raw = {
+    id: 5,
+    number: 5,
+    body: 'b',
+    element: {},
+    media: [
+      { kind: 'annotation', ordinal: 1, url: 'https://x/a.png', contentType: 'image/png', sizeBytes: 10, available: true },
+      { kind: 'step', ordinal: 1, url: 'https://x/s1.png', contentType: 'image/png', sizeBytes: 11, available: true },
+      {
+        kind: 'audio', ordinal: 1, url: 'https://x/v1.webm', contentType: 'audio/webm', sizeBytes: 12,
+        durationMs: 3200, transcript: 'make it blue', transcriptSource: 'browser', available: true,
+      },
+    ],
+    replies: [
+      {
+        body: 'still red',
+        media: [{ kind: 'audio', ordinal: 1, url: 'https://x/r1.webm', contentType: 'audio/webm', sizeBytes: 13, transcript: 'x', available: true }],
+      },
+    ],
+  };
+
+  const saved: SavedCommentMedia = {
+    dir: '/r',
+    screenshot: null,
+    media: [
+      { kind: 'annotation', ordinal: 1, url: 'https://x/a.png', contentType: 'image/png', sizeBytes: 10, available: true, path: '/r/a.png' },
+      { kind: 'step', ordinal: 1, url: 'https://x/s1.png', contentType: 'image/png', sizeBytes: 11, available: true, path: '/r/s1.png' },
+      { kind: 'audio', ordinal: 1, url: 'https://x/v1.webm', contentType: 'audio/webm', sizeBytes: 12, durationMs: 3200, transcript: 'make it blue', transcriptSource: 'browser', available: true, path: '/r/v1.webm' },
+    ],
+    replies: [
+      {
+        folder: 'reply-p1',
+        position: 1,
+        media: [
+          { kind: 'audio', ordinal: 1, url: 'https://x/r1.webm', contentType: 'audio/webm', sizeBytes: 13, transcript: 'x', available: true, path: '/r/reply-p1/v1.webm' },
+        ],
+      },
+    ],
+  };
+
+  const view = toAiCommentView(raw, undefined, saved);
+  assert.equal(view.media[2].path, '/r/v1.webm');
+  assert.deepEqual(view.media[2].transcript, { untrusted: true, value: 'make it blue' });
+  assert.equal(view.replies[0].media[0].path, '/r/reply-p1/v1.webm');
+
+  // Without `saved` every path is null (transcripts still project).
+  const unsaved = toAiCommentView(raw);
+  assert.ok(unsaved.media.every((m) => m.path === null));
+  assert.ok(unsaved.replies[0].media.every((m) => m.path === null));
+
+  // A raw with no `media` gives media: [].
+  assert.deepEqual(toAiCommentView({ id: 1, body: 'x', replies: [] }).media, []);
 });

@@ -293,3 +293,62 @@ test('fetchQueue admin path keeps roleName on a Role rule', async () => {
     await stub.close();
   }
 });
+
+test('apply queue maps media and reply media', async () => {
+  const stub = await stubServer((req, res) => {
+    if (req.url?.startsWith('/api/admin/projects/dev-project/apply-queue')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          isSuccess: true,
+          data: {
+            items: [
+              {
+                id: 2,
+                number: 2,
+                status: 2,
+                environment: 1,
+                body: 'y',
+                textSource: 'editedSpeech',
+                media: [
+                  {
+                    kind: 'audio', ordinal: 1, url: 'https://x/v1.webm', contentType: 'audio/webm',
+                    sizeBytes: 12, transcript: 'louder please', available: true,
+                  },
+                ],
+                replies: [
+                  {
+                    id: 21,
+                    body: 'r',
+                    media: [
+                      { kind: 'annotation', ordinal: 1, url: 'https://x/a.png', contentType: 'image/png', sizeBytes: 5, available: true },
+                    ],
+                  },
+                ],
+              },
+              {
+                id: 3,
+                number: 3,
+                status: 2,
+                environment: 1,
+                body: 'z',
+              },
+            ],
+          },
+        }),
+      );
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+  try {
+    const items = await fetchQueue({ server: stub.url, project: 'dev-project', token: 't', cwd: '/tmp' });
+    assert.equal(items[0].media?.[0]?.transcript, 'louder please');
+    assert.equal(items[0].replies[0].media?.[0]?.kind, 'annotation');
+    assert.equal(items[0].textSource, 'editedSpeech');
+    assert.deepEqual(items[1].media, []);
+  } finally {
+    await stub.close();
+  }
+});

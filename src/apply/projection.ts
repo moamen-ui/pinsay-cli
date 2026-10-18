@@ -1,9 +1,13 @@
+import { normalizeMedia } from './media.js';
 import type {
   AiCommentView,
   AiElementView,
+  AiMediaView,
   AiPickedActionView,
   AiRuleView,
   AiReplyView,
+  SavedCommentMedia,
+  SavedMedia,
 } from './types.js';
 
 /**
@@ -14,7 +18,29 @@ import type {
  * authorId, ownerId, pageContext internals, editedBy). Builds the object by naming each
  * field, never by spreading and deleting.
  */
-export function toAiCommentView(raw: any, page?: any): AiCommentView {
+export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia | null): AiCommentView {
+  function toMediaViews(rawMedia: unknown, savedMedia: SavedMedia[] | undefined): AiMediaView[] {
+    return normalizeMedia(rawMedia).map((m, i): AiMediaView => {
+      const s = savedMedia?.[i];
+      return {
+        kind: m.kind,
+        ordinal: m.ordinal,
+        path: s?.path ?? null,
+        url: m.url,
+        contentType: m.contentType,
+        sizeBytes: m.sizeBytes,
+        durationMs: m.durationMs ?? null,
+        width: m.width ?? null,
+        height: m.height ?? null,
+        transcript: m.transcript ? { untrusted: true, value: m.transcript } : null,
+        transcriptSource: m.transcriptSource ?? null,
+        transcriptionStatus: m.transcriptionStatus ?? null,
+        available: m.available,
+        ...(s?.error ? { error: s.error } : {}),
+      };
+    });
+  }
+
   const elementRaw = raw?.element || {};
   const element: AiElementView = {
     appliedCssRules: elementRaw.appliedCssRules ?? null,
@@ -27,6 +53,8 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
     selector: elementRaw.selector ?? null,
     snapshot: elementRaw.snapshot ?? null,
     sourcePath: elementRaw.sourcePath ?? null,
+    screenshotUrl: elementRaw.screenshotUrl ?? null,
+    screenshotPath: saved?.screenshot?.path ?? null,
     viewportHeight:
       typeof elementRaw.viewportHeight === 'number'
         ? elementRaw.viewportHeight
@@ -42,7 +70,7 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
   };
 
   const replies: AiReplyView[] = Array.isArray(raw?.replies)
-    ? raw.replies.map((r: any): AiReplyView => {
+    ? raw.replies.map((r: any, i: number): AiReplyView => {
         const bodyValue =
           typeof r?.body === 'object' && r?.body !== null
             ? String(r.body.value ?? '')
@@ -54,6 +82,7 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
             value: bodyValue,
           },
           isAi: Boolean(r?.isAi),
+          media: toMediaViews(r?.media, saved?.replies.find((x) => x.position === i + 1)?.media),
         };
       })
     : [];
@@ -105,5 +134,7 @@ export function toAiCommentView(raw: any, page?: any): AiCommentView {
     aiRules,
     replies,
     status: raw?.status,
+    media: toMediaViews(raw?.media, saved?.media),
+    textSource: typeof raw?.textSource === 'string' ? raw.textSource : null,
   };
 }

@@ -216,3 +216,52 @@ export async function pruneMedia(root: string, maxAgeDays = MEDIA_MAX_AGE_DAYS, 
 export async function deleteCommentMedia(root: string, projectKey: string, number: number): Promise<void> {
   await fs.rm(commentMediaDir(root, projectKey, number), { recursive: true, force: true }).catch(() => undefined);
 }
+
+/** Named-field copy of the API's media array (never a spread: a new DTO field must not ride through). */
+export function normalizeMedia(raw: unknown): CommentMedia[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((m: any) => m && typeof m.kind === 'string')
+    .map((m: any): CommentMedia => ({
+      ...(typeof m.id === 'number' ? { id: m.id } : {}),
+      kind: String(m.kind),
+      url: typeof m.url === 'string' && m.url ? m.url : null,
+      contentType: String(m.contentType ?? ''),
+      sizeBytes: typeof m.sizeBytes === 'number' ? m.sizeBytes : 0,
+      width: typeof m.width === 'number' ? m.width : null,
+      height: typeof m.height === 'number' ? m.height : null,
+      durationMs: typeof m.durationMs === 'number' ? m.durationMs : null,
+      ordinal: typeof m.ordinal === 'number' ? m.ordinal : 0,
+      transcript: typeof m.transcript === 'string' ? m.transcript : null,
+      transcriptSource: typeof m.transcriptSource === 'string' ? m.transcriptSource : null,
+      transcriptionStatus: typeof m.transcriptionStatus === 'string' ? m.transcriptionStatus : null,
+      available: m.available !== false,
+    }));
+}
+
+/** The media source for `saveCommentMedia` from an API comment or apply-queue item. */
+export function mediaSourceOf(raw: any): MediaSource {
+  return {
+    number: Number(raw?.number),
+    screenshotUrl: typeof raw?.element?.screenshotUrl === 'string' ? raw.element.screenshotUrl : null,
+    media: normalizeMedia(raw?.media),
+    replies: Array.isArray(raw?.replies)
+      ? raw.replies.map((r: any) => ({ id: typeof r?.id === 'number' ? r.id : null, media: normalizeMedia(r?.media) }))
+      : [],
+  };
+}
+
+/** Saves the files when `root` is a non-empty string; otherwise returns null (nothing saved, every path null). */
+export async function saveIfRooted(raw: any, opts: Omit<SaveMediaOptions, 'root'> & { root?: string }): Promise<SavedCommentMedia | null> {
+  if (typeof opts.root !== 'string' || opts.root === '') return null;
+  return saveCommentMedia(mediaSourceOf(raw), { ...opts, root: opts.root });
+}
+
+/** The saved path of each step screenshot by ordinal. */
+export function stepPaths(saved: SavedCommentMedia | null | undefined): Map<number, string> {
+  const map = new Map<number, string>();
+  for (const m of saved?.media ?? []) {
+    if (m.kind === 'step' && m.path) map.set(m.ordinal, m.path);
+  }
+  return map;
+}

@@ -53,6 +53,7 @@ export type NetworkCall = {
 export type UserStep = {
   kind: string; occurredAt?: string; selector?: string | null; label?: string | null;
   valueLength?: number | null; masked?: boolean; path?: string | null; title?: string | null;
+  screenshotOrdinal?: number | null; screenshotPath?: string | null;
 };
 
 export type PageContextDto = {
@@ -68,6 +69,11 @@ export type PageContextDto = {
   droppedEntryCount?: number;
   networkCalls?: NetworkCall[] | null;
   stepEntries?: UserStep[] | null;
+  mode?: string;
+  recordingStartedAt?: string | null;
+  recordingEndedAt?: string | null;
+  droppedNetworkCount?: number;
+  droppedConsoleCount?: number;
 };
 
 export type QueueItemElement = {
@@ -96,6 +102,8 @@ export type QueueItemReply = {
   body: string;
   createdAt?: string;
   isAi?: boolean;
+  media?: CommentMedia[];
+  textSource?: string | null;
 };
 
 export type QueueItem = {
@@ -118,6 +126,8 @@ export type QueueItem = {
   page?: ApplyPageDto;
   pageContext?: PageContextDto;
   language?: string | null;
+  media?: CommentMedia[];
+  textSource?: string | null;
 };
 
 export type UntrustedString = {
@@ -138,12 +148,34 @@ export type AiElementView = {
   sourcePath: string | null;
   viewportHeight: number | null;
   viewportWidth: number | null;
+  screenshotUrl: string | null;
+  screenshotPath: string | null;
+};
+
+/** One file on a comment or reply as the AI sees it. `transcript` is the person's speech: untrusted. */
+export type AiMediaView = {
+  kind: string;
+  ordinal: number;
+  /** Absolute path under .pinsay/media, or null when not saved (`error` says why). */
+  path: string | null;
+  url: string | null;
+  contentType: string;
+  sizeBytes: number;
+  durationMs: number | null;
+  width: number | null;
+  height: number | null;
+  transcript: UntrustedString | null;
+  transcriptSource: string | null;
+  transcriptionStatus: string | null;
+  available: boolean;
+  error?: string;
 };
 
 export type AiReplyView = {
   authorName: string | null;
   body: UntrustedString;
   isAi: boolean;
+  media: AiMediaView[];
 };
 
 export type AiPickedActionView = {
@@ -180,6 +212,8 @@ export type AiCommentView = {
   aiRules: AiRuleView[];
   replies: AiReplyView[];
   status: number | string;
+  media: AiMediaView[];
+  textSource: string | null;
 };
 
 export type ProjectStack = {

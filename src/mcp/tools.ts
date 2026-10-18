@@ -8,13 +8,14 @@ import { exitCodeFor } from '../commands/doctor.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
+import { normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
 import { sortRules } from '../apply/prompt.js';
 import { fetchMemberRules } from '../apply/member-rules.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
 import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveModelsFromArgs, modelsBody, ModelsError, type AiModelEntry } from '../apply/models.js';
-import type { ApplyClientContext, ApplyPageDto, PageContextDto } from '../apply/types.js';
+import type { ApplyClientContext, ApplyPageDto, PageContextDto, SavedCommentMedia, SavedMedia } from '../apply/types.js';
 
 export type McpContext = {
   cwd: string;
@@ -80,7 +81,7 @@ function mapEnvironmentToNumber(env?: number | string): number | undefined {
  * exact pattern R2-06 exists to prevent — and the payload flags would have ridden through it while
  * the top-level test still passed.
  */
-function pickElement(raw: any): Record<string, unknown> {
+function pickElement(raw: any, screenshotPath: string | null = null): Record<string, unknown> {
   return {
     selector: raw?.selector ?? null,
     route: raw?.route ?? null,
@@ -95,6 +96,7 @@ function pickElement(raw: any): Record<string, unknown> {
     viewportHeight: raw?.viewportHeight ?? null,
     deviceType: raw?.deviceType ?? null,
     screenshotUrl: raw?.screenshotUrl ?? null,
+    screenshotPath,
   };
 }
 
@@ -110,12 +112,31 @@ function mapRulesForMcp(rules: any): any[] {
     : [];
 }
 
-export function partitionItem(item: any): any {
+function mcpMedia(rawMedia: unknown, saved: SavedMedia[] | undefined): any[] {
+  return normalizeMedia(rawMedia).map((m, i) => {
+    const s = saved?.[i];
+    return {
+      kind: m.kind,
+      ordinal: m.ordinal,
+      path: s?.path ?? null,
+      url: m.url,
+      contentType: m.contentType,
+      durationMs: m.durationMs ?? null,
+      transcript: m.transcript ?? null,
+      transcriptSource: m.transcriptSource ?? null,
+      transcriptionStatus: m.transcriptionStatus ?? null,
+      available: m.available,
+      ...(s?.error ? { error: s.error } : {}),
+    };
+  });
+}
+
+export function partitionItem(item: any, saved?: SavedCommentMedia | null): any {
   const elementRaw = item?.element || {};
   const snapshot = elementRaw?.snapshot;
 
   const replies = Array.isArray(item?.replies)
-    ? item.replies.map((r: any) => {
+    ? item.replies.map((r: any, i: number) => {
         const bodyValue =
           typeof r?.body === 'object' && r?.body !== null
             ? String(r.body.value ?? '')
@@ -124,6 +145,7 @@ export function partitionItem(item: any): any {
           authorName: r?.authorName ?? null,
           body: bodyValue,
           isAi: Boolean(r?.isAi),
+          media: mcpMedia(r?.media, saved?.replies.find((x) => x.position === i + 1)?.media),
         };
       })
     : [];
@@ -145,6 +167,19 @@ export function partitionItem(item: any): any {
       ? String(item.body.value ?? '')
       : String(item?.body ?? '');
 
+  const paths = stepPaths(saved);
+  const pageContext =
+    item.pageContext && Array.isArray(item.pageContext.stepEntries) && paths.size > 0
+      ? {
+          ...item.pageContext,
+          stepEntries: item.pageContext.stepEntries.map((s: any) =>
+            typeof s?.screenshotOrdinal === 'number' && paths.has(s.screenshotOrdinal)
+              ? { ...s, screenshotPath: paths.get(s.screenshotOrdinal) }
+              : s,
+          ),
+        }
+      : item.pageContext;
+
   return {
     number: item.number,
     internalId: item.id,
@@ -153,12 +188,14 @@ export function partitionItem(item: any): any {
     createdAt: item.createdAt ?? '',
     authorName: item.authorName ?? null,
     isBugReport: Boolean(item.isBugReport),
-    element: pickElement(elementRaw),
+    element: pickElement(elementRaw, saved?.screenshot?.path ?? null),
     pageContextId: item.pageContextId ?? null,
     page: item.page,
-    pageContext: item.pageContext,
+    pageContext,
+    textSource: typeof item?.textSource === 'string' ? item.textSource : null,
     untrusted: {
       body: bodyValue,
+      media: mcpMedia(item?.media, saved?.media),
       replies,
       snapshot: snapshot ?? null,
     },
@@ -176,21 +213,22 @@ export function partitionItem(item: any): any {
  * number, internalId, status, environment, createdAt, authorName, isBugReport, element,
  * appliedAt, appliedByLabel, commitUrl, untrusted, trusted
  */
-export function reshapeComment(raw: any, page?: any): any {
-  const view = toAiCommentView(raw, page);
+export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia | null): any {
+  const view = toAiCommentView(raw, page, saved);
   const bodyValue =
     typeof view.body === 'object' && view.body !== null
       ? String(view.body.value ?? '')
       : String(view.body ?? '');
 
   const replies = Array.isArray(view.replies)
-    ? view.replies.map((r: any) => ({
+    ? view.replies.map((r: any, i: number) => ({
         authorName: r.authorName ?? null,
         body:
           typeof r.body === 'object' && r.body !== null
             ? String(r.body.value ?? '')
             : String(r.body ?? ''),
         isAi: Boolean(r.isAi),
+        media: mcpMedia(raw?.replies?.[i]?.media, saved?.replies.find((x) => x.position === i + 1)?.media),
       }))
     : [];
 
@@ -206,8 +244,10 @@ export function reshapeComment(raw: any, page?: any): any {
     appliedAt: view.appliedAt,
     appliedByLabel: view.appliedByLabel,
     commitUrl: view.commitUrl,
+    textSource: view.textSource,
     untrusted: {
       body: bodyValue,
+      media: mcpMedia(raw?.media, saved?.media),
       replies,
     },
     trusted: {
@@ -349,7 +389,13 @@ export async function handleGetQueue(
     }
   }
 
-  const items = rawItems.map(partitionItem);
+  const root = typeof ctx.cwd === 'string' && ctx.cwd ? ctx.cwd : undefined;
+  if (root) await pruneMedia(root);
+  const items = [];
+  for (const raw of rawItems) {
+    const saved = await saveIfRooted(raw, { root, projectKey: ctx.project, server: ctx.server, token: ctx.token });
+    items.push(partitionItem(raw, saved));
+  }
   const ruleMap = new Map<string, any>();
   for (const r of [...(projectCtx.aiRules || []), ...rawItems.flatMap((i: any) => i.aiRules ?? [])]) {
     const key = `${r.scope}:${r.title}`;
@@ -391,7 +437,10 @@ export async function handleGetComment(
     const raw = await api<any>(ctx.server, `/api/comments/${id}`, {
       token: ctx.token,
     });
-    return reshapeComment(raw, raw?.page);
+    const root = typeof ctx.cwd === 'string' && ctx.cwd ? ctx.cwd : undefined;
+    if (root) await pruneMedia(root);
+    const saved = await saveIfRooted(raw, { root, projectKey: ctx.project, server: ctx.server, token: ctx.token });
+    return reshapeComment(raw, raw?.page, saved);
   } catch (err: any) {
     if (err instanceof ApiError && err.code === 404) {
       throw mcpError('not_found', `Comment #${number} not found`);

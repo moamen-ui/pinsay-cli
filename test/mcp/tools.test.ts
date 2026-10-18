@@ -142,9 +142,10 @@ describe('mcp: tools handlers and helpers', () => {
     assert.equal(partitioned.internalId, 42);
     assert.ok(!('id' in partitioned));
 
-    // 1. untrusted has exactly { body, replies, snapshot }
+    // 1. untrusted has exactly { body, media, replies, snapshot }
     assert.deepEqual(Object.keys(partitioned.untrusted).sort(), [
       'body',
+      'media',
       'replies',
       'snapshot',
     ]);
@@ -191,7 +192,43 @@ describe('mcp: tools handlers and helpers', () => {
     assert.ok(!serialized.includes('editedBy'), 'must not contain editedBy');
   });
 
-  test('reshapeComment / handleGetComment: emits exactly the 13 whitelisted keys and drops sensitive fields', async () => {
+  test('partitionItem puts step paths on recording steps and voice transcripts in untrusted', () => {
+    const item = {
+      id: 9,
+      number: 9,
+      status: 2,
+      environment: 1,
+      body: 'clicks then talks',
+      element: {},
+      pageContext: {
+        stepEntries: [
+          { kind: 'click', screenshotOrdinal: 1 },
+          { kind: 'route' },
+        ],
+      },
+      media: [
+        { kind: 'step', ordinal: 1, url: 'https://x/step-01.png', contentType: 'image/png', sizeBytes: 10, available: true },
+        { kind: 'audio', ordinal: 1, url: 'https://x/v1.webm', contentType: 'audio/webm', sizeBytes: 12, transcript: 't', available: true },
+      ],
+    };
+    const saved = {
+      dir: '/r',
+      screenshot: null,
+      media: [
+        { kind: 'step', ordinal: 1, url: 'https://x/step-01.png', contentType: 'image/png', sizeBytes: 10, available: true, path: '/r/step-01.png' },
+        { kind: 'audio', ordinal: 1, url: 'https://x/v1.webm', contentType: 'audio/webm', sizeBytes: 12, transcript: 't', available: true, path: '/r/voice-01.webm' },
+      ],
+      replies: [],
+    };
+
+    const out = partitionItem(item, saved);
+    assert.equal(out.pageContext.stepEntries[0].screenshotPath, '/r/step-01.png');
+    assert.ok(!('screenshotPath' in out.pageContext.stepEntries[1]));
+    assert.equal(out.untrusted.media[1].transcript, 't');
+    assert.ok(!JSON.stringify(out.trusted).includes('transcript'));
+  });
+
+  test('reshapeComment / handleGetComment: emits exactly the 14 whitelisted keys and drops sensitive fields', async () => {
     const rawApiComment = {
       id: 99,
       number: 3,
@@ -263,7 +300,7 @@ describe('mcp: tools handlers and helpers', () => {
 
       const res = await handleGetComment({ number: 3 }, ctx);
 
-      // Exact top-level key set comparison: exactly 13 keys
+      // Exact top-level key set comparison: exactly 14 keys
       const expectedKeys = [
         'appliedAt',
         'appliedByLabel',
@@ -276,6 +313,7 @@ describe('mcp: tools handlers and helpers', () => {
         'isBugReport',
         'number',
         'status',
+        'textSource',
         'trusted',
         'untrusted',
       ];
@@ -284,7 +322,7 @@ describe('mcp: tools handlers and helpers', () => {
       assert.equal(res.internalId, 99);
 
       // Assert untrusted and trusted partition
-      assert.deepEqual(Object.keys(res.untrusted).sort(), ['body', 'replies']);
+      assert.deepEqual(Object.keys(res.untrusted).sort(), ['body', 'media', 'replies']);
       assert.deepEqual(Object.keys(res.trusted).sort(), ['aiRules', 'pickedActions']);
 
       // Zero sensitive keys anywhere

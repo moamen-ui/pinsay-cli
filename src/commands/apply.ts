@@ -9,6 +9,7 @@ import { runApply } from '../apply/run.js';
 import { markApplied, markFailed } from '../apply/mark.js';
 import { fetchQueue } from '../apply/queue.js';
 import { toAiCommentView } from '../apply/projection.js';
+import { pruneMedia, saveIfRooted } from '../apply/media.js';
 import { resolveModels, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext } from '../apply/types.js';
 import { resolveServer } from '../server.js';
@@ -312,7 +313,12 @@ export async function applyCommand(
       status: typeof parsed['status'] === 'string' ? parsed['status'] : undefined,
       environment: typeof parsed['env'] === 'string' ? parsed['env'] : undefined,
     });
-    const projections = items.map((item) => toAiCommentView(item));
+    await pruneMedia(root);
+    const projections = [];
+    for (const item of items) {
+      const saved = await saveIfRooted(item, { root, projectKey: project, server, token });
+      projections.push(toAiCommentView(item, undefined, saved));
+    }
     console.log(JSON.stringify(projections, null, 2));
     process.exit(0);
   }
@@ -381,11 +387,17 @@ async function applyAllProjects(
   const environment = typeof parsed['env'] === 'string' ? parsed['env'] : undefined;
 
   if (parsed['json'] === true && !plan) {
+    await pruneMedia(root);
     const all: Array<{ project: string; path: string; items: unknown[] }> = [];
     for (const p of projects) {
       const clientCtx: ApplyClientContext = { server, project: p.key, token, apiKey, cwd: root, workspaceName };
       const items = await fetchQueue(clientCtx, { status, environment });
-      all.push({ project: p.key, path: p.path, items: items.map((item) => toAiCommentView(item)) });
+      const projections = [];
+      for (const item of items) {
+        const saved = await saveIfRooted(item, { root, projectKey: p.key, server, token });
+        projections.push(toAiCommentView(item, undefined, saved));
+      }
+      all.push({ project: p.key, path: p.path, items: projections });
     }
     console.log(JSON.stringify(all, null, 2));
     process.exit(0);
