@@ -233,3 +233,44 @@ export type ApplyRunResult = {
   items: QueueItem[];
   context: ApplyProjectContext;
 };
+
+/** One stored file on a comment or a reply, as the API sends it (`CommentMediaDto`, rich comments). */
+export type CommentMedia = {
+  id?: number;
+  /** "annotation" | "step" | "audio" | "screenshot" (reply only). */
+  kind: string;
+  /** Signed absolute link; null when retention removed the file. */
+  url: string | null;
+  contentType: string;
+  sizeBytes: number;
+  width?: number | null;
+  height?: number | null;
+  durationMs?: number | null;
+  ordinal: number;
+  /** Audio only: the server transcript when there is one, else the browser paragraph. */
+  transcript?: string | null;
+  /** Audio only: "browser" | "server". */
+  transcriptSource?: string | null;
+  transcriptionStatus?: string | null;
+  available: boolean;
+};
+
+/** A media item after `saveCommentMedia`: `path` is absolute, or null when not saved (`error` says why). */
+export type SavedMedia = CommentMedia & { path: string | null; error?: string };
+
+export type SavedReplyMedia = {
+  /** The folder name under the comment folder: `reply-<id>` or `reply-p<position>`. */
+  folder: string;
+  replyId?: number;
+  /** 1-based position of the reply in the thread. */
+  position: number;
+  media: SavedMedia[];
+};
+
+export type SavedCommentMedia = {
+  /** Absolute comment folder `<root>/.pinsay/media/<projectKey>/<number>`. */
+  dir: string;
+  screenshot: { url: string; path: string | null; error?: string } | null;
+  media: SavedMedia[];
+  replies: SavedReplyMedia[];
+};

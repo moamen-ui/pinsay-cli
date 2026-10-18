@@ -196,6 +196,84 @@ test('markApplied sends structured aiTool/aiModel in the PATCH body when provide
   }
 });
 
+test('markApplied deletes the marked comment\'s media folder', async () => {
+  const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-mark-test-'));
+  spawnSync('git', ['init'], { cwd: dir });
+  spawnSync('git', ['config', 'user.name', 'Developer'], { cwd: dir });
+  spawnSync('git', ['config', 'user.email', 'dev@example.com'], { cwd: dir });
+  spawnSync('git', ['remote', 'add', 'origin', 'https://github.com/myorg/myrepo.git'], { cwd: dir });
+
+  await fs.writeFile(join(dir, 'README.md'), '# test\n');
+  spawnSync('git', ['add', 'README.md'], { cwd: dir });
+  spawnSync('git', ['commit', '-m', 'Initial commit'], { cwd: dir });
+
+  await fs.writeFile(join(dir, 'app.js'), 'console.log("fix");\n');
+  spawnSync('git', ['add', 'app.js'], { cwd: dir });
+
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url === '/api/branding') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { productName: 'PinSay' } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url?.startsWith('/api/projects/my-app/capture-config')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { commitStyle: 2 } }));
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/comments/10') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { id: 10, body: 'Fix console log' } }));
+      return;
+    }
+    if (req.method === 'PATCH' && req.url === '/api/comments/10') {
+      let data = '';
+      req.on('data', (chunk: any) => (data += chunk));
+      req.on('end', () => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data: {} }));
+      });
+      return;
+    }
+    if (req.method === 'POST' && req.url === '/api/events') {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+
+  try {
+    const mediaDir = join(dir, '.pinsay', 'media', 'my-app', '10');
+    await fs.mkdir(mediaDir, { recursive: true });
+    await fs.writeFile(join(mediaDir, 'annotation.png'), 'A');
+
+    const ctx: ApplyClientContext = {
+      server: stub.url,
+      project: 'my-app',
+      token: 'test-token',
+      cwd: dir,
+    };
+
+    const result = await markApplied(
+      {
+        id: 10,
+        number: 10,
+        reply: 'Applied ✓ — fixed the console log',
+      },
+      ctx,
+    );
+
+    assert.equal(result.committed, true);
+    assert.deepEqual(result.patchedNumbers, [10]);
+    await assert.rejects(fs.stat(mediaDir));
+  } finally {
+    await stub.close();
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('markFailed posts reply with reason and emits event', async () => {
   let replyBody: any = null;
   let eventPayload: any = null;

@@ -3,6 +3,7 @@ import { postEvent } from '../events.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail, resolveCommit } from './git.js';
 import { fetchQueue, type QueueFilter } from './queue.js';
 import { loadProjectContext } from './context.js';
+import { deleteCommentMedia } from './media.js';
 import type { ApplyClientContext } from './types.js';
 import {
   mergeModels,
@@ -208,6 +209,11 @@ export async function markApplied(
     patchedIds.push(id);
     patchedNumbers.push(number);
     await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
+  }
+
+  // PLAN § S2: an applied comment's saved media are no longer needed.
+  for (const n of patchedNumbers) {
+    await deleteCommentMedia(ctx.cwd, ctx.project, n);
   }
 
   return {
