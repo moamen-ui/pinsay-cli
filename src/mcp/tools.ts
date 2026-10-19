@@ -8,7 +8,7 @@ import { exitCodeFor } from '../commands/doctor.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
-import { normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
+import { deleteCommentMedia, normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
 import { promptRef, sharedFromApi, sharedFromParts, withExtraRules } from '../apply/shared.js';
 import { fetchMemberRules } from '../apply/member-rules.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
@@ -472,6 +472,10 @@ function parseModelsArgs(args: { model?: unknown; models?: unknown } | undefined
   }
 }
 
+async function dropSavedMedia(ctx: McpContext, number: number): Promise<void> {
+  if (typeof ctx.cwd === 'string' && ctx.cwd !== '') await deleteCommentMedia(ctx.cwd, ctx.project, number);
+}
+
 export async function handleMarkApplied(
   args: { number: number; reply: string; commitUrl?: string; tool?: string; model?: string; models?: unknown },
   ctx: McpContext,
@@ -516,6 +520,8 @@ export async function handleMarkApplied(
   });
 
   await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
+
+  await dropSavedMedia(ctx, number);
 
   return {
     number,
@@ -671,6 +677,7 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
+      await dropSavedMedia(ctx, number);
       results.push({ number, commitUrl });
       }
     } else {
@@ -719,6 +726,7 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
+      await dropSavedMedia(ctx, number);
       results.push({ number, commitUrl });
     }
   } else {
@@ -763,6 +771,7 @@ export async function handleCommitAndMark(
 
       await postEvent(ctx.server, ctx.token, { type: 'first_apply', projectKey: ctx.project, meta: { commentId: id } }, ctx.cwd);
 
+      await dropSavedMedia(ctx, number);
       results.push({ number, commitUrl });
     }
   }

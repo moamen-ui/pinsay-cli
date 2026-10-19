@@ -13,6 +13,8 @@ import type { CommentMedia, SavedCommentMedia, SavedMedia, SavedReplyMedia } fro
 export const MEDIA_DIR = join('.pinsay', 'media');
 export const MEDIA_MAX_AGE_DAYS = 7;
 const DOWNLOAD_TIMEOUT_MS = 30_000;
+export const MAX_MEDIA_BYTES = 25 * 1024 * 1024;
+const SAFE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'gif', 'webm', 'ogg', 'm4a', 'mp4', 'mp3', 'wav']);
 
 export type MediaSource = {
   number: number;
@@ -50,7 +52,7 @@ export function extensionFor(contentType: string | null | undefined, url: string
   if (url) {
     try {
       const m = /\.([a-z0-9]{2,5})$/i.exec(new URL(url, 'http://x').pathname);
-      if (m) return m[1].toLowerCase();
+      if (m && SAFE_EXTENSIONS.has(m[1].toLowerCase())) return m[1].toLowerCase();
     } catch {
       // not a URL: fall through
     }
@@ -101,12 +103,13 @@ async function download(
     return 'invalid url';
   }
   if (target.protocol !== 'https:' && target.protocol !== 'http:') return 'invalid url';
+  if (target.origin !== serverOrigin) return 'off-origin url';
 
   const have = await fs.stat(file).catch(() => null);
   if (have && have.isFile() && (expectedSize === null ? have.size > 0 : have.size === expectedSize)) return null;
 
   const headers: Record<string, string> = {};
-  if (opts.token && target.origin === serverOrigin) headers['Authorization'] = `Bearer ${opts.token}`;
+  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
   const doFetch = opts.fetchImpl ?? fetch;
   let res: Response;
   try {
@@ -120,10 +123,33 @@ async function download(
   }
   if (res.status >= 300 && res.status < 400) return 'redirect refused';
   if (!res.ok) return `HTTP ${res.status}`;
+  const declared = Number(res.headers.get('content-length'));
+  if (res.headers.get('content-length') !== null && Number.isFinite(declared) && declared > MAX_MEDIA_BYTES) {
+    await res.body?.cancel().catch(() => undefined);
+    return 'too large';
+  }
+  const part = `${file}.part`;
   try {
-    const bytes = Buffer.from(await res.arrayBuffer());
-    await fs.writeFile(file, bytes);
+    const chunks: Buffer[] = [];
+    let total = 0;
+    if (res.body) {
+      const reader = res.body.getReader();
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        total += value.byteLength;
+        if (total > MAX_MEDIA_BYTES) {
+          await reader.cancel().catch(() => undefined);
+          return 'too large';
+        }
+        chunks.push(Buffer.from(value));
+      }
+    }
+    if (expectedSize !== null && total !== expectedSize) return 'size mismatch';
+    await fs.writeFile(part, Buffer.concat(chunks));
+    await fs.rename(part, file);
   } catch (err) {
+    await fs.rm(part, { force: true }).catch(() => undefined);
     return (err as Error)?.message || 'write failed';
   }
   return null;

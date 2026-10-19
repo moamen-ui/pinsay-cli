@@ -1,6 +1,6 @@
 import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
+import { mkdtempSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createServer, type Server } from 'node:http';
@@ -499,6 +499,10 @@ describe('mcp: tools handlers and helpers', () => {
         token: 'jwt-token',
       };
 
+      const mediaDir = join(tmpDir, '.pinsay', 'media', 'test-project', '42');
+      mkdirSync(mediaDir, { recursive: true });
+      writeFileSync(join(mediaDir, 'screenshot.png'), 'x');
+
       const res = await handleMarkApplied(
         { number: 42, reply: 'Fixed via MCP', commitUrl: 'https://github.com/org/repo/commit/123456' },
         ctx,
@@ -509,6 +513,7 @@ describe('mcp: tools handlers and helpers', () => {
         .stdout.trim();
       assert.equal(headAfter, headBefore, 'pinsay_mark_applied must NEVER change HEAD or commit');
 
+      assert.equal(existsSync(mediaDir), false, 'marking applied deletes the comment\'s local media');
       assert.equal(patchedUrl, '/api/comments/4242');
       assert.equal(patchedBody.status, 3);
       assert.equal(patchedBody.reply, 'Fixed via MCP');
@@ -686,6 +691,12 @@ describe('mcp: tools handlers and helpers', () => {
         token: 'jwt-token',
       };
 
+      const mediaDirs = [10, 11].map((n) => join(tmpDir, '.pinsay', 'media', 'test-project', String(n)));
+      for (const d of mediaDirs) {
+        mkdirSync(d, { recursive: true });
+        writeFileSync(join(d, 'screenshot.png'), 'x');
+      }
+
       const res = await handleCommitAndMark(
         { numbers: [10, 11], reply: 'Applied both', files: ['src/b.txt'] },
         ctx,
@@ -698,6 +709,7 @@ describe('mcp: tools handlers and helpers', () => {
       const sha = logRes.stdout.trim();
 
       assert.equal(res.length, 2);
+      for (const d of mediaDirs) assert.equal(existsSync(d), false, 'commit_and_mark deletes each marked comment\'s local media');
       assert.equal(patchedBodies.length, 2);
       for (const body of patchedBodies) {
         // The bug: this path used to omit commitSha entirely, so `pinsay status --deployed`

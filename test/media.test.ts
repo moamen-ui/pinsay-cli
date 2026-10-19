@@ -10,6 +10,7 @@ import {
   deleteCommentMedia,
   mediaFileName,
   extensionFor,
+  MAX_MEDIA_BYTES,
 } from '../src/apply/media.js';
 import type { CommentMedia } from '../src/apply/types.js';
 
@@ -240,7 +241,7 @@ test('HTTP error is reported, never thrown', async () => {
   }
 });
 
-test('token only to the server origin', async () => {
+test('token only to the server origin; off-origin media is not fetched', async () => {
   const root1 = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
   const root2 = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
   const seen: Array<string | undefined> = [];
@@ -256,11 +257,14 @@ test('token only to the server origin', async () => {
     );
     assert.equal(seen.at(-1), 'Bearer t');
 
-    await saveCommentMedia(
+    const before = seen.length;
+    const off = await saveCommentMedia(
       { number: 1, media: [item({ kind: 'annotation', url: `${stub.url}/files/x.png`, sizeBytes: 1 })] },
       { root: root2, projectKey: 'web', server: 'http://127.0.0.1:1', token: 't' },
     );
-    assert.equal(seen.at(-1), undefined);
+    assert.equal(seen.length, before, 'the off-origin url is not fetched');
+    assert.equal(off.media[0].path, null);
+    assert.equal(off.media[0].error, 'off-origin url');
   } finally {
     await stub.close();
     await fs.rm(root1, { recursive: true, force: true });
@@ -329,4 +333,88 @@ test('mediaFileName and extensionFor', async () => {
   assert.equal(extensionFor(null, 'https://h/x/y.jpeg?sig=1', 'png'), 'jpeg');
   assert.equal(extensionFor(null, null, 'png'), 'png');
   assert.equal(mediaFileName(item({ kind: 'video', url: 'https://x/v.mp4', contentType: 'video/mp4' })), null);
+});
+
+test('off-origin url is refused without a fetch', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
+  let calls = 0;
+  const fetchImpl = (async () => {
+    calls++;
+    return new Response('X');
+  }) as typeof fetch;
+  try {
+    const result = await saveCommentMedia(
+      { number: 3, media: [item({ kind: 'annotation', url: 'https://evil.example/a.png', sizeBytes: 1 })] },
+      { root, projectKey: 'web', server: 'https://app.example', fetchImpl },
+    );
+    assert.equal(result.media[0].path, null);
+    assert.equal(result.media[0].error, 'off-origin url');
+    assert.equal(calls, 0);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('content-length over the cap is refused', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
+  const fetchImpl = (async () =>
+    new Response('X', { headers: { 'content-length': String(MAX_MEDIA_BYTES + 1) } })) as typeof fetch;
+  try {
+    const result = await saveCommentMedia(
+      { number: 3, media: [item({ kind: 'annotation', url: 'https://app.example/a.png', sizeBytes: 1 })] },
+      { root, projectKey: 'web', server: 'https://app.example', fetchImpl },
+    );
+    assert.equal(result.media[0].error, 'too large');
+    assert.equal(await exists(join(result.dir, 'annotation.png')), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a streamed body over the cap is refused, no file', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
+  const chunk = new Uint8Array(1024 * 1024);
+  let sent = 0;
+  const fetchImpl = (async () =>
+    new Response(
+      new ReadableStream({
+        pull(controller) {
+          if (sent > 30) return controller.close();
+          sent++;
+          controller.enqueue(chunk);
+        },
+      }),
+    )) as typeof fetch;
+  try {
+    const result = await saveCommentMedia(
+      { number: 3, media: [item({ kind: 'annotation', url: 'https://app.example/a.png', sizeBytes: 0 })] },
+      { root, projectKey: 'web', server: 'https://app.example', fetchImpl },
+    );
+    assert.equal(result.media[0].error, 'too large');
+    assert.equal(await exists(join(result.dir, 'annotation.png')), false);
+    assert.equal(await exists(join(result.dir, 'annotation.png.part')), false);
+    assert.ok(sent < 30, 'the reader stopped early');
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('a truncated body is a size mismatch, no file and no .part', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
+  const fetchImpl = (async () => new Response('12345678')) as typeof fetch;
+  try {
+    const result = await saveCommentMedia(
+      { number: 3, media: [item({ kind: 'annotation', url: 'https://app.example/a.png', sizeBytes: 10 })] },
+      { root, projectKey: 'web', server: 'https://app.example', fetchImpl },
+    );
+    assert.equal(result.media[0].error, 'size mismatch');
+    assert.equal(await exists(join(result.dir, 'annotation.png')), false);
+    assert.equal(await exists(join(result.dir, 'annotation.png.part')), false);
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('extensionFor ignores an unknown URL extension', async () => {
+  assert.equal(extensionFor('application/octet-stream', 'https://h/x/evil.sh', 'png'), 'png');
 });
