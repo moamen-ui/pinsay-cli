@@ -13,6 +13,7 @@ import { promptRef, sharedFromApi, sharedFromParts, withExtraRules } from '../ap
 import { fetchMemberRules } from '../apply/member-rules.js';
 import { isStaged, commitAll, headSha, getRemoteUrl, commitUrlFor, getUserEmail } from '../apply/git.js';
 import { findRepoRoot, readConfig, resolveProject, listProjects } from '../config.js';
+import { fetchStatuses, resolveStatus, unknownStatusError, statusJson } from '../statuses.js';
 import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveModelsFromArgs, modelsBody, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext, ApplyPageDto, PageContextDto, SavedCommentMedia, SavedMedia } from '../apply/types.js';
@@ -42,17 +43,6 @@ export function mcpError(
   message: string,
 ): McpError {
   return { code, message };
-}
-
-function mapStatusToNumber(status?: number | string): number | undefined {
-  if (status === undefined || status === null) return undefined;
-  if (typeof status === 'number') return status;
-  const s = String(status).toLowerCase();
-  if (s === 'open' || s === '1') return 1;
-  if (s === 'ready' || s === 'readytoapply' || s === '2') return 2;
-  if (s === 'applied' || s === '3') return 3;
-  if (s === 'archived' || s === '4') return 4;
-  return undefined;
 }
 
 function mapEnvironmentToNumber(env?: number | string): number | undefined {
@@ -266,7 +256,13 @@ export async function handleListComments(
   },
   ctx: McpContext,
 ): Promise<any> {
-  const statusNum = mapStatusToNumber(args?.status);
+  const catalog = await fetchStatuses(ctx);
+  let statusKey: string | undefined;
+  if (args?.status !== undefined && args.status !== null && String(args.status).trim() !== '') {
+    const resolvedStatus = resolveStatus(args.status, catalog);
+    if (!resolvedStatus) throw mcpError('invalid_input', unknownStatusError(String(args.status), catalog));
+    statusKey = resolvedStatus.key;
+  }
   const envNum = mapEnvironmentToNumber(args?.environment);
   const page = typeof args?.page === 'number' && args.page >= 1 ? args.page : 1;
   const pageSize =
@@ -275,7 +271,7 @@ export async function handleListComments(
       : 50;
 
   const queryParts = ['view=summary', `pageNumber=${page}`, `pageSize=${pageSize}`];
-  if (statusNum !== undefined) queryParts.push(`status=${statusNum}`);
+  if (statusKey !== undefined) queryParts.push(`statusKey=${encodeURIComponent(statusKey)}`);
   if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
 
   const url = `/api/projects/${encodeURIComponent(ctx.project)}/comments?${queryParts.join('&')}`;
@@ -286,6 +282,7 @@ export async function handleListComments(
     number: item.number,
     internalId: item.id,
     status: item.status,
+    ...statusJson(item, catalog),
     environment: item.environment,
     body: item.body ?? '',
     untrusted: {
@@ -820,7 +817,7 @@ export async function handleSetStatus(
   ctx: McpContext,
 ): Promise<any> {
   const number = parseCommentNumber(args?.number);
-  const statusStr = String(args?.status || '').toLowerCase();
+  const statusStr = String(args?.status || '').trim();
 
   if (number === null) {
     throw mcpError('invalid_input', invalidNumberMessage(args?.number, (args as any)?.id));
@@ -829,13 +826,13 @@ export async function handleSetStatus(
     throw mcpError('invalid_input', 'number and status are required');
   }
 
-  if (statusStr === 'applied') {
-    throw mcpError('invalid_input', 'Status "applied" is only settable via mark tools');
+  const catalog = await fetchStatuses(ctx);
+  const resolvedStatus = resolveStatus(statusStr, catalog);
+  if (!resolvedStatus) {
+    throw mcpError('invalid_input', unknownStatusError(statusStr, catalog));
   }
-
-  const statusNum = mapStatusToNumber(statusStr);
-  if (statusNum === undefined) {
-    throw mcpError('invalid_input', `Invalid status: ${args.status}`);
+  if (resolvedStatus.status === 3) {
+    throw mcpError('invalid_input', 'Status "applied" is only settable via mark tools');
   }
 
   let id: number;
@@ -851,11 +848,11 @@ export async function handleSetStatus(
 
   await api(ctx.server, `/api/comments/${id}`, {
     method: 'PATCH',
-    body: { status: statusNum },
+    body: { statusKey: resolvedStatus.key },
     token: ctx.token,
   });
 
-  return { number, status: statusStr };
+  return { number, status: resolvedStatus.key };
 }
 
 export async function handleResolveSource(

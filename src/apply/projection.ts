@@ -1,4 +1,5 @@
 import { normalizeMedia } from './media.js';
+import { statusJson } from '../statuses.js';
 import { promptRef } from './shared.js';
 import type {
   AiCommentView,
@@ -137,6 +138,7 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
     aiRules,
     replies,
     status: raw?.status,
+    ...statusJson(raw ?? {}),
     media: toMediaViews(raw?.media, saved?.media),
     textSource: typeof raw?.textSource === 'string' ? raw.textSource : null,
   };

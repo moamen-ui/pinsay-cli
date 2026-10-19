@@ -13,6 +13,17 @@ import { pruneMedia, saveIfRooted } from '../apply/media.js';
 import { resolveModels, ModelsError, type AiModelEntry } from '../apply/models.js';
 import type { ApplyClientContext } from '../apply/types.js';
 import { resolveServer } from '../server.js';
+import { fetchStatuses, resolveStatus, unknownStatusError } from '../statuses.js';
+
+/** An unknown `--status` fails loudly (exit 2) before any queue call: never a silent "no filter". */
+async function exitOnUnknownStatus(server: string, token: string | undefined, status: unknown): Promise<void> {
+  if (typeof status !== 'string') return;
+  const catalog = await fetchStatuses({ server, token });
+  if (!resolveStatus(status, catalog)) {
+    console.error(unknownStatusError(status, catalog));
+    process.exit(2);
+  }
+}
 
 /**
  * DB-18: a workspace that is paused or scheduled for deletion refuses every write with 423 — for a
@@ -177,6 +188,8 @@ export async function applyCommand(
     cwd: root,
     workspaceName,
   };
+
+  await exitOnUnknownStatus(server, token, parsed['status']);
 
   // 1. Handling --mark <number>|all
   if (parsed['mark'] !== undefined) {
@@ -380,6 +393,8 @@ async function applyAllProjects(
   // DB-18: same check as the single-project path — the multi-project default/`--plan`/`--json`
   // run reaches here without ever going through applyCommand's own check.
   const workspaceName = await exitIfWorkspaceFrozen(server, token);
+
+  await exitOnUnknownStatus(server, token, parsed['status']);
 
   const projects = listProjects(config);
   const plan = parsed['plan'] === true;

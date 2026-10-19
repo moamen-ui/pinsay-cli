@@ -87,6 +87,8 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
     'aiRules',
     'replies',
     'status',
+    'statusKey',
+    'statusLabel',
     'textSource',
   ].sort();
 

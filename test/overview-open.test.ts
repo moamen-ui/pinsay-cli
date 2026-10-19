@@ -64,7 +64,7 @@ async function withStub(handler: http.RequestListener, fn: (url: string) => Prom
 
 test('configured repo + repo key + stub queue returning 3 items: status overview and status PATCH', async () => {
   let patchCalled = false;
-  let patchedStatus = -1;
+  let patchedStatus: string | number = -1;
 
   const stubHandler: http.RequestListener = (req, res) => {
     res.setHeader('Content-Type', 'application/json');
@@ -125,7 +125,7 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
       req.on('end', () => {
         try {
           const parsed = JSON.parse(body);
-          patchedStatus = parsed.status;
+          patchedStatus = parsed.statusKey;
         } catch {}
         res.end(JSON.stringify({ isSuccess: true, data: { id: 77, number: 12, status: 2 } }));
       });
@@ -169,7 +169,7 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
       const patchRes = await run(['status', '12', 'ready'], dir, env);
       assert.strictEqual(patchRes.code, 0, patchRes.stderr);
       assert.strictEqual(patchCalled, true);
-      assert.strictEqual(patchedStatus, 2);
+      assert.strictEqual(patchedStatus, 'ready');
     });
   });
 });

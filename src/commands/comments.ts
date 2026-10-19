@@ -1,30 +1,13 @@
 import { findRepoRoot, readConfig, resolveProject, listProjects, type PinSayConfig } from '../config.js';
 import { resolveSource } from '../vite/resolve.js';
-import { api } from '../api.js';
+import { api, ApiError } from '../api.js';
 import { parseCommentNumber, invalidNumberMessage, fetchCommentByNumber, CommentNotFoundError } from '../lib/comment-ref.js';
 import { resolveToken, readApiKey } from '../auth.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { pruneMedia, saveIfRooted } from '../apply/media.js';
 import type { AiCommentView, AiMediaView } from '../apply/types.js';
 import { resolveServer } from '../server.js';
-
-function mapStatusToNumber(status?: string): number | undefined {
-  if (!status) return undefined;
-  const s = status.toLowerCase();
-  if (s === 'open' || s === '1') return 1;
-  if (s === 'ready' || s === 'readytoapply' || s === '2') return 2;
-  if (s === 'applied' || s === '3') return 3;
-  if (s === 'archived' || s === '4') return 4;
-  return undefined;
-}
-
-function mapStatusToString(status: number | string): string {
-  if (status === 1 || status === '1') return 'Open';
-  if (status === 2 || status === '2') return 'ReadyToApply';
-  if (status === 3 || status === '3') return 'Applied';
-  if (status === 4 || status === '4') return 'Archived';
-  return String(status);
-}
+import { fetchStatuses, resolveStatus, statusLabel, statusJson, unknownStatusError, type StatusCatalogItem } from '../statuses.js';
 
 function mapEnvironmentToNumber(env?: string): number | undefined {
   if (!env) return undefined;
@@ -104,19 +87,19 @@ async function fetchCommentsFor(
   server: string,
   token: string | undefined,
   project: string,
-  statusNum?: number,
+  statusKey?: string,
   envNum?: number,
 ): Promise<any[]> {
   const queryParts = ['view=summary'];
-  if (statusNum !== undefined) queryParts.push(`status=${statusNum}`);
+  if (statusKey !== undefined) queryParts.push(`statusKey=${encodeURIComponent(statusKey)}`);
   if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
   const url = `/api/projects/${encodeURIComponent(project)}/comments?${queryParts.join('&')}`;
   const res = await api<any>(server, url, { token });
   return res?.items ?? [];
 }
 
-function printCommentLine(item: any): void {
-  const st = mapStatusToString(item.status);
+function printCommentLine(item: any, catalog: StatusCatalogItem[]): void {
+  const st = statusLabel(item, catalog);
   const env = mapEnvironmentToString(item.environment);
   const author = item.authorName || 'Anonymous';
   const loc = item.route || item.sourcePath || '';
@@ -132,23 +115,32 @@ export async function listCommand(
 
   const statusArg = (typeof parsed['status'] === 'string' ? parsed['status'] : positionals[1]) || undefined;
   const envArg = (typeof parsed['env'] === 'string' ? parsed['env'] : positionals[2]) || undefined;
-  const statusNum = mapStatusToNumber(statusArg);
+  const catalog = await fetchStatuses({ server, token });
+  let statusKey: string | undefined;
+  if (statusArg !== undefined) {
+    const resolvedStatus = resolveStatus(statusArg, catalog);
+    if (!resolvedStatus) {
+      console.error(unknownStatusError(statusArg, catalog));
+      process.exit(2);
+    }
+    statusKey = resolvedStatus.key;
+  }
   const envNum = mapEnvironmentToNumber(envArg);
 
   const flag = typeof parsed['project'] === 'string' ? parsed['project'] : undefined;
   const resolved = resolveProject(config, cwd, root, flag);
 
   if (resolved.ok) {
-    const items = await fetchCommentsFor(server, token, resolved.project.key, statusNum, envNum);
+    const items = await fetchCommentsFor(server, token, resolved.project.key, statusKey, envNum);
     if (parsed['json'] === true) {
-      console.log(JSON.stringify(items.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest })), null, 2));
+      console.log(JSON.stringify(items.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest, ...statusJson(rest, catalog) })), null, 2));
       process.exit(0);
     }
     if (items.length === 0) {
       console.log('No comments found.');
       process.exit(0);
     }
-    for (const item of items) printCommentLine(item);
+    for (const item of items) printCommentLine(item, catalog);
     process.exit(0);
   }
 
@@ -166,12 +158,12 @@ export async function listCommand(
   const projects = listProjects(config);
   const grouped: Array<{ key: string; path: string; comments: any[] }> = [];
   for (const p of projects) {
-    const comments = await fetchCommentsFor(server, token, p.key, statusNum, envNum);
+    const comments = await fetchCommentsFor(server, token, p.key, statusKey, envNum);
     grouped.push({ key: p.key, path: p.path, comments });
   }
 
   if (parsed['json'] === true) {
-    console.log(JSON.stringify(grouped.map((g) => ({ project: g.key, comments: g.comments.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest })) })), null, 2));
+    console.log(JSON.stringify(grouped.map((g) => ({ project: g.key, comments: g.comments.map(({ id, ...rest }: any) => ({ number: rest.number, internalId: id, ...rest, ...statusJson(rest, catalog) })) })), null, 2));
     process.exit(0);
   }
 
@@ -180,7 +172,7 @@ export async function listCommand(
     if (g.comments.length === 0) {
       console.log('No comments found.');
     } else {
-      for (const item of g.comments) printCommentLine(item);
+      for (const item of g.comments) printCommentLine(item, catalog);
     }
     console.log('');
   }
@@ -223,6 +215,7 @@ export async function getCommand(
   await pruneMedia(root);
   const saved = await saveIfRooted(raw, { root, projectKey: project, server, token });
   const view = toAiCommentView(raw, undefined, saved);
+  const catalog = await fetchStatuses({ server, token });
 
   if (parsed['json'] === true) {
     // The hash stamped into the DOM is often the only durable link from "what the stakeholder
@@ -231,11 +224,11 @@ export async function getCommand(
     // .pinsay/manifest.json itself, means one shape to consume and one place that knows about the
     // previous-build fallback.
     const resolved = resolveSource(cwd, view.element?.sourcePath);
-    console.log(JSON.stringify({ ...view, resolvedSource: resolved }, null, 2));
+    console.log(JSON.stringify({ ...view, ...statusJson(raw, catalog), resolvedSource: resolved }, null, 2));
     process.exit(0);
   }
 
-  console.log(`Comment #${n} [${mapStatusToString(view.status)}] [${mapEnvironmentToString(view.environment)}]`);
+  console.log(`Comment #${n} [${statusLabel(raw, catalog)}] [${mapEnvironmentToString(view.environment)}]`);
   console.log(`Author: ${view.authorName || 'Anonymous'} | Created: ${view.createdAt}`);
   if (view.element.route || view.element.sourcePath) {
     console.log(`Location: ${view.element.route || ''} ${view.element.sourcePath ? `(${view.element.sourcePath})` : ''}`);
@@ -334,7 +327,7 @@ export async function statusCommand(
   const newStatusStr = positionals[2];
 
   if (!numStr || !newStatusStr) {
-    console.error('Usage: pinsay status <number> <open|ready|applied|archived>');
+    console.error('Usage: pinsay status <number> <open|ready|applied|archived|"custom status">');
     process.exit(2);
   }
 
@@ -344,13 +337,14 @@ export async function statusCommand(
     process.exit(2);
   }
 
-  const statusNum = mapStatusToNumber(newStatusStr);
-  if (statusNum === undefined) {
-    console.error(`Invalid status: ${newStatusStr}. Must be open, ready, applied, or archived.`);
+  const catalog = await fetchStatuses({ server, token });
+  const resolvedStatus = resolveStatus(newStatusStr, catalog);
+  if (!resolvedStatus) {
+    console.error(unknownStatusError(newStatusStr, catalog));
     process.exit(2);
   }
 
-  if (statusNum === 3 /* Applied */) {
+  if (resolvedStatus.status === 3 /* Applied */) {
     console.error(
       "Marking a comment as 'applied' is not permitted via `pinsay status`.\n" +
         "Use `pinsay apply --mark <number> --reply \"<explanation>\"` (or `pinsay reply <number> \"<text>\"`) to record a properly structured reply.",
@@ -369,13 +363,21 @@ export async function statusCommand(
     throw err;
   }
 
-  await api(server, `/api/comments/${raw.id}`, {
-    method: 'PATCH',
-    body: { status: statusNum },
-    token,
-  });
+  try {
+    await api(server, `/api/comments/${raw.id}`, {
+      method: 'PATCH',
+      body: { statusKey: resolvedStatus.key },
+      token,
+    });
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 403) {
+      console.error(err.message);
+      process.exit(1);
+    }
+    throw err;
+  }
 
-  console.log(`Updated comment #${n} status to ${mapStatusToString(statusNum)}.`);
+  console.log(`Updated comment #${n} status to ${resolvedStatus.label}.`);
   process.exit(0);
 }
 

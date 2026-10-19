@@ -62,6 +62,11 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.14.0
+
+- Custom statuses: `list --status`, `apply --status` and `status <number> <status>` (and the MCP `pinsay_list_comments` / `pinsay_set_status` tools) take a custom status by label or key (`c<id>`), case-insensitive. Output shows the status label; `--json` adds `statusKey` and `statusLabel` next to `status`.
+- An unknown status now exits 2 with the workspace's statuses (MCP: `invalid_input`) instead of listing everything. `apply` alone still means Ready; `applied` stays Completed and is set only by `apply --mark`.
+
 ### 0.13.0
 
 - Comment media in `get` (human output and `--json`) and in the MCP `pinsay_get_comment` / `pinsay_get_queue` tools: recording steps (each with its screenshot), annotated screenshots, voice messages and the files on replies. Each file is named by its saved path (`media[].path`, `element.screenshotPath`; MCP `untrusted.media[].path`).

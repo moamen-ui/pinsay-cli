@@ -246,7 +246,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         purpose: "Who you are, this folder's project, comments waiting",
         usage:
             'npx pinsay-cli status\n' +
-            '       npx pinsay-cli status <number> <open|ready|applied|archived>\n' +
+            '       npx pinsay-cli status <number> <open|ready|archived|status>\n' +
             '       npx pinsay-cli status --deployed [sha]',
         common: [
             ['--json', 'Overview as JSON'],
@@ -263,7 +263,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         ],
         examples: [
             ['npx pinsay-cli status', "Who you are and what's waiting"],
-            ['npx pinsay-cli status 42 ready', 'Mark comment #42 ready'],
+            ['npx pinsay-cli status 42 ready', 'Move #42 to Ready (or a custom status)'],
             ['npx pinsay-cli status --deployed', "Mark this build's applied comments live"],
         ],
     },
@@ -289,13 +289,13 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
         purpose: 'List feedback comments',
         usage: 'npx pinsay-cli list [status] [environment]',
         common: [
-            ['--status <status>', 'Filter (open, ready, applied, archived)'],
+            ['--status <status>', 'Filter: open, ready, applied, archived, custom'],
             ['--env <env>', 'Filter (local, staging, production)'],
             ['--project <key>', "Project (default: this folder's)"],
             ['--json', 'Comments as JSON'],
         ],
         all: [
-            ['--status <status>', 'Filter (open, ready, applied, archived)'],
+            ['--status <status>', 'Filter: open, ready, applied, archived, custom'],
             ['--env <env>', 'Filter (local, staging, production)'],
             ['--project <key>', "Project (default: this folder's)"],
             ['--key <key>', 'API key'],
@@ -337,7 +337,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--mark <number>|all', 'Commit and mark applied (needs --models)'],
             ['--reply <text>', 'Reply recorded with --mark'],
             ['--models <list>', '"<id>=<role>", mandatory with --mark'],
-            ['--status <status>', 'Filter the queue (open, ready, applied, archived)'],
+            ['--status <status>', 'Queue status (default ready; custom label/key)'],
             ['--env <env>', 'Filter (local, staging, production)'],
             ['--json', 'Queue as JSON'],
         ],
@@ -353,7 +353,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--dry-run', 'Print what --mark would do; change nothing'],
             ['--fail <number>', 'Mark apply failed with a reply'],
             ['--reason <text>', 'Why it failed (required with --fail)'],
-            ['--status <status>', 'Filter the queue (open, ready, applied, archived)'],
+            ['--status <status>', 'Queue status (default ready; custom label/key)'],
             ['--env <env>', 'Filter (local, staging, production)'],
             ['--key <key>', 'API key'],
             ['--project <key>', 'Project for the queue'],

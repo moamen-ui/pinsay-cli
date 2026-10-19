@@ -447,7 +447,7 @@ test('markApplied all uses the --status/--env filter the plan was built with', a
     assert.deepEqual(result.patchedIds, [212, 213]);
     assert.deepEqual(result.patchedNumbers, [7, 8]);
     assert.deepEqual(seen.patched, [212, 213]);
-    assert.match(seen.queueUrls[0], /status=1/);
+    assert.match(seen.queueUrls[0], /statusKey=open/);
     assert.match(seen.queueUrls[0], /environment=3/);
     const log = spawnSync('git', ['log', '-1', '--pretty=%s'], { cwd: dir, encoding: 'utf8' });
     assert.equal(log.stdout.trim(), 'Apply 2 pending PinSay comments');

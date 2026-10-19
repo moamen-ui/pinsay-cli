@@ -14,6 +14,7 @@ import {
   handleCommitAndMark,
   handleReply,
   handleSetStatus,
+  handleListComments,
   handleResolveSource,
   type McpContext,
 } from '../../src/mcp/tools.js';
@@ -759,7 +760,7 @@ describe('mcp: tools handlers and helpers', () => {
   });
 
   test('handleSetStatus: rejects status applied with invalid_input; allows open, ready, archived', async () => {
-    let patchedStatus: number | null = null;
+    let patchedStatus: string | null = null;
     const stub = await stubServer((req, res) => {
       if (req.url === '/api/projects/test-project/comments/by-number/10') {
         res.writeHead(200, { 'content-type': 'application/json' });
@@ -771,7 +772,7 @@ describe('mcp: tools handlers and helpers', () => {
         req.on('data', (c: any) => (body += c));
         req.on('end', () => {
           const parsed = JSON.parse(body || '{}');
-          patchedStatus = parsed.status;
+          patchedStatus = parsed.statusKey;
           res.writeHead(200, { 'content-type': 'application/json' });
           res.end(JSON.stringify({ isSuccess: true }));
         });
@@ -802,7 +803,62 @@ describe('mcp: tools handlers and helpers', () => {
       // Ready must succeed
       const readyRes = await handleSetStatus({ number: 10, status: 'ready' }, ctx);
       assert.deepEqual(readyRes, { number: 10, status: 'ready' });
-      assert.equal(patchedStatus, 2);
+      assert.equal(patchedStatus, 'ready');
+    } finally {
+      await stub.close();
+    }
+  });
+
+  test('custom statuses: set_status PATCHes statusKey, unknown is invalid_input, list sends statusKey', async () => {
+    let patched: any = null;
+    let listUrl = '';
+    const catalog = [
+      { value: 1, name: 'Open', label: 'Open', key: 'open', isCustom: false },
+      { value: 5, name: 'Custom', label: 'Needs info', key: 'c12', isCustom: true, customStatusId: 12 },
+    ];
+    const stub = await stubServer((req, res) => {
+      const send = (data: unknown) => {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ isSuccess: true, data }));
+      };
+      if (req.url === '/api/statuses') return send(catalog);
+      if (req.url === '/api/projects/test-project/comments/by-number/10') return send({ id: 1010, number: 10 });
+      if (req.method === 'PATCH' && req.url === '/api/comments/1010') {
+        let body = '';
+        req.on('data', (c: any) => (body += c));
+        req.on('end', () => {
+          patched = JSON.parse(body || '{}');
+          send({});
+        });
+        return;
+      }
+      if (req.url?.startsWith('/api/projects/test-project/comments?')) {
+        listUrl = req.url;
+        return send({ items: [{ number: 10, id: 1010, status: 5, statusKey: 'c12', customStatus: { key: 'c12', label: 'Needs info' } }] });
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    try {
+      const ctx: McpContext = { cwd: tmpDir, server: stub.url, project: 'test-project', token: 'jwt-custom' };
+      const res = await handleSetStatus({ number: 10, status: 'needs info' }, ctx);
+      assert.deepEqual(patched, { statusKey: 'c12' });
+      assert.equal(res.status, 'c12');
+
+      await assert.rejects(
+        async () => handleSetStatus({ number: 10, status: 'nope' }, ctx),
+        (err: any) => {
+          assert.equal(err.code, 'invalid_input');
+          assert.match(err.message, /Unknown status "nope".*"Needs info" \(c12\)/);
+          return true;
+        },
+      );
+
+      const list = await handleListComments({ status: 'Needs info' }, ctx);
+      assert.match(listUrl, /statusKey=c12/);
+      assert.doesNotMatch(listUrl, /[?&]status=/);
+      assert.equal(list.items[0].statusLabel, 'Needs info');
+      assert.equal(list.items[0].statusKey, 'c12');
     } finally {
       await stub.close();
     }

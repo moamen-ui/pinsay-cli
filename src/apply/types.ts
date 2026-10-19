@@ -115,6 +115,8 @@ export type QueueItem = {
   /** The comment's number in its project (#12). */
   number: number;
   status: number | string;
+  statusKey?: string | null;
+  customStatus?: { key?: string; label?: string; color?: string; countsAs?: number | string } | null;
   environment: number | string;
   body: string;
   authorName: string | null;
@@ -216,6 +218,8 @@ export type AiCommentView = {
   aiRules: AiRuleView[];
   replies: AiReplyView[];
   status: number | string;
+  statusKey: string | null;
+  statusLabel: string;
   media: AiMediaView[];
   textSource: string | null;
 };

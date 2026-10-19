@@ -52,8 +52,7 @@ export const TOOL_PINSAY_LIST_COMMENTS = {
       },
       status: {
         type: 'string',
-        enum: ['open', 'ready', 'applied', 'archived'],
-        description: 'Filter by comment status',
+        description: 'Filter by comment status: open, ready, applied, archived, or a custom status label/key',
       },
     },
     additionalProperties: false,
@@ -281,7 +280,7 @@ export const TOOL_PINSAY_REPLY = {
 export const TOOL_PINSAY_SET_STATUS = {
   name: 'pinsay_set_status',
   description:
-    `Set a comment's status to open, ready or archived. "applied" is not accepted here: only ` +
+    `Set a comment's status to open, ready, archived or a custom status (by label or key). "applied" is not accepted here: only ` +
     `pinsay_mark_applied and pinsay_commit_and_mark set it, because they also record the reply and ` +
     `the commit. Returns {number, status}. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
@@ -298,8 +297,7 @@ export const TOOL_PINSAY_SET_STATUS = {
       },
       status: {
         type: 'string',
-        enum: ['open', 'ready', 'archived'],
-        description: 'Status to set',
+        description: 'Status to set: open, ready, archived, or a custom status label/key (not applied)',
       },
     },
     required: ['number', 'status'],

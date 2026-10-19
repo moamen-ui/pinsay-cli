@@ -3,23 +3,13 @@ import { ProjectNotFoundError } from '../errors.js';
 import { fetchMemberRules } from './member-rules.js';
 import { normalizeMedia } from './media.js';
 import { sharedFromApi, sharedFromParts, type SharedBlock } from './shared.js';
+import { fetchStatuses, resolveStatus, unknownStatusError } from '../statuses.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
 
 export type QueueFilter = {
   status?: number | string;
   environment?: number | string;
 };
-
-function mapStatusToNumber(status?: number | string): number | undefined {
-  if (status === undefined || status === null) return undefined;
-  if (typeof status === 'number') return status;
-  const s = String(status).toLowerCase();
-  if (s === 'open' || s === '1') return 1;
-  if (s === 'ready' || s === 'readytoapply' || s === '2') return 2;
-  if (s === 'applied' || s === '3') return 3;
-  if (s === 'archived' || s === '4') return 4;
-  return undefined;
-}
 
 function mapEnvironmentToNumber(env?: number | string): number | undefined {
   if (env === undefined || env === null) return undefined;
@@ -55,11 +45,17 @@ export async function fetchQueueShared(
   ctx: ApplyClientContext,
   filter?: QueueFilter,
 ): Promise<{ shared: SharedBlock; items: QueueItem[] }> {
-  const statusNum = filter?.status !== undefined ? mapStatusToNumber(filter.status) : 2;
   const envNum = mapEnvironmentToNumber(filter?.environment);
 
+  // No --status keeps Ready exactly as before; an explicit one is resolved (built-in or custom) and sent as a key.
   const queryParts: string[] = [];
-  if (statusNum !== undefined) queryParts.push(`status=${statusNum}`);
+  if (filter?.status === undefined) {
+    queryParts.push('status=2');
+  } else {
+    const resolved = resolveStatus(filter.status, await fetchStatuses(ctx));
+    if (!resolved) throw new Error(unknownStatusError(String(filter.status), await fetchStatuses(ctx)));
+    queryParts.push(`statusKey=${encodeURIComponent(resolved.key)}`);
+  }
   if (envNum !== undefined) queryParts.push(`environment=${envNum}`);
   const qs = queryParts.length > 0 ? `?${queryParts.join('&')}` : '';
 
@@ -89,6 +85,8 @@ export async function fetchQueueShared(
         id: item.id,
         number: item.number,
         status: item.status,
+        statusKey: item.statusKey ?? null,
+        customStatus: item.customStatus ?? null,
         environment: item.environment,
         body: item.body ?? '',
         authorName: item.authorName ?? null,
@@ -187,6 +185,8 @@ export async function fetchQueueShared(
         id: item.id,
         number: item.number,
         status: item.status,
+        statusKey: item.statusKey ?? null,
+        customStatus: item.customStatus ?? null,
         environment: item.environment,
         body: item.body ?? '',
         authorName: item.authorName ?? null,

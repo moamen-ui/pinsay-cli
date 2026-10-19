@@ -95,8 +95,8 @@ test('mcp: the five comment tools require number/numbers and none has an id/ids 
 });
 
 test('mcp: documented enums and constraints match contract', () => {
-  const statusEnum = [...(TOOL_PINSAY_SET_STATUS.inputSchema.properties.status.enum || [])];
-  assert.deepEqual(statusEnum.sort(), ['archived', 'open', 'ready']);
+  assert.equal(TOOL_PINSAY_SET_STATUS.inputSchema.properties.status.type, 'string');
+  assert.ok(!('enum' in TOOL_PINSAY_SET_STATUS.inputSchema.properties.status), 'status is a free string (custom statuses)');
 
   const listCommentsProps = TOOL_PINSAY_LIST_COMMENTS.inputSchema.properties;
   assert.equal(listCommentsProps.pageSize.minimum, 1);
