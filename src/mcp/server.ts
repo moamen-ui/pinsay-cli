@@ -13,7 +13,7 @@ import {
 import { ALL_TOOLS } from './schemas.js';
 import { executeTool, type McpContext } from './tools.js';
 import { ApiError } from '../api.js';
-import { fetchQueue } from '../apply/queue.js';
+import { fetchQueueShared } from '../apply/queue.js';
 import { loadProjectContext } from '../apply/context.js';
 import { buildApplyPrompt } from '../apply/prompt.js';
 import { fetchMemberRules } from '../apply/member-rules.js';
@@ -165,9 +165,9 @@ export function createMcpServer(ctx: McpContext): Server {
       cwd: ctx.cwd,
     };
 
-    const items = await fetchQueue(clientCtx, { status: 2, environment: env });
+    const { shared, items } = await fetchQueueShared(clientCtx, { status: 2, environment: env });
     const projectContext = await loadProjectContext(clientCtx);
-    const promptText = buildApplyPrompt(items, projectContext);
+    const promptText = buildApplyPrompt(items, projectContext, { shared });
 
     return {
       messages: [

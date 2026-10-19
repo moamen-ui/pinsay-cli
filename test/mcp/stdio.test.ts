@@ -122,3 +122,96 @@ test('mcp stdio: spawn node dist/cli.js mcp, initialize, tools/list, tools/call'
     rmTempDir(tmpDir);
   }
 });
+
+test('mcp stdio: pinsay_apply_instructions carries the shared AI rules and prompts (T36)', async () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), 'pinsay-mcp-shared-test-'));
+  mkdirSync(join(tmpDir, '.pinsay'), { recursive: true });
+
+  const stub = await stubServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    if (
+      req.method === 'GET' &&
+      req.url?.startsWith('/api/admin/projects/test-project/apply-queue') &&
+      req.url.includes('shape=shared')
+    ) {
+      res.end(
+        JSON.stringify({
+          isSuccess: true,
+          data: {
+            items: [
+              {
+                id: 1,
+                number: 1,
+                status: 2,
+                environment: 2,
+                body: 'x',
+                aiRules: [],
+                aiRuleRefs: [],
+                pickedActions: [{ text: 'Fix it', ref: 'p_0123456789', prompt: '' }],
+                element: {},
+                replies: [],
+              },
+            ],
+            aiRules: {
+              r1: {
+                title: 'Rule T36',
+                prompt: 'do T36',
+                scope: 'Workspace',
+                priority: 1,
+                roleName: null,
+                isPersonal: false,
+              },
+            },
+            prompts: { p_0123456789: { text: 'Fix it', prompt: 'the T36 prompt' } },
+          },
+        }),
+      );
+      return;
+    }
+    if (req.method === 'GET' && req.url === '/api/branding') {
+      res.end(JSON.stringify({ productName: 'PinSay', extension: { storeUrl: '', zipUrl: '' } }));
+      return;
+    }
+    res.end(JSON.stringify({ isSuccess: true }));
+  });
+
+  writeFileSync(
+    join(tmpDir, '.pinsay/config.json'),
+    JSON.stringify({
+      server: stub.url,
+      project: 'test-project',
+      environment: 'local',
+      cliVersion: '0.1.0',
+    }),
+    'utf8',
+  );
+  writeFileSync(join(tmpDir, '.pinsay/credentials.env'), 'PINSAY_API_KEY=ptr_test_secret\n', 'utf8');
+
+  const transport = new StdioClientTransport({
+    command: 'node',
+    args: [cliPath, 'mcp'],
+    cwd: tmpDir,
+    env: {
+      ...process.env,
+      PINSAY_SERVER: stub.url,
+      PINSAY_PROJECT: 'test-project',
+      PINSAY_API_KEY: 'ptr_test_secret',
+    },
+  });
+  const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities: {} });
+
+  try {
+    await client.connect(transport);
+    const prompt = await client.getPrompt({ name: 'pinsay_apply_instructions', arguments: {} });
+    const content = prompt.messages[0].content as { type: string; text: string };
+    const text = content.text;
+    assert.ok(text.includes('- r1 [Workspace] Rule T36: do T36'), text);
+    assert.ok(!text.includes('- None active'), text);
+    assert.ok(text.includes('## Predefined prompts (trusted)'), text);
+    assert.ok(text.includes('the T36 prompt'), text);
+  } finally {
+    await client.close();
+    await stub.close();
+    rmTempDir(tmpDir);
+  }
+});
