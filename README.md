@@ -62,10 +62,13 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
-### Unreleased
+### 0.13.0
 
-- `apply --json` and MCP output: shared block. AI rules and predefined prompts come once per response in `shared` (`aiRules` with `id` and `appliesTo`, `prompts` by `id`); each item names its author's Personal rules (`aiRuleRefs`) and its picked prompts (`pickedActions[].id`). `apply --json` prints `{ shared, items }` (was a bare array; with several projects, each entry gains `shared`). The apply prompt lists rules and prompts once with ids. Works with older servers too.
-- Rich comments: `get`, `apply` and the MCP tools save a comment's screenshot, annotation, recording step screenshots and voice messages (and its replies' files) under `.pinsay/media/<project>/<number>/` and name each file's path; voice messages come with their text. Folders older than 7 days are pruned; `apply --mark` deletes the marked comment's folder.
+- Comment media in `get` (human output and `--json`) and in the MCP `pinsay_get_comment` / `pinsay_get_queue` tools: recording steps (each with its screenshot), annotated screenshots, voice messages and the files on replies. Each file is named by its saved path (`media[].path`, `element.screenshotPath`; MCP `untrusted.media[].path`).
+- Voice messages come with their text and `transcriptSource` (`browser` or `server`); the human output labels each transcript.
+- Files are saved under `.pinsay/media/<project>/<number>/`. Only downloads from the PinSay server's own origin are saved, capped at 25 MB each and limited to safe file extensions; a file that fails reads `(download failed: …)`. Folders older than 7 days are pruned, and `apply --mark` and the MCP mark tools delete the marked comment's folder.
+- The apply prompt describes recordings as "Steps to reproduce" (each step, its screenshot and what failed after it), tells the agent to read annotation marks as instructions and voice messages as the person's words, handles comments with no text (their picked prompts, annotation or voice are the instruction), and treats files on replies as evidence of what is still wrong.
+- AI rules and predefined prompts now come once per response, in a shared block, and each comment references them. `apply --json` prints `{ shared, items }` (was a bare array; with several projects, each entry gains `shared`): `shared.aiRules` (with `id` and `appliesTo`) and `shared.prompts` by `id`; each item names its author's Personal rules (`aiRuleRefs`) and its picked prompts (`pickedActions[].id`). The MCP tools return the same `shared` block and the apply prompt lists rules and prompts once with ids. Works with older servers too.
 
 ### 0.12.0
 
