@@ -71,7 +71,7 @@ export async function markApplied(
     options.model ? [normalizeEntry({ model: options.model })] : undefined,
   );
   const aiModelFields = modelsBody(models);
-  const warning = delegationWarning(projectCtx.delegation ?? 'auto', models);
+  const warning = delegationWarning(projectCtx.delegation ?? 'off', models);
   if (warning) console.error(warning);
 
   // --no-commit: the fix is already committed (e.g. merged after review). Record that commit, so deploy

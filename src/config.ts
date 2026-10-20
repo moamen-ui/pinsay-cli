@@ -82,9 +82,9 @@ export interface PinSayConfig {
   shareStack?: boolean;
   /**
    * Whether the apply skill may hand mechanical edits to a cheaper worker model when the AI tool
-   * running it supports sub-agents. `auto` (the default — a config without the field means `auto`)
-   * lets the orchestrating agent decide per run under the guardrails spelled out in the served
-   * `skills/apply.md`; `off` makes it apply every item itself. Never written by `init` — a team
+   * running it supports sub-agents. `auto` lets the orchestrating agent decide per run under the guardrails
+   * spelled out in the served `skills/apply.md`; `off` (the default since 0.14.1 — a config without the field
+   * means `off`) makes it apply every item itself. Never written by `init` — a team
    * sets it by hand; the CLI only reads it to print it in the `apply` prompt header so the agent
    * sees the setting next to `commitStyle` instead of having to open this file.
    */

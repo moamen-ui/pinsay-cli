@@ -243,7 +243,7 @@ export type ApplyProjectContext = {
   projectName: string;
   projectKey: string;
   commitStyle: 'Single' | 'Separate';
-  /** `.pinsay/config.json → delegation`; absent (older config, or a test fixture) means `auto`. */
+  /** `.pinsay/config.json → delegation`; absent (older config, or a test fixture) means `off`. */
   delegation?: 'auto' | 'off';
   stack: ProjectStack;
   aiRules?: AiRuleApplyDto[];

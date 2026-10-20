@@ -64,6 +64,7 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ### 0.14.1
 
+- Delegation is off unless `.pinsay/config.json` has `"delegation": "auto"`: the apply prompt header says `delegation=off` and `apply --mark` with one model no longer prints the "Delegation is on…" warning.
 - `apply --mark … --message "<text>"` sets the commit message `--mark` makes, so it can follow your project's commit rules; an empty `--message`, or `--message` with `--no-commit`, exits 2. Without `--message` the built-in message is unchanged.
 - `get --json`, the MCP `pinsay_get_comment` tool and `apply --json` items print `environment` as `Local` / `Staging` / `Production` instead of 1/2/3.
 - `get --json` picked actions no longer carry an empty `prompt`; prompt text stays in the admin `apply --json`.

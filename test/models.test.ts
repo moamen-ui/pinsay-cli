@@ -93,7 +93,7 @@ test('delegationWarning: only when delegation auto and < 2 distinct ids', () => 
 });
 
 async function withRepo(
-  delegation: 'auto' | 'off',
+  delegation: 'auto' | 'off' | undefined,
   fn: (h: { ctx: any; bodies: any[] }) => Promise<void>,
 ): Promise<void> {
   const dir = await fs.mkdtemp(join(tmpdir(), 'pinsay-models-test-'));
@@ -144,9 +144,9 @@ test('markApplied sends aiModels + legacy aiModel (primary = implementer)', asyn
   });
 });
 
-test('markApplied warns on stderr under delegation=auto with one model, not with delegation=off', async () => {
+test('markApplied warns on stderr only under delegation=auto with one model (off and absent: no warning)', async () => {
   const orig = console.error;
-  for (const [delegation, expectWarn] of [['auto', true], ['off', false]] as const) {
+  for (const [delegation, expectWarn] of [['auto', true], ['off', false], [undefined, false]] as const) {
     const lines: string[] = [];
     console.error = (...a: unknown[]) => void lines.push(a.join(' '));
     try {
@@ -156,7 +156,7 @@ test('markApplied warns on stderr under delegation=auto with one model, not with
     } finally {
       console.error = orig;
     }
-    assert.equal(lines.some((l) => /Delegation is on/.test(l)), expectWarn, delegation);
+    assert.equal(lines.some((l) => /Delegation is on/.test(l)), expectWarn, String(delegation));
   }
 });
 

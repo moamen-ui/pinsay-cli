@@ -133,7 +133,7 @@ export function buildApplyPrompt(
   }
 
   lines.push(
-    `# Apply ${context.productName} feedback — project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle}, delegation=${context.delegation ?? 'auto'})`,
+    `# Apply ${context.productName} feedback — project ${context.projectKey} (${items.length} items, commitStyle=${context.commitStyle}, delegation=${context.delegation ?? 'off'})`,
   );
   lines.push('');
   lines.push(SECURITY_TEXT);
