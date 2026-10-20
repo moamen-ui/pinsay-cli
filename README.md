@@ -62,6 +62,12 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.14.1
+
+- `apply --mark … --message "<text>"` sets the commit message `--mark` makes, so it can follow your project's commit rules; an empty `--message`, or `--message` with `--no-commit`, exits 2. Without `--message` the built-in message is unchanged.
+- `get --json`, the MCP `pinsay_get_comment` tool and `apply --json` items print `environment` as `Local` / `Staging` / `Production` instead of 1/2/3.
+- `get --json` picked actions no longer carry an empty `prompt`; prompt text stays in the admin `apply --json`.
+
 ### 0.14.0
 
 - Custom statuses: `list --status`, `apply --status` and `status <number> <status>` (and the MCP `pinsay_list_comments` / `pinsay_set_status` tools) take a custom status by label or key (`c<id>`), case-insensitive. Output shows the status label; `--json` adds `statusKey` and `statusLabel` next to `status`.
