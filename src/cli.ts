@@ -350,6 +350,7 @@ const HELP_TEXTS: Record<string, HelpEntry> = {
             ['--model <id>', 'One model id, merged after --models'],
             ['--commit <sha>', 'With --no-commit: the commit with the fix'],
             ['--no-commit', 'Mark without committing'],
+            ['--message <text>', 'Commit message for --mark (your commit rules)'],
             ['--dry-run', 'Print what --mark would do; change nothing'],
             ['--fail <number>', 'Mark apply failed with a reply'],
             ['--reason <text>', 'Why it failed (required with --fail)'],

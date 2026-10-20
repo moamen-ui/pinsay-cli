@@ -224,6 +224,19 @@ export async function applyCommand(
       console.error('--commit <sha> needs --no-commit (plain --mark records the commit it makes).');
       process.exit(2);
     }
+    const messageRaw = parsed['message'];
+    let message: string | undefined;
+    if (messageRaw !== undefined) {
+      message = typeof messageRaw === 'string' ? messageRaw.trim() : '';
+      if (!message) {
+        console.error('--message "<text>" needs the commit message text.');
+        process.exit(2);
+      }
+      if (noCommit) {
+        console.error('--message sets the commit --mark makes; with --no-commit nothing is committed.');
+        process.exit(2);
+      }
+    }
     // `--tool` wins outright; falls back to the tool recorded at `init` time (config.aiTool) —
     // ONLY correct when the same tool that ran `init` is the one applying now. A project worked on
     // by more than one tool over time will silently misattribute every reply that omits --tool to
@@ -263,6 +276,7 @@ export async function applyCommand(
         reply,
         noCommit,
         commit: commitRef,
+        message,
         dryRun,
         tool,
         models,

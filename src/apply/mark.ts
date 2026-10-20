@@ -22,6 +22,9 @@ export type MarkAppliedOptions = {
   noCommit?: boolean;
   /** With `noCommit`: the commit that already holds the fix (default `HEAD`). Its sha and URL are recorded. */
   commit?: string;
+  /** Commit message for the commit `--mark` makes (not with `noCommit`). Default: the built-in
+   *  "Apply N pending … comments" / "Apply … comment #n — …". Lets agents follow the project's commit rules. */
+  message?: string;
   dryRun?: boolean;
   tool?: string;
   /** The model id the tool reported running as (e.g. "claude-sonnet-5"), for structured AI
@@ -121,7 +124,7 @@ export async function markApplied(
       );
       return { committed: false, nothingMatched: true, patchedIds: [], patchedNumbers: [] };
     }
-    const commitMsg = `Apply ${count} pending ${projectCtx.productName} comments`;
+    const commitMsg = options.message || `Apply ${count} pending ${projectCtx.productName} comments`;
 
     if (!options.noCommit) {
       const commitRes = commitAll(commitMsg, ctx.cwd);
@@ -175,7 +178,7 @@ export async function markApplied(
     }
 
     const shortBody = commentBody.slice(0, 60);
-    const commitMsg = `Apply ${projectCtx.productName} comment #${number} — ${shortBody}`;
+    const commitMsg = options.message || `Apply ${projectCtx.productName} comment #${number} — ${shortBody}`;
 
     if (!options.noCommit) {
       const commitRes = commitAll(commitMsg, ctx.cwd);
