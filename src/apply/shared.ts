@@ -55,7 +55,7 @@ function toSharedRule(id: string, r: AiRuleApplyDto): SharedRule {
 }
 
 export function sharedFromParts(
-  perItem: Array<{ aiRules: AiRuleApplyDto[]; pickedActions: { text: string; prompt: string }[] }>,
+  perItem: Array<{ aiRules: AiRuleApplyDto[]; pickedActions: { text: string; prompt?: string }[] }>,
   extraRules: AiRuleApplyDto[] = [],
 ): SharedParts {
   const common = new Map<string, AiRuleApplyDto>();
@@ -82,8 +82,9 @@ export function sharedFromParts(
   const refs = perItem.map((item) => ({
     aiRuleRefs: item.aiRules.filter((r) => r.isPersonal).map((r) => ids.get(ruleKey(r)) as string),
     actionIds: item.pickedActions.map((pa) => {
-      const id = promptRef(pa.text, pa.prompt);
-      if (!prompts.has(id)) prompts.set(id, { id, text: pa.text, prompt: pa.prompt });
+      const prompt = pa.prompt ?? '';
+      const id = promptRef(pa.text, prompt);
+      if (!prompts.has(id)) prompts.set(id, { id, text: pa.text, prompt });
       return id;
     }),
   }));

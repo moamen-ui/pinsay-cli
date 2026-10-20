@@ -185,7 +185,8 @@ export type AiReplyView = {
 };
 
 export type AiPickedActionView = {
-  prompt: string;
+  /** Admin apply-queue only; absent when read from the comment endpoint. */
+  prompt?: string;
   text: string;
 };
 

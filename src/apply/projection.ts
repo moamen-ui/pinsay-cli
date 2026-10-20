@@ -1,5 +1,6 @@
 import { normalizeMedia } from './media.js';
 import { statusJson } from '../statuses.js';
+import { formatEnvironment } from './prompt.js';
 import { promptRef } from './shared.js';
 import type {
   AiCommentView,
@@ -98,7 +99,6 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
       }))
     : Array.isArray(raw?.pickedActionTexts)
     ? raw.pickedActionTexts.map((text: any): AiPickedActionView => ({
-        prompt: '',
         text: String(text ?? ''),
       }))
     : [];
@@ -130,7 +130,7 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
     commitUrl: raw?.commitUrl ?? null,
     createdAt: raw?.createdAt ?? '',
     element,
-    environment: raw?.environment,
+    environment: raw?.environment == null ? raw?.environment : formatEnvironment(raw.environment),
     number: raw?.number,
     internalId: raw?.id,
     isBugReport: Boolean(raw?.isBugReport),

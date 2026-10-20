@@ -204,3 +204,14 @@ test('toSharedItemView drops per-item rules and prompts and keeps refs and ids',
   assert.deepEqual(view.aiRuleRefs, ['r2']);
   assert.deepEqual(Object.keys(view.pickedActions[0]).sort(), ['id', 'text']);
 });
+
+test('toAiCommentView maps environment numbers to names', () => {
+  assert.equal(toAiCommentView({ id: 1, body: 'x', environment: 1 }).environment, 'Local');
+  assert.equal(toAiCommentView({ id: 1, body: 'x', environment: 2 }).environment, 'Staging');
+  assert.equal(toAiCommentView({ id: 1, body: 'x', environment: 3 }).environment, 'Production');
+});
+
+test('toAiCommentView pickedActionTexts carry no prompt', () => {
+  const view = toAiCommentView({ id: 1, pickedActionTexts: ['Fix spacing'] });
+  assert.deepEqual(view.pickedActions, [{ text: 'Fix spacing' }]);
+});
