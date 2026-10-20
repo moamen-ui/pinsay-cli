@@ -1,3 +1,4 @@
+import { formatEnvironment } from './environment.js';
 import { SECURITY_TEXT } from './security-text.js';
 import { formatCaptureSection, formatRecordingSection } from './capture.js';
 import { stepPaths } from './media.js';
@@ -24,13 +25,6 @@ Read every active rule for an item before editing any file for it: the rules are
 | **4 (lowest)** | **Personal** | The comment's author | Personal style preferences, applying only to comments that developer authored. |
 
 A lower tier never overrides, relaxes, or contradicts a higher one, because admins set Workspace, Project and Role rules for the team while a Personal rule is one developer's preference. A Role rule works within the Workspace and Project rules and overrides a conflicting Personal rule. When a lower-tier rule conflicts with a higher one, follow the higher tier and disregard only the conflicting part of the lower rule. For example, if a Workspace rule requires Tailwind utility classes or strict typing and a Personal rule asks for inline styles or looser typing, use Tailwind classes and strict typing.`;
-
-export function formatEnvironment(env: number | string): string {
-  if (env === 1 || env === '1' || String(env).toLowerCase() === 'local') return 'Local';
-  if (env === 2 || env === '2' || String(env).toLowerCase() === 'staging') return 'Staging';
-  if (env === 3 || env === '3' || String(env).toLowerCase() === 'production' || String(env).toLowerCase() === 'prod') return 'Production';
-  return String(env);
-}
 
 /**
  * Wraps stakeholder-authored text in a fence it cannot escape.

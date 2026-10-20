@@ -1,6 +1,6 @@
 import { normalizeMedia } from './media.js';
 import { statusJson } from '../statuses.js';
-import { formatEnvironment } from './prompt.js';
+import { formatEnvironment } from './environment.js';
 import { promptRef } from './shared.js';
 import type {
   AiCommentView,
