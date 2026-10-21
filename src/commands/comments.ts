@@ -275,6 +275,7 @@ function printMediaFiles(view: AiCommentView): void {
   }
   const mediaLines = (media: AiMediaView[], indent: string): void => {
     const voices = media.filter((m) => m.kind === 'audio');
+    const images = media.filter((m) => m.kind === 'image').sort((a, b) => a.ordinal - b.ordinal);
     for (const m of media) {
       if (m.kind === 'annotation') lines.push(`${indent}- Annotated screenshot: ${describeFile(m)}`);
       else if (m.kind === 'screenshot') lines.push(`${indent}- Screenshot: ${describeFile(m)}`);
@@ -285,6 +286,7 @@ function printMediaFiles(view: AiCommentView): void {
         lines.push(`${indent}- Voice ${m.ordinal} of ${voices.length}${secs}: ${describeFile(m)} — ${m.transcript ? source : 'no transcript'}`);
       }
     }
+    images.forEach((m, i) => lines.push(`${indent}- Attached image ${i + 1} of ${images.length}: ${describeFile(m)}`));
   };
   mediaLines(view.media, '');
   view.replies.forEach((r, i) => {

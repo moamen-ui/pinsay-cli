@@ -150,6 +150,11 @@ test('get saves media and names their paths (human and --json)', async () => {
       const stat = await fs.stat(voicePath);
       assert.strictEqual(stat.size, 3);
 
+      const imagePath = await fs.realpath(path.join(dir, '.pinsay', 'media', 'web', '12', 'image-02.png'));
+      const imageLine = r.stdout.split('\n').find((l) => l.startsWith('- Attached image 1 of 1: '));
+      assert.ok(imageLine, r.stdout);
+      assert.strictEqual(await fs.realpath(imageLine.slice('- Attached image 1 of 1: '.length)), imagePath);
+
       const j = await run(['get', '12', '--json'], dir, { PINSAY_SERVER: url, PINSAY_CONFIG_DIR: configDir });
       assert.strictEqual(j.code, 0, j.stderr);
       const parsed = JSON.parse(j.stdout);
