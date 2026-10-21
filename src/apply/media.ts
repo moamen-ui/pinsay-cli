@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { currentToken } from '../api.js';
 import { hidePinsayFiles } from '../lib/git-exclude.js';
 import type { CommentMedia, SavedCommentMedia, SavedMedia, SavedReplyMedia } from './types.js';
 
@@ -109,7 +110,8 @@ async function download(
   if (have && have.isFile() && (expectedSize === null ? have.size > 0 : have.size === expectedSize)) return null;
 
   const headers: Record<string, string> = {};
-  if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+  const token = await currentToken(opts.token);
+  if (token) headers['Authorization'] = `Bearer ${token}`;
   const doFetch = opts.fetchImpl ?? fetch;
   let res: Response;
   try {

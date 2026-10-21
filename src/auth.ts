@@ -1,6 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { dirname } from 'node:path';
-import { api, ApiError } from './api.js';
+import { api, ApiError, registerRenewableToken } from './api.js';
 import { isOutage, isRateLimited } from './errors.js';
 import { resolveApiKey, tokenCacheFile, removeStaleRepoTokenCache, type ApiKeySource } from './credentials.js';
 
@@ -41,34 +41,8 @@ function isJwtExpired(token: string): boolean {
   }
 }
 
-/**
- * Exchanges an API key for a JWT, caching the result under the global per-(server,key) cache file
- * (see `tokenCacheFile`) so repeated commands in the same repo — or a different repo against the
- * same server and key — don't re-login every time.
- */
-export async function resolveToken(
-  server: string,
-  cwd: string,
-  explicitApiKey?: string,
-): Promise<string | undefined> {
-  // Best-effort cleanup of the old repo-local cache this replaces — see removeStaleRepoTokenCache.
-  await removeStaleRepoTokenCache(cwd);
-
-  const apiKey = explicitApiKey || (await readApiKey(cwd, server));
-  if (!apiKey) return undefined;
-
-  const cacheFile = tokenCacheFile(server, apiKey);
-  try {
-    const cached = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
-    const token = typeof cached?.token === 'string' ? cached.token.trim() : '';
-    // A cached JWT past its own `exp` is worse than no cache at all: every command silently
-    // fails 401 against a dead token until someone thinks to clear ~/.cache/pinsay by hand.
-    // Fall through to a fresh exchange instead of trusting it.
-    if (token && !isJwtExpired(token)) return token;
-  } catch {
-    // Missing, unreadable, or not JSON — fall through to a fresh login.
-  }
-
+/** `POST /api/auth/login-with-key`, caching the token. Undefined when the key is bad (401); outages and 429 throw. */
+async function exchangeKey(server: string, apiKey: string, cacheFile: string): Promise<string | undefined> {
   try {
     const login = await api<{ status?: string; token?: string }>(
       server,
@@ -97,4 +71,47 @@ export async function resolveToken(
   }
 
   return undefined;
+}
+
+/**
+ * Exchanges an API key for a JWT, caching the result under the global per-(server,key) cache file
+ * (see `tokenCacheFile`) so repeated commands in the same repo — or a different repo against the
+ * same server and key — don't re-login every time.
+ */
+export async function resolveToken(
+  server: string,
+  cwd: string,
+  explicitApiKey?: string,
+): Promise<string | undefined> {
+  // Best-effort cleanup of the old repo-local cache this replaces — see removeStaleRepoTokenCache.
+  await removeStaleRepoTokenCache(cwd);
+
+  const apiKey = explicitApiKey || (await readApiKey(cwd, server));
+  if (!apiKey) return undefined;
+
+  const cacheFile = tokenCacheFile(server, apiKey);
+  // The server can end a session before its JWT `exp` (a role change ends all of a person's sessions). A 401 on a
+  // token from here then means: drop the cached file, exchange the key again, retry once (api.ts). Only a 401
+  // from login-with-key itself means the key is bad.
+  const track = (token: string): string => {
+    registerRenewableToken(token, async () => {
+      await fs.rm(cacheFile, { force: true }).catch(() => {});
+      const fresh = await exchangeKey(server, apiKey, cacheFile);
+      return fresh ? track(fresh) : undefined;
+    });
+    return token;
+  };
+  try {
+    const cached = JSON.parse(await fs.readFile(cacheFile, 'utf8'));
+    const token = typeof cached?.token === 'string' ? cached.token.trim() : '';
+    // A cached JWT past its own `exp` is worse than no cache at all: every command silently
+    // fails 401 against a dead token until someone thinks to clear ~/.cache/pinsay by hand.
+    // Fall through to a fresh exchange instead of trusting it.
+    if (token && !isJwtExpired(token)) return track(token);
+  } catch {
+    // Missing, unreadable, or not JSON — fall through to a fresh login.
+  }
+
+  const fresh = await exchangeKey(server, apiKey, cacheFile);
+  return fresh ? track(fresh) : undefined;
 }

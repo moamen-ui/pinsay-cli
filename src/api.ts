@@ -24,7 +24,57 @@ export class NetworkError extends Error {
 }
 export const API_TIMEOUT_MS = 30_000;
 
+/**
+ * Tokens handed out by auth.ts `resolveToken`, each with how to get a fresh one. The server can end a session before
+ * its JWT `exp` (a role change ends all of a person's sessions), so a 401 on such a token means "exchange the key
+ * again", not "the key is bad". Used once per token.
+ */
+const renewers = new Map<string, () => Promise<string | undefined>>();
+/** A renewed token -> its replacement (pending or done), so later calls that still hold the old token use the new one. */
+const replaced = new Map<string, Promise<string | undefined>>();
+
+export function registerRenewableToken(token: string, renew: () => Promise<string | undefined>): void {
+    renewers.set(token, renew);
+}
+
+/** The token to send for `token`: the latest replacement after a renewal, else `token` itself. */
+export async function currentToken(token: string | undefined): Promise<string | undefined> {
+    let t = token;
+    while (t && replaced.has(t)) {
+        const next = await replaced.get(t)!.catch(() => undefined);
+        if (!next || next === t) break;
+        t = next;
+    }
+    return t;
+}
+
+/** One renewal per token, shared by concurrent callers. Undefined when `token` is not renewable or the key is bad. */
+function renewToken(token: string): Promise<string | undefined> {
+    let next = replaced.get(token);
+    if (!next) {
+        const renew = renewers.get(token);
+        if (!renew) return Promise.resolve(undefined);
+        renewers.delete(token);
+        next = renew();
+        replaced.set(token, next);
+    }
+    return next;
+}
+
 export async function api<T>(server: string, path: string, options: { method?: string, body?: any, token?: string } = {}): Promise<T> {
+    const token = await currentToken(options.token);
+    try {
+        return await request<T>(server, path, { ...options, token });
+    } catch (err) {
+        if (!(err instanceof ApiError) || err.code !== 401 || !token) throw err;
+        // Outage or rate limit during the new exchange: that error wins over the 401.
+        const fresh = await renewToken(token);
+        if (!fresh || fresh === token) throw err;
+        return request<T>(server, path, { ...options, token: fresh });
+    }
+}
+
+async function request<T>(server: string, path: string, options: { method?: string, body?: any, token?: string } = {}): Promise<T> {
     const url = `${server.replace(/\/$/, '')}${path}`;
     const headers: Record<string, string> = { 'Accept': 'application/json' };
     if (options.token) headers['Authorization'] = `Bearer ${options.token}`;
