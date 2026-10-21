@@ -62,6 +62,10 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### 0.14.2
+
+- A saved session the server ended early (for example after your role changed) no longer fails with "Your saved key no longer works": the CLI signs in again with the saved key once and retries. Only a key the server rejects still asks you to sign in.
+
 ### 0.14.1
 
 - Delegation is off unless `.pinsay/config.json` has `"delegation": "auto"`: the apply prompt header says `delegation=off` and `apply --mark` with one model no longer prints the "Delegation is on…" warning.
