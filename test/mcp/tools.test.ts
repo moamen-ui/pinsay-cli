@@ -259,6 +259,8 @@ describe('mcp: tools handlers and helpers', () => {
     assert.equal(out.pageContext.stepEntries[0].screenshotPath, '/r/step-01.png');
     assert.ok(!('screenshotPath' in out.pageContext.stepEntries[1]));
     assert.equal(out.untrusted.media[1].transcript, 't');
+    assert.equal(out.untrusted.media[0].sizeBytes, 10);
+    assert.equal(out.untrusted.media[1].sizeBytes, 12);
     assert.ok(!JSON.stringify(out.trusted).includes('transcript'));
   });
 

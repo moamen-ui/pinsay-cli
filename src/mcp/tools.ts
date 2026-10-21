@@ -99,6 +99,7 @@ function mcpMedia(rawMedia: unknown, saved: SavedMedia[] | undefined): any[] {
       path: s?.path ?? null,
       url: m.url,
       contentType: m.contentType,
+      sizeBytes: m.sizeBytes ?? null,
       durationMs: m.durationMs ?? null,
       transcript: m.transcript ?? null,
       transcriptSource: m.transcriptSource ?? null,
