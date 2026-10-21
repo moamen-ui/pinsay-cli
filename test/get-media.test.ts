@@ -106,6 +106,14 @@ test('get saves media and names their paths (human and --json)', async () => {
                   transcriptSource: 'browser',
                   available: true,
                 },
+                {
+                  kind: 'image',
+                  ordinal: 2,
+                  url: `${stubUrl}/files/i1.png`,
+                  contentType: 'image/png',
+                  sizeBytes: 4,
+                  available: true,
+                },
               ],
             },
           }),
@@ -116,6 +124,12 @@ test('get saves media and names their paths (human and --json)', async () => {
       if (req.method === 'GET' && url === '/files/v1.webm') {
         res.setHeader('Content-Type', 'audio/webm');
         res.end(Buffer.from('abc'));
+        return;
+      }
+
+      if (req.method === 'GET' && url === '/files/i1.png') {
+        res.setHeader('Content-Type', 'image/png');
+        res.end(Buffer.from('img1'));
         return;
       }
 
@@ -140,6 +154,10 @@ test('get saves media and names their paths (human and --json)', async () => {
       assert.strictEqual(j.code, 0, j.stderr);
       const parsed = JSON.parse(j.stdout);
       assert.ok(parsed.media[0].path.endsWith(path.join('.pinsay', 'media', 'web', '12', 'voice-01.webm')), parsed.media[0].path);
+      const img = parsed.media.find((m: any) => m.kind === 'image');
+      assert.ok(img, j.stdout);
+      assert.strictEqual(img.ordinal, 2);
+      assert.ok(img.path.endsWith(path.join('.pinsay', 'media', 'web', '12', 'image-02.png')), img.path);
     });
   });
 });

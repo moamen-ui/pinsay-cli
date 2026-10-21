@@ -72,6 +72,7 @@ export function mediaFileName(item: CommentMedia): string | null {
   if (kind === 'screenshot') return `screenshot.${extensionFor(item.contentType, item.url, 'png')}`;
   if (kind === 'step') return `step-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'png')}`;
   if (kind === 'audio') return `voice-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'webm')}`;
+  if (kind === 'image') return `image-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'png')}`;
   return null;
 }
 

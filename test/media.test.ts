@@ -32,6 +32,8 @@ const FILES: Record<string, string> = {
   '/files/s1.png': '1',
   '/files/s2.png': '22',
   '/files/v1.webm': 'VVV',
+  '/files/i1.png': 'IMG1',
+  '/files/i2.jpg': 'IMG2',
 };
 
 function fileHandler(counter?: { n: number }) {
@@ -111,6 +113,38 @@ test('creates .pinsay/.gitignore when missing', async () => {
 
     const content = await fs.readFile(join(root, '.pinsay', '.gitignore'), 'utf8');
     assert.ok(content.split(/\r?\n/).includes('*'), '.pinsay/.gitignore must contain a "*" line');
+  } finally {
+    await stub.close();
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('saves comment and reply images as image-NN', async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-media-'));
+  const stub = await stubServer(fileHandler());
+  try {
+    const result = await saveCommentMedia(
+      {
+        number: 14,
+        media: [item({ kind: 'image', ordinal: 1, url: `${stub.url}/files/i1.png`, sizeBytes: 4 })],
+        replies: [
+          {
+            id: 7,
+            media: [
+              item({ kind: 'image', ordinal: 1, url: `${stub.url}/files/i2.jpg`, contentType: 'image/jpeg', sizeBytes: 4 }),
+            ],
+          },
+        ],
+      },
+      { root, projectKey: 'web', server: stub.url },
+    );
+
+    const dir = join(root, '.pinsay', 'media', 'web', '14');
+    assert.equal(await fs.readFile(join(dir, 'image-01.png'), 'utf8'), 'IMG1');
+    assert.equal(await fs.readFile(join(dir, 'reply-7', 'image-01.jpg'), 'utf8'), 'IMG2');
+
+    assert.equal(result.media[0].path, join(dir, 'image-01.png'));
+    assert.equal(result.replies[0].media[0].path, join(dir, 'reply-7', 'image-01.jpg'));
   } finally {
     await stub.close();
     await fs.rm(root, { recursive: true, force: true });
@@ -333,6 +367,8 @@ test('mediaFileName and extensionFor', async () => {
   assert.equal(extensionFor(null, 'https://h/x/y.jpeg?sig=1', 'png'), 'jpeg');
   assert.equal(extensionFor(null, null, 'png'), 'png');
   assert.equal(mediaFileName(item({ kind: 'video', url: 'https://x/v.mp4', contentType: 'video/mp4' })), null);
+  assert.equal(mediaFileName(item({ kind: 'image', ordinal: 2, contentType: 'image/webp' })), 'image-02.webp');
+  assert.equal(mediaFileName(item({ kind: 'image', ordinal: 1, contentType: 'image/gif' })), 'image-01.gif');
 });
 
 test('off-origin url is refused without a fetch', async () => {
