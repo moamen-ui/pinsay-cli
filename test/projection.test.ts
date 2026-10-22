@@ -73,6 +73,7 @@ test('toAiCommentView emits exactly the whitelisted keys and drops sensitive fie
   const expectedTopLevelKeys = [
     'appliedAt',
     'appliedByLabel',
+    'authorKind',
     'authorName',
     'body',
     'commitUrl',
@@ -214,4 +215,19 @@ test('toAiCommentView maps environment numbers to names', () => {
 test('toAiCommentView pickedActionTexts carry no prompt', () => {
   const view = toAiCommentView({ id: 1, pickedActionTexts: ['Fix spacing'] });
   assert.deepEqual(view.pickedActions, [{ text: 'Fix spacing' }]);
+});
+
+test('toAiCommentView carries authorKind, defaults to member, and never carries an e-mail', () => {
+  const visitor = toAiCommentView({
+    id: 1,
+    number: 1,
+    body: 'x',
+    authorKind: 'visitor',
+    authorEmail: 'v@x.io',
+    element: {},
+    replies: [],
+  });
+  assert.equal(visitor.authorKind, 'visitor');
+  assert.ok(!JSON.stringify(visitor).includes('@'));
+  assert.equal(toAiCommentView({ id: 2, number: 2, body: 'x', element: {}, replies: [] }).authorKind, 'member');
 });

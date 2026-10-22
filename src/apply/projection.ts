@@ -1,3 +1,4 @@
+import { authorKindOf } from './author-kind.js';
 import { normalizeMedia } from './media.js';
 import { statusJson } from '../statuses.js';
 import { formatEnvironment } from './environment.js';
@@ -123,6 +124,7 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
     appliedAt: raw?.appliedAt ?? null,
     appliedByLabel: raw?.appliedByLabel ?? null,
     authorName: raw?.authorName ?? null,
+    authorKind: authorKindOf(raw?.authorKind),
     body: {
       untrusted: true,
       value: bodyValue,

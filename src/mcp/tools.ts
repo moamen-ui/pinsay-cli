@@ -6,6 +6,7 @@ import { postEvent } from '../events.js';
 import { runInitChecks } from '../checks.js';
 import { exitCodeFor } from '../commands/doctor.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
+import { authorKindOf, visitorTag } from '../apply/author-kind.js';
 import { toAiCommentView } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { deleteCommentMedia, normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
@@ -168,6 +169,8 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
     environment: item.environment,
     createdAt: item.createdAt ?? '',
     authorName: item.authorName ?? null,
+    authorKind: authorKindOf(item.authorKind),
+    visitorTag: visitorTag(authorKindOf(item.authorKind), item.isBugReport),
     isBugReport: Boolean(item.isBugReport),
     element: pickElement(elementRaw, saved?.screenshot?.path ?? null),
     pageContextId: item.pageContextId ?? null,
@@ -229,6 +232,8 @@ export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia |
     environment: view.environment,
     createdAt: view.createdAt,
     authorName: view.authorName,
+    authorKind: view.authorKind,
+    visitorTag: visitorTag(view.authorKind, view.isBugReport),
     isBugReport: view.isBugReport,
     element: view.element,
     appliedAt: view.appliedAt,
@@ -292,6 +297,7 @@ export async function handleListComments(
     route: item.route ?? null,
     sourcePath: item.sourcePath ?? null,
     authorName: item.authorName ?? null,
+    authorKind: authorKindOf(item.authorKind),
     createdAt: item.createdAt,
   }));
 
@@ -372,6 +378,7 @@ export async function handleGetQueue(
         environment: item.environment,
         body: item.body ?? '',
         authorName: item.authorName ?? null,
+        authorKind: authorKindOf(item.authorKind),
         createdAt: item.createdAt ?? '',
         element: {
           selector: item.selector ?? null,

@@ -1,3 +1,4 @@
+import { authorKindOf } from './author-kind.js';
 import { api, ApiError } from '../api.js';
 import { ProjectNotFoundError } from '../errors.js';
 import { fetchMemberRules } from './member-rules.js';
@@ -90,6 +91,7 @@ export async function fetchQueueShared(
         environment: item.environment,
         body: item.body ?? '',
         authorName: item.authorName ?? null,
+        authorKind: authorKindOf(item.authorKind),
         createdAt: item.createdAt ?? '',
         element: {
           pageRef: pageRef ?? null,
@@ -190,6 +192,7 @@ export async function fetchQueueShared(
         environment: item.environment,
         body: item.body ?? '',
         authorName: item.authorName ?? null,
+        authorKind: authorKindOf(item.authorKind),
         createdAt: item.createdAt ?? '',
         element: {
           pageRef: null,

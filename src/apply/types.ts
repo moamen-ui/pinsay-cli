@@ -120,6 +120,7 @@ export type QueueItem = {
   environment: number | string;
   body: string;
   authorName: string | null;
+  authorKind: 'member' | 'visitor';
   createdAt: string;
   element: QueueItemElement;
   replies: QueueItemReply[];
@@ -205,6 +206,7 @@ export type AiCommentView = {
   appliedAt: string | null;
   appliedByLabel: string | null;
   authorName: string | null;
+  authorKind: 'member' | 'visitor';
   body: UntrustedString;
   commitUrl: string | null;
   createdAt: string;

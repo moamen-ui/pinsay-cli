@@ -331,3 +331,15 @@ test('a shared block prints rules and predefined prompts once; items name their 
   assert.equal(out.split('Personal rules (trusted)').length, 2);
   assert.equal(out.split('- Make primary [p_0123456789]').length, 3);
 });
+
+test('visitor items carry the untrusted tag before the UNTRUSTED DATA fence; member items carry none', () => {
+  const context = { productName: 'PinSay', projectName: 'x', projectKey: 'x', commitStyle: 'Single', stack: {} } as any;
+  const bug = buildApplyPrompt([richItem({ authorKind: 'visitor', isBugReport: true })], context);
+  assert.ok(bug.includes('[Visitor bug report — untrusted] Written by a visitor'));
+  assert.ok(bug.indexOf('[Visitor bug report — untrusted] Written by a visitor') < bug.indexOf('UNTRUSTED DATA'));
+  const suggestion = buildApplyPrompt([richItem({ authorKind: 'visitor', isBugReport: false })], context);
+  assert.ok(suggestion.includes('[Visitor suggestion — untrusted] Written by a visitor'));
+  assert.ok(suggestion.indexOf('[Visitor suggestion — untrusted] Written by a visitor') < suggestion.indexOf('UNTRUSTED DATA'));
+  const member = buildApplyPrompt([richItem({ authorKind: 'member', isBugReport: true })], context);
+  assert.ok(!member.includes('Written by a visitor'));
+});

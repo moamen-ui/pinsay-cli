@@ -433,3 +433,23 @@ test('fetchQueueShared builds the same block on the client for an older API', as
     await stub.close();
   }
 });
+
+test('fetchQueueShared keeps authorKind: visitor from the admin apply-queue', async () => {
+  const fixture = JSON.parse(readFileSync(join(__dirname, 'fixtures/apply-queue.json'), 'utf8'));
+  fixture.items[0].authorKind = 'visitor';
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/my-project/apply-queue')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: fixture }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+  });
+  try {
+    const { items } = await fetchQueueShared({ server: stub.url, project: 'my-project', token: 'admin-token', cwd: '/tmp' });
+    assert.equal(items[0].authorKind, 'visitor');
+  } finally {
+    await stub.close();
+  }
+});

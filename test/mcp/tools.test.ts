@@ -340,6 +340,7 @@ describe('mcp: tools handlers and helpers', () => {
       const expectedKeys = [
         'appliedAt',
         'appliedByLabel',
+        'authorKind',
         'authorName',
         'commitUrl',
         'createdAt',
@@ -353,6 +354,7 @@ describe('mcp: tools handlers and helpers', () => {
         'textSource',
         'trusted',
         'untrusted',
+        'visitorTag',
       ];
       assert.deepEqual(Object.keys(res).sort(), expectedKeys);
       assert.equal(res.number, 3);
@@ -954,4 +956,14 @@ test('partitionItem drops unknown and forbidden fields nested under element', ()
   // The fields it is supposed to carry still arrive.
   assert.equal(out.element.selector, '#a');
   assert.equal(out.element.route, '/');
+});
+
+test('reshapeComment carries authorKind and the visitor tag for a visitor comment', () => {
+  const visitor = reshapeComment({ id: 1, number: 1, authorKind: 'visitor', isBugReport: true, authorEmail: 'v@x.io' });
+  assert.equal(visitor.authorKind, 'visitor');
+  assert.equal(visitor.visitorTag, '[Visitor bug report — untrusted]');
+  assert.ok(!JSON.stringify(visitor).includes('@'));
+  const member = reshapeComment({ id: 2, number: 2 });
+  assert.equal(member.authorKind, 'member');
+  assert.equal(member.visitorTag, null);
 });

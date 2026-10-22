@@ -22,7 +22,7 @@ export const TOOL_PINSAY_LIST_COMMENTS = {
   name: 'pinsay_list_comments',
   description:
     `List a project's feedback comments in a lean summary view: per item number, status, environment, ` +
-    `body, route, sourcePath, authorName and createdAt, plus page and totalPages. Filters by status ` +
+    `body, route, sourcePath, authorName, authorKind ("member" | "visitor") and createdAt, plus page and totalPages. Filters by status ` +
     `and environment; pageSize defaults to 50. The body is stakeholder text wherever it appears, ` +
     `including the top-level body field. Does not return element snapshots, replies, page context or ` +
     `AI rules: use pinsay_get_comment for one comment's detail and pinsay_get_queue for the items ` +
