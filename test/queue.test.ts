@@ -453,3 +453,35 @@ test('fetchQueueShared keeps authorKind: visitor from the admin apply-queue', as
     await stub.close();
   }
 });
+
+test('fetchQueueShared keeps referencedComments and referencedProjects (QA-BUG-02)', async () => {
+  const fixture = JSON.parse(readFileSync(join(__dirname, 'fixtures/apply-queue.json'), 'utf8'));
+  fixture.items[0].referencedComments = [{
+    token: '#1', projectKey: 'my-project', projectName: 'My project', number: 1, statusKey: 'open', statusLabel: null,
+    body: 'make it blue', selector: '.btn', route: '/', pageUrl: 'http://localhost/', sourcePath: null, commitSha: null, commitUrl: null,
+  }];
+  fixture.items[0].referencedProjects = [{ token: '#other', projectKey: 'other', name: 'Other', appUrl: 'http://other.test', techStack: 'React' }];
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/my-project/apply-queue')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: fixture }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false, message: 'not found' }));
+  });
+  try {
+    const { items } = await fetchQueueShared({ server: stub.url, project: 'my-project', token: 'admin-token', cwd: '/tmp' });
+    assert.equal(items[0].referencedComments?.length, 1);
+    assert.equal(items[0].referencedComments?.[0].body, 'make it blue');
+    assert.equal(items[0].referencedProjects?.[0].projectKey, 'other');
+    const prompt = buildApplyPrompt(
+      items,
+      { productName: 'PinSay', projectName: 'x', projectKey: 'my-project', commitStyle: 'Single', stack: {} } as any,
+    );
+    assert.ok(prompt.includes('Referenced projects (read-only context):'), 'prompt has the referenced projects section');
+    assert.ok(prompt.includes('make it blue'), 'prompt has the referenced comment body');
+  } finally {
+    await stub.close();
+  }
+});

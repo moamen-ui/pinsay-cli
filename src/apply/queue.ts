@@ -3,6 +3,7 @@ import { api, ApiError } from '../api.js';
 import { ProjectNotFoundError } from '../errors.js';
 import { fetchMemberRules } from './member-rules.js';
 import { normalizeMedia } from './media.js';
+import { referencedCommentsOf, referencedProjectsOf } from './projection.js';
 import { sharedFromApi, sharedFromParts, type SharedBlock } from './shared.js';
 import { fetchStatuses, resolveStatus, unknownStatusError } from '../statuses.js';
 import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
@@ -82,6 +83,8 @@ export async function fetchQueueShared(
           ? pageContexts[String(pageContextId)]
           : undefined;
 
+      const refComments = referencedCommentsOf(item);
+      const refProjects = referencedProjectsOf(item);
       return {
         id: item.id,
         number: item.number,
@@ -152,6 +155,9 @@ export async function fetchQueueShared(
                 suggestedTool: typeof f.suggestedTool === 'string' ? f.suggestedTool : null,
               }))
           : undefined,
+        // Mentions (AC-F2): copied through, or the apply prompt and --json silently omit them (QA-BUG-02).
+        ...(refComments.length > 0 ? { referencedComments: refComments } : {}),
+        ...(refProjects.length > 0 ? { referencedProjects: refProjects } : {}),
       };
     });
     const parts =
