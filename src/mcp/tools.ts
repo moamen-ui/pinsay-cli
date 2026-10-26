@@ -7,7 +7,7 @@ import { runInitChecks } from '../checks.js';
 import { exitCodeFor } from '../commands/doctor.js';
 import { BUILD_CLI_VERSION } from '../build-constants.js';
 import { authorKindOf, visitorTag } from '../apply/author-kind.js';
-import { toAiCommentView } from '../apply/projection.js';
+import { toAiCommentView, referencedCommentsOf, referencedProjectsOf } from '../apply/projection.js';
 import { loadProjectContext } from '../apply/context.js';
 import { deleteCommentMedia, normalizeMedia, pruneMedia, saveIfRooted, stepPaths } from '../apply/media.js';
 import { promptRef, sharedFromApi, sharedFromParts, withExtraRules } from '../apply/shared.js';
@@ -149,6 +149,9 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
       ? String(item.body.value ?? '')
       : String(item?.body ?? '');
 
+  const refComments = referencedCommentsOf(item);
+  const refProjects = referencedProjectsOf(item);
+
   const paths = stepPaths(saved);
   const pageContext =
     item.pageContext && Array.isArray(item.pageContext.stepEntries) && paths.size > 0
@@ -177,11 +180,13 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
     page: item.page,
     pageContext,
     textSource: typeof item?.textSource === 'string' ? item.textSource : null,
+    ...(refProjects.length > 0 ? { referencedProjects: refProjects } : {}),
     untrusted: {
       body: bodyValue,
       media: mcpMedia(item?.media, saved?.media),
       replies,
       snapshot: snapshot ?? null,
+      ...(refComments.length > 0 ? { referencedComments: refComments } : {}),
     },
     trusted: {
       aiRuleRefs: Array.isArray(item?.aiRuleRefs) ? item.aiRuleRefs.map(String) : [],
@@ -198,7 +203,7 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
  *
  * Top-level keys are exactly:
  * number, internalId, status, environment, createdAt, authorName, isBugReport, element,
- * appliedAt, appliedByLabel, commitUrl, textSource, shared, untrusted, trusted
+ * appliedAt, appliedByLabel, commitUrl, textSource, shared, untrusted, trusted (and referencedProjects when present)
  */
 export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia | null): any {
   const view = toAiCommentView(raw, page, saved);
@@ -225,6 +230,9 @@ export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia |
       }))
     : [];
 
+  const refComments = referencedCommentsOf(raw);
+  const refProjects = referencedProjectsOf(raw);
+
   return {
     number: view.number,
     internalId: view.internalId,
@@ -241,10 +249,12 @@ export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia |
     commitUrl: view.commitUrl,
     textSource: view.textSource,
     shared: parts.shared,
+    ...(refProjects.length > 0 ? { referencedProjects: refProjects } : {}),
     untrusted: {
       body: bodyValue,
       media: mcpMedia(raw?.media, saved?.media),
       replies,
+      ...(refComments.length > 0 ? { referencedComments: refComments } : {}),
     },
     trusted: {
       aiRuleRefs: parts.refs[0].aiRuleRefs,

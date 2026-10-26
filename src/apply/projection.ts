@@ -12,9 +12,47 @@ import type {
   AiPickedActionView,
   AiRuleView,
   AiReplyView,
+  ReferencedComment,
+  ReferencedProject,
   SavedCommentMedia,
   SavedMedia,
 } from './types.js';
+
+const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+
+/** Mentions (AC-F2): the referenced comments of a raw API item, normalized; [] when absent. */
+export function referencedCommentsOf(raw: any): ReferencedComment[] {
+  return Array.isArray(raw?.referencedComments)
+    ? raw.referencedComments.map((r: any): ReferencedComment => ({
+        token: String(r?.token ?? ''),
+        projectKey: String(r?.projectKey ?? ''),
+        projectName: String(r?.projectName ?? ''),
+        number: Number(r?.number ?? 0),
+        statusKey: String(r?.statusKey ?? ''),
+        statusLabel: strOrNull(r?.statusLabel),
+        body: String(r?.body ?? ''),
+        selector: strOrNull(r?.selector),
+        route: strOrNull(r?.route),
+        pageUrl: strOrNull(r?.pageUrl),
+        sourcePath: strOrNull(r?.sourcePath),
+        commitSha: strOrNull(r?.commitSha),
+        commitUrl: strOrNull(r?.commitUrl),
+      }))
+    : [];
+}
+
+/** Mentions (AC-F2): the referenced projects of a raw API item, normalized; [] when absent. */
+export function referencedProjectsOf(raw: any): ReferencedProject[] {
+  return Array.isArray(raw?.referencedProjects)
+    ? raw.referencedProjects.map((p: any): ReferencedProject => ({
+        token: String(p?.token ?? ''),
+        projectKey: String(p?.projectKey ?? ''),
+        name: String(p?.name ?? ''),
+        appUrl: strOrNull(p?.appUrl),
+        techStack: strOrNull(p?.techStack),
+      }))
+    : [];
+}
 
 /**
  * Whitelisted AI-facing comment projection.
@@ -120,6 +158,9 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
       ? String(raw.body.value ?? '')
       : String(raw?.body ?? '');
 
+  const refComments = referencedCommentsOf(raw);
+  const refProjects = referencedProjectsOf(raw);
+
   return {
     appliedAt: raw?.appliedAt ?? null,
     appliedByLabel: raw?.appliedByLabel ?? null,
@@ -143,6 +184,10 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
     ...statusJson(raw ?? {}),
     media: toMediaViews(raw?.media, saved?.media),
     textSource: typeof raw?.textSource === 'string' ? raw.textSource : null,
+    ...(refComments.length > 0
+      ? { referencedComments: refComments.map((r) => ({ ...r, body: { untrusted: true as const, value: r.body } })) }
+      : {}),
+    ...(refProjects.length > 0 ? { referencedProjects: refProjects } : {}),
   };
 }
 

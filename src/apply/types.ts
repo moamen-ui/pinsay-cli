@@ -109,6 +109,32 @@ export type QueueItemReply = {
   textSource?: string | null;
 };
 
+/** Mentions (SPEC AC-F1): a comment this item #-mentions that the caller may read. `body` is untrusted. */
+export type ReferencedComment = {
+  token: string;
+  projectKey: string;
+  projectName: string;
+  number: number;
+  statusKey: string;
+  statusLabel: string | null;
+  body: string;
+  selector: string | null;
+  route: string | null;
+  pageUrl: string | null;
+  sourcePath: string | null;
+  commitSha: string | null;
+  commitUrl: string | null;
+};
+
+/** Mentions (SPEC AC-F1): a project this item #-mentions that the caller may read. */
+export type ReferencedProject = {
+  token: string;
+  projectKey: string;
+  name: string;
+  appUrl: string | null;
+  techStack: string | null;
+};
+
 export type QueueItem = {
   /** Internal id: used only for API calls; never shown. */
   id: number;
@@ -135,6 +161,8 @@ export type QueueItem = {
   language?: string | null;
   media?: CommentMedia[];
   textSource?: string | null;
+  referencedComments?: ReferencedComment[];
+  referencedProjects?: ReferencedProject[];
 };
 
 export type UntrustedString = {
@@ -225,6 +253,8 @@ export type AiCommentView = {
   statusLabel: string;
   media: AiMediaView[];
   textSource: string | null;
+  referencedComments?: (Omit<ReferencedComment, 'body'> & { body: UntrustedString })[];
+  referencedProjects?: ReferencedProject[];
 };
 
 /** apply --json item: the comment view without per-item rules/prompts (they are in `shared`). */
