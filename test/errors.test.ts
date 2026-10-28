@@ -114,9 +114,14 @@ test('rejected saved key: list exits 3', async () => {
 });
 
 test('describeError maps 429 to exit 4 with the Retry-After wait', () => {
-    assert.deepStrictEqual(describeError(new ApiError(429, 'x', 30)), { code: 4, message: 'Rate limited, retry in 30 seconds.' });
-    assert.strictEqual(describeError(new ApiError(429, 'x', 1)).message, 'Rate limited, retry in 1 second.');
-    assert.deepStrictEqual(describeError(new ApiError(429, 'x')), { code: 4, message: 'Rate limited, retry in a minute.' });
+    assert.deepStrictEqual(describeError(new ApiError(429, 'x', 30)), { code: 4, message: 'There are too many requests right now. Try again in 30 seconds.' });
+    assert.strictEqual(describeError(new ApiError(429, 'x', 1)).message, 'There are too many requests right now. Try again in 1 second.');
+    assert.deepStrictEqual(describeError(new ApiError(429, 'x')), { code: 4, message: 'There are too many requests right now. Try again in a minute.' });
+    assert.strictEqual(describeError(new ApiError(429, 'x', 3600)).message, 'There are too many requests right now. Try again in 60 minutes.');
+    assert.strictEqual(
+        describeError(new ApiError(429, 'There are too many requests from your network right now. Try again in 60 minutes.', 3600)).message,
+        'There are too many requests from your network right now. Try again in 60 minutes.',
+    );
 });
 
 test('parseRetryAfter reads seconds and HTTP dates', () => {

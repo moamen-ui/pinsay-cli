@@ -34,9 +34,21 @@ export function isRateLimited(err: unknown): err is ApiError {
     return err instanceof ApiError && err.code === 429;
 }
 
-export function rateLimitMessage(retryAfter?: number): string {
-    if (retryAfter === undefined) return 'Rate limited, retry in a minute.';
-    return `Rate limited, retry in ${retryAfter} second${retryAfter === 1 ? '' : 's'}.`;
+/** "45 seconds" / "3 minutes" (minutes rounded up); "a minute" when the server sent no Retry-After. */
+export function waitText(seconds?: number): string {
+    if (seconds === undefined || !(seconds > 0)) return 'a minute';
+    if (seconds < 60) return seconds === 1 ? '1 second' : `${seconds} seconds`;
+    const minutes = Math.ceil(seconds / 60);
+    return minutes === 1 ? '1 minute' : `${minutes} minutes`;
+}
+
+/**
+ * 2026-10-28 (signin-rate-limit part 2): the API's own sentence when it sends one (it says whether the caller's network
+ * or account is out of requests, wait in minutes); otherwise a generic one with the wait.
+ */
+export function rateLimitMessage(retryAfter?: number, apiMessage?: string): string {
+    if (apiMessage && /^(There are too many requests|Too many requests from your account)/.test(apiMessage)) return apiMessage;
+    return `There are too many requests right now. Try again in ${waitText(retryAfter)}.`;
 }
 
 function hostOf(server?: string): string {
@@ -50,7 +62,7 @@ export function describeError(err: unknown, server?: string): { code: number; me
         return { code: 4, message: `Can't reach ${err.host}. Check your internet connection and try again.` };
     }
     if (err instanceof ApiError) {
-        if (err.code === 429) return { code: 4, message: rateLimitMessage(err.retryAfter) };
+        if (err.code === 429) return { code: 4, message: rateLimitMessage(err.retryAfter, err.message) };
         if (err.code >= 500) return { code: 4, message: `${hostOf(server)} is having trouble right now (HTTP ${err.code}). Try again in a minute.` };
         if (err.code === 401) return { code: 3, message: 'Your saved key no longer works (expired or revoked). Sign in again: npx pinsay-cli login' };
         if (err.code === 403) return { code: 3, message: "Your account isn't allowed to do this. A workspace admin can." };

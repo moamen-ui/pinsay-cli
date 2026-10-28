@@ -200,7 +200,7 @@ test('init --json on a 429 prints the rate-limit error as JSON and exits 4', () 
   } catch (err: any) {
     assert.strictEqual(err.code, 4);
     assert.strictEqual(err.stdout.trim().split('\n').length, 1, 'Should output exactly one line');
-    assert.deepStrictEqual(JSON.parse(err.stdout.trim()), { ok: false, error: { code: 4, message: 'Rate limited, retry in 30 seconds.' } });
+    assert.deepStrictEqual(JSON.parse(err.stdout.trim()), { ok: false, error: { code: 4, message: 'There are too many requests right now. Try again in 30 seconds.' } });
   }
 }));
 
@@ -210,7 +210,7 @@ test('init --yes on a 429 without Retry-After says retry in a minute, not Invali
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 4);
-    assert.match(err.stdout + err.stderr, /Rate limited, retry in a minute\./);
+    assert.match(err.stdout + err.stderr, /There are too many requests right now\. Try again in a minute\./);
     assert.doesNotMatch(err.stdout + err.stderr, /Invalid API key|not valid/);
   }
 }));
@@ -221,7 +221,7 @@ test('login --key on a 429 exits 4 with the wait', () => withTempDir(async (dir)
     assert.fail('Should have exited');
   } catch (err: any) {
     assert.strictEqual(err.code, 4);
-    assert.match(err.stderr, /Rate limited, retry in 30 seconds\./);
+    assert.match(err.stderr, /There are too many requests right now\. Try again in 30 seconds\./);
   }
 }));
 
