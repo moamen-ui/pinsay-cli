@@ -3,6 +3,7 @@ import { authorKindOf, visitorTag } from './author-kind.js';
 import { SECURITY_TEXT } from './security-text.js';
 import { formatCaptureSection, formatRecordingSection } from './capture.js';
 import { stepPaths } from './media.js';
+import { externalIssueTag } from '../lib/external-issue.js';
 import { promptRef, sharedFromParts, sortRules, withExtraRules } from './shared.js';
 import type {
   ApplyProjectContext,
@@ -230,7 +231,8 @@ export function buildApplyPrompt(
       item.element?.pageRef ||
       '/';
 
-    lines.push(`### #${item.number} — ${env} — ${route}`);
+    const gh = externalIssueTag(item);
+    lines.push(`### #${item.number} — ${env} — ${route}${gh ? ` ${gh}` : ''}`);
     // Server-computed metadata, not comment text — kept OUTSIDE the untrusted fence below, so the
     // value is re-sanitized here to a bare BCP-47-ish token regardless of what the server sent.
     const safeLang = String(item.language ?? '').toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 16);

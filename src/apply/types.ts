@@ -163,6 +163,8 @@ export type QueueItem = {
   textSource?: string | null;
   referencedComments?: ReferencedComment[];
   referencedProjects?: ReferencedProject[];
+  /** Integrations release 2: the GitHub issue this comment was pushed to (server field; absent on older servers). */
+  externalIssue?: { provider: string; number: number; url: string; state: string } | null;
 };
 
 export type UntrustedString = {

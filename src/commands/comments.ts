@@ -8,6 +8,7 @@ import { toAiCommentView } from '../apply/projection.js';
 import { pruneMedia, saveIfRooted } from '../apply/media.js';
 import type { AiCommentView, AiMediaView } from '../apply/types.js';
 import { resolveServer } from '../server.js';
+import { externalIssueTag } from '../lib/external-issue.js';
 import { fetchStatuses, resolveStatus, statusLabel, statusJson, unknownStatusError, type StatusCatalogItem } from '../statuses.js';
 
 function mapEnvironmentToNumber(env?: string): number | undefined {
@@ -104,7 +105,8 @@ function printCommentLine(item: any, catalog: StatusCatalogItem[]): void {
   const env = mapEnvironmentToString(item.environment);
   const author = (item.authorName || 'Anonymous') + (authorKindOf(item.authorKind) === 'visitor' ? ' [Visitor]' : '');
   const loc = item.route || item.sourcePath || '';
-  console.log(`#${item.number} [${st}] [${env}] ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
+  const gh = externalIssueTag(item);
+  console.log(`#${item.number} [${st}] [${env}]${gh ? ` ${gh}` : ''} ${author}: ${item.body} ${loc ? `(${loc})` : ''}`);
 }
 
 export async function listCommand(
@@ -229,7 +231,8 @@ export async function getCommand(
     process.exit(0);
   }
 
-  console.log(`Comment #${n} [${statusLabel(raw, catalog)}] [${mapEnvironmentToString(view.environment)}]`);
+  const gh = externalIssueTag(raw);
+  console.log(`Comment #${n} [${statusLabel(raw, catalog)}] [${mapEnvironmentToString(view.environment)}]${gh ? ` ${gh}` : ''}`);
   console.log(`Author: ${view.authorName || 'Anonymous'}${view.authorKind === 'visitor' ? ' [Visitor]' : ''} | Created: ${view.createdAt}`);
   if (view.element.route || view.element.sourcePath) {
     console.log(`Location: ${view.element.route || ''} ${view.element.sourcePath ? `(${view.element.sourcePath})` : ''}`);
