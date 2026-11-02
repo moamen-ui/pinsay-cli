@@ -23,6 +23,24 @@ test('externalIssueTag refuses numbers that are not positive integers', () => {
   }
 });
 
+test('externalIssueTag shows [Jira KEY] for a Jira issue link', () => {
+  assert.equal(externalIssueTag({ externalIssue: { provider: 'jira', key: 'WEB-123', state: 'open' } }), '[Jira WEB-123]');
+});
+
+test('externalIssueTag refuses Jira keys that do not match the pattern', () => {
+  for (const key of ['web-123', 'WEB-1\n', 'WEB-1]', 'WEB-0', 'WEB', 42]) {
+    assert.equal(externalIssueTag({ externalIssue: { provider: 'jira', key, state: 'open' } }), '');
+  }
+});
+
+test('externalIssueTag prints nothing for a Jira issue deleted in Jira', () => {
+  assert.equal(externalIssueTag({ externalIssue: { provider: 'jira', key: 'WEB-123', state: 'deleted' } }), '');
+});
+
+test('externalIssueTag ignores providers other than github and jira', () => {
+  assert.equal(externalIssueTag({ externalIssue: { provider: 'linear', key: 'WEB-123', state: 'open' } }), '');
+});
+
 test('buildApplyPrompt puts the GitHub tag on the item heading', () => {
   const context: ApplyProjectContext = {
     productName: 'PinSay',
