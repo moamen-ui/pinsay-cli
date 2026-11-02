@@ -369,6 +369,8 @@ test('mediaFileName and extensionFor', async () => {
   assert.equal(mediaFileName(item({ kind: 'video', url: 'https://x/v.mp4', contentType: 'video/mp4' })), null);
   assert.equal(mediaFileName(item({ kind: 'image', ordinal: 2, contentType: 'image/webp' })), 'image-02.webp');
   assert.equal(mediaFileName(item({ kind: 'image', ordinal: 1, contentType: 'image/gif' })), 'image-01.gif');
+  assert.equal(mediaFileName(item({ kind: 'figma' }), 'figma-12-34'), 'figma-12-34.png');
+  assert.equal(mediaFileName(item({ kind: 'figma' })), 'figma.png');
 });
 
 test('off-origin url is refused without a fetch', async () => {

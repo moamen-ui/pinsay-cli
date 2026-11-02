@@ -98,6 +98,18 @@ export type QueueItemElement = {
   deviceType?: string | null;
 };
 
+/** Figma SPEC 2026-11-02: the Figma frame linked to a comment or reply (server field; absent on older servers). */
+export type FigmaRef = {
+  fileKey: string;
+  nodeId: string;
+  kind?: string | null;
+  url?: string | null;
+  frameName?: string | null;
+  specs?: string | null;
+  thumbnailUrl?: string | null;
+  fetchStatus?: string | null;
+};
+
 export type QueueItemReply = {
   id?: number;
   authorId?: string;
@@ -107,6 +119,7 @@ export type QueueItemReply = {
   isAi?: boolean;
   media?: CommentMedia[];
   textSource?: string | null;
+  figma?: FigmaRef | null;
 };
 
 /** Mentions (SPEC AC-F1): a comment this item #-mentions that the caller may read. `body` is untrusted. */
@@ -165,6 +178,7 @@ export type QueueItem = {
   referencedProjects?: ReferencedProject[];
   /** Integrations release 2: the GitHub issue this comment was pushed to (server field; absent on older servers). */
   externalIssue?: { provider: string; number: number; url: string; state: string } | null;
+  figma?: FigmaRef | null;
 };
 
 export type UntrustedString = {
