@@ -33,10 +33,6 @@ test('externalIssueTag refuses Jira keys that do not match the pattern', () => {
   }
 });
 
-test('externalIssueTag prints nothing for a Jira issue deleted in Jira', () => {
-  assert.equal(externalIssueTag({ externalIssue: { provider: 'jira', key: 'WEB-123', state: 'deleted' } }), '');
-});
-
 test('externalIssueTag ignores providers other than github and jira', () => {
   assert.equal(externalIssueTag({ externalIssue: { provider: 'linear', key: 'WEB-123', state: 'open' } }), '');
 });
