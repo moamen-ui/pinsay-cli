@@ -485,3 +485,71 @@ test('fetchQueueShared keeps referencedComments and referencedProjects (QA-BUG-0
     await stub.close();
   }
 });
+
+const FIGMA = {
+  fileKey: 'AbCdEf123456',
+  nodeId: '12:34',
+  kind: 'design',
+  url: 'https://www.figma.com/design/AbCdEf123456?node-id=12-34',
+  frameName: 'Checkout',
+  specs: null,
+  thumbnailUrl: null,
+  fetchStatus: 'none',
+};
+
+test('fetchQueueShared carries figma on the item and its replies (QA-BUG-01)', async () => {
+  const stub = await stubServer((req, res) => {
+    if (req.method === 'GET' && req.url?.startsWith('/api/admin/projects/fig/apply-queue')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: {
+        items: [{
+          id: 1, number: 1, status: 2, environment: 1, body: 'Match the design', createdAt: '2026-11-02T00:00:00Z',
+          element: {}, figma: FIGMA,
+          replies: [{ id: 5, authorId: 'u', body: 'see frame', createdAt: '2026-11-02T00:00:00Z', figma: { ...FIGMA, nodeId: '5:6', url: 'https://www.figma.com/design/AbCdEf123456?node-id=5-6' } }],
+        }],
+        pages: {}, pageContexts: {},
+      } }));
+      return;
+    }
+    res.writeHead(404, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: false }));
+  });
+  try {
+    const { items } = await fetchQueueShared({ server: stub.url, project: 'fig', token: 't', cwd: '/tmp' });
+    assert.equal(items[0].figma?.fileKey, 'AbCdEf123456');
+    assert.equal(items[0].figma?.nodeId, '12:34');
+    assert.equal(items[0].replies[0].figma?.nodeId, '5:6');
+    const prompt = buildApplyPrompt(
+      items,
+      { productName: 'PinSay', projectName: 'x', projectKey: 'fig', commitStyle: 'Single', stack: {} } as any,
+    );
+    assert.match(prompt, /Figma: fileKey=AbCdEf123456 nodeId=12:34 url=https:\/\/www\.figma\.com\/design\/AbCdEf123456\?node-id=12-34/);
+  } finally {
+    await stub.close();
+  }
+});
+
+test('fetchQueueShared 403 summary fallback carries figma (QA-BUG-01)', async () => {
+  resetFallbackWarning();
+  const stub = await stubServer((req, res) => {
+    if (req.url?.startsWith('/api/admin/projects/fig/apply-queue')) {
+      res.writeHead(403, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: false }));
+      return;
+    }
+    if (req.url?.startsWith('/api/projects/fig/comments?view=summary')) {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ isSuccess: true, data: { items: [{ id: 2, number: 2, status: 2, environment: 1, body: 'b', figma: FIGMA }] } }));
+      return;
+    }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ isSuccess: true, data: [] }));
+  });
+  try {
+    const { items } = await fetchQueueShared({ server: stub.url, project: 'fig', token: 't', cwd: '/tmp' });
+    assert.equal(items[0].figma?.fileKey, 'AbCdEf123456');
+    assert.equal(items[0].figma?.url, FIGMA.url);
+  } finally {
+    await stub.close();
+  }
+});
