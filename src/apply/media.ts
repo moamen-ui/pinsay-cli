@@ -2,7 +2,8 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { currentToken } from '../api.js';
 import { hidePinsayFiles } from '../lib/git-exclude.js';
-import type { CommentMedia, SavedCommentMedia, SavedMedia, SavedReplyMedia } from './types.js';
+import type { CommentMedia, SavedCommentMedia, SavedMedia, SavedReplyMedia, FigmaRef } from './types.js';
+import { safeFigma } from './figma.js';
 
 /**
  * Rich comments (PLAN § S2): the CLI saves a comment's files under
@@ -21,7 +22,8 @@ export type MediaSource = {
   number: number;
   screenshotUrl?: string | null;
   media?: CommentMedia[] | null;
-  replies?: Array<{ id?: number | null; media?: CommentMedia[] | null }> | null;
+  replies?: Array<{ id?: number | null; media?: CommentMedia[] | null; figma?: FigmaRef | null }> | null;
+  figma?: FigmaRef | null;
 };
 
 export type SaveMediaOptions = {
@@ -66,13 +68,14 @@ function two(n: number): string {
 }
 
 /** The file name an item gets inside its folder; null for a kind this CLI does not know (skipped). */
-export function mediaFileName(item: CommentMedia): string | null {
+export function mediaFileName(item: CommentMedia, figmaStem?: string): string | null {
   const kind = String(item.kind ?? '').toLowerCase();
   if (kind === 'annotation') return `annotation.${extensionFor(item.contentType, item.url, 'png')}`;
   if (kind === 'screenshot') return `screenshot.${extensionFor(item.contentType, item.url, 'png')}`;
   if (kind === 'step') return `step-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'png')}`;
   if (kind === 'audio') return `voice-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'webm')}`;
   if (kind === 'image') return `image-${two(item.ordinal)}.${extensionFor(item.contentType, item.url, 'png')}`;
+  if (kind === 'figma') return `${figmaStem ?? 'figma'}.png`;
   return null;
 }
 
@@ -158,10 +161,10 @@ async function download(
   return null;
 }
 
-async function saveItems(items: CommentMedia[], dir: string, opts: SaveMediaOptions): Promise<SavedMedia[]> {
+async function saveItems(items: CommentMedia[], dir: string, opts: SaveMediaOptions, figmaStem?: string): Promise<SavedMedia[]> {
   const out: SavedMedia[] = [];
   for (const item of items) {
-    const name = mediaFileName(item);
+    const name = mediaFileName(item, figmaStem);
     if (!name) {
       out.push({ ...item, path: null, error: `unknown kind "${item.kind}"` });
       continue;
@@ -202,7 +205,7 @@ export async function saveCommentMedia(comment: MediaSource, opts: SaveMediaOpti
       : { url: comment.screenshotUrl, path: file };
   }
 
-  result.media = await saveItems(media, dir, opts);
+  result.media = await saveItems(media, dir, opts, safeFigma(comment.figma)?.fileStem);
 
   for (let i = 0; i < replies.length; i++) {
     const r = replies[i];
@@ -216,7 +219,7 @@ export async function saveCommentMedia(comment: MediaSource, opts: SaveMediaOpti
       folder,
       ...(replyId !== undefined ? { replyId } : {}),
       position: i + 1,
-      media: await saveItems(items, replyDir, opts),
+      media: await saveItems(items, replyDir, opts, safeFigma(r.figma)?.fileStem),
     };
     result.replies.push(saved);
   }

@@ -6,7 +6,7 @@ import { normalizeMedia } from './media.js';
 import { referencedCommentsOf, referencedProjectsOf } from './projection.js';
 import { sharedFromApi, sharedFromParts, type SharedBlock } from './shared.js';
 import { fetchStatuses, resolveStatus, unknownStatusError } from '../statuses.js';
-import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto } from './types.js';
+import type { ApplyClientContext, QueueItem, ApplyPageDto, PageContextDto, FigmaRef } from './types.js';
 
 export type QueueFilter = {
   status?: number | string;
@@ -117,6 +117,7 @@ export async function fetchQueueShared(
               isAi: Boolean(r.isAi),
               media: normalizeMedia(r.media),
               textSource: typeof r.textSource === 'string' ? r.textSource : null,
+              figma: figmaOf(r.figma),
             }))
           : [],
         pickedActions: Array.isArray(item.pickedActions)
@@ -144,6 +145,7 @@ export async function fetchQueueShared(
         language: typeof item.language === 'string' && item.language ? item.language : null,
         media: normalizeMedia(item.media),
         textSource: typeof item.textSource === 'string' ? item.textSource : null,
+        figma: figmaOf(item.figma),
         customFields: Array.isArray(item.customFields)
           ? item.customFields
               .filter((f: any) => f && typeof f.key === 'string')
@@ -218,12 +220,30 @@ export async function fetchQueueShared(
         pageContextId: null,
         page: item.route ? { route: item.route } : undefined,
         pageContext: undefined,
+        figma: figmaOf(item.figma),
       }));
       const parts = sharedFromParts(mapped.map((i) => ({ aiRules: i.aiRules, pickedActions: i.pickedActions })));
       return { shared: parts.shared, items: applyRefs(mapped, parts.refs) };
     }
     throw err;
   }
+}
+
+/** Figma SPEC: the server's `figma` object (comment or reply), or null when absent or malformed. */
+function figmaOf(raw: any): FigmaRef | null {
+  if (!raw || typeof raw !== 'object') return null;
+  if (typeof raw.fileKey !== 'string' || typeof raw.nodeId !== 'string') return null;
+  const str = (v: any): string | null => (typeof v === 'string' ? v : null);
+  return {
+    fileKey: raw.fileKey,
+    nodeId: raw.nodeId,
+    kind: str(raw.kind),
+    url: str(raw.url),
+    frameName: str(raw.frameName),
+    specs: str(raw.specs),
+    thumbnailUrl: str(raw.thumbnailUrl),
+    fetchStatus: str(raw.fetchStatus),
+  };
 }
 
 function applyRefs(items: QueueItem[], refs: Array<{ aiRuleRefs: string[]; actionIds: string[] }>): QueueItem[] {
