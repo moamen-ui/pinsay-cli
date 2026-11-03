@@ -149,7 +149,7 @@ export function partitionItem(item: any, saved?: SavedCommentMedia | null): any 
       ? String(item.body.value ?? '')
       : String(item?.body ?? '');
 
-  const refComments = referencedCommentsOf(item);
+  const refComments = referencedCommentsOf(item, saved);
   const refProjects = referencedProjectsOf(item);
 
   const paths = stepPaths(saved);
@@ -230,7 +230,7 @@ export function reshapeComment(raw: any, page?: any, saved?: SavedCommentMedia |
       }))
     : [];
 
-  const refComments = referencedCommentsOf(raw);
+  const refComments = referencedCommentsOf(raw, saved);
   const refProjects = referencedProjectsOf(raw);
 
   return {

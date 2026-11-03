@@ -122,6 +122,17 @@ export type QueueItemReply = {
   figma?: FigmaRef | null;
 };
 
+/** Bug 2026-11-03: one file of a referenced comment; `path` is set when the CLI saved it. */
+export type ReferencedMedia = {
+  kind: string;
+  ordinal: number;
+  url: string | null;
+  contentType: string;
+  available: boolean;
+  path: string | null;
+  error?: string;
+};
+
 /** Mentions (SPEC AC-F1): a comment this item #-mentions that the caller may read. `body` is untrusted. */
 export type ReferencedComment = {
   token: string;
@@ -137,6 +148,12 @@ export type ReferencedComment = {
   sourcePath: string | null;
   commitSha: string | null;
   commitUrl: string | null;
+  /** Signed screenshot link (1 h); null when none. */
+  screenshotUrl: string | null;
+  /** Absolute path of the saved screenshot; null when not saved. */
+  screenshotPath: string | null;
+  /** Its own annotation, step screenshots and attached images. */
+  media: ReferencedMedia[];
 };
 
 /** Mentions (SPEC AC-F1): a project this item #-mentions that the caller may read. */
@@ -375,4 +392,6 @@ export type SavedCommentMedia = {
   screenshot: { url: string; path: string | null; error?: string } | null;
   media: SavedMedia[];
   replies: SavedReplyMedia[];
+  /** Bug 2026-11-03: the saved files of each referenced comment, keyed `<projectKey>#<number>`. */
+  references?: Record<string, SavedCommentMedia>;
 };

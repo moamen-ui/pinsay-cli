@@ -1,5 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { promises as fs } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { saveIfRooted } from '../src/apply/media.js';
 import { toAiCommentView, toSharedItemView } from '../src/apply/projection.js';
 import { buildApplyPrompt } from '../src/apply/prompt.js';
 import { partitionItem, reshapeComment } from '../src/mcp/tools.js';
@@ -81,4 +85,69 @@ test('reshapeComment: referenced comments under untrusted, projects top level, t
   const bare = reshapeComment(bareItem());
   assert.deepEqual(Object.keys(bare.untrusted).sort(), ['body', 'media', 'replies']);
   assert.ok(!('referencedProjects' in bare));
+});
+
+const shotItem = (): any =>
+  mentionsItem({
+    referencedComments: [
+      {
+        ...refComment,
+        pageUrl: 'https://b1.test/home',
+        screenshotUrl: 'https://s/shot.png',
+        media: [{ kind: 'image', ordinal: 1, url: 'https://s/img.png', contentType: 'image/png', sizeBytes: 1, available: true }],
+      },
+    ],
+  });
+const savedWithRefs = (): any => ({
+  dir: '/r', screenshot: null, media: [], replies: [],
+  references: {
+    'b1#1': {
+      dir: '/r/.pinsay/media/b1/1',
+      screenshot: { url: 'https://s/shot.png', path: '/r/.pinsay/media/b1/1/screenshot.png' },
+      media: [{ kind: 'image', ordinal: 1, url: 'https://s/img.png', contentType: 'image/png', sizeBytes: 1, available: true, path: '/r/.pinsay/media/b1/1/image-01.png' }],
+      replies: [],
+    },
+  },
+});
+
+test("buildApplyPrompt prints a referenced comment's pageUrl, saved screenshot and files", () => {
+  const out = buildApplyPrompt([shotItem()], context, { savedMedia: new Map([[5, savedWithRefs()]]) } as any);
+  const body = out.indexOf(refBody);
+  for (const needle of [
+    'pageUrl=https://b1.test/home',
+    'screenshot: /r/.pinsay/media/b1/1/screenshot.png',
+    'image 1: /r/.pinsay/media/b1/1/image-01.png',
+  ]) {
+    const at = out.indexOf(needle);
+    assert.ok(at >= 0, needle);
+    assert.ok(at < body, `${needle} before the body`);
+  }
+});
+
+test("saveIfRooted saves referenced comments' files under their own project key", async () => {
+  const root = await fs.mkdtemp(join(tmpdir(), 'pinsay-ref-'));
+  const fetchImpl = (async () => new Response(new Uint8Array([1, 2, 3]), { status: 200 })) as typeof fetch;
+  try {
+    const raw = {
+      number: 5, element: {}, media: [], replies: [],
+      referencedComments: [
+        { projectKey: 'b1', number: 1, screenshotUrl: 'https://app.test/uploads/x/shot.png', media: [] },
+        { projectKey: '../evil', number: 2, screenshotUrl: 'https://app.test/uploads/x/s.png', media: [] },
+      ],
+    };
+    const saved: any = await saveIfRooted(raw, { root, projectKey: 'a1', server: 'https://app.test', token: 't', fetchImpl });
+    const expected = join(root, '.pinsay', 'media', 'b1', '1', 'screenshot.png');
+    assert.equal(saved.references['b1#1'].screenshot.path, expected);
+    await fs.access(expected);
+    assert.ok(!Object.keys(saved.references).some((k) => k.includes('evil')));
+  } finally {
+    await fs.rm(root, { recursive: true, force: true });
+  }
+});
+
+test('get --json view carries the saved paths', () => {
+  const view = toAiCommentView(shotItem(), undefined, savedWithRefs());
+  const r: any = view.referencedComments![0];
+  assert.equal(r.screenshotPath, '/r/.pinsay/media/b1/1/screenshot.png');
+  assert.equal(r.media[0].path, '/r/.pinsay/media/b1/1/image-01.png');
 });

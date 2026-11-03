@@ -1,5 +1,5 @@
 import { authorKindOf } from './author-kind.js';
-import { normalizeMedia } from './media.js';
+import { normalizeMedia, referenceKey } from './media.js';
 import { statusJson } from '../statuses.js';
 import { formatEnvironment } from './environment.js';
 import { promptRef } from './shared.js';
@@ -20,24 +20,45 @@ import type {
 
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
-/** Mentions (AC-F2): the referenced comments of a raw API item, normalized; [] when absent. */
-export function referencedCommentsOf(raw: any): ReferencedComment[] {
+/** Mentions (AC-F2): the referenced comments of a raw API item, normalized; [] when absent. `saved` (bug
+ * 2026-11-03) fills the saved screenshot and file paths. */
+export function referencedCommentsOf(raw: any, saved?: SavedCommentMedia | null): ReferencedComment[] {
   return Array.isArray(raw?.referencedComments)
-    ? raw.referencedComments.map((r: any): ReferencedComment => ({
-        token: String(r?.token ?? ''),
-        projectKey: String(r?.projectKey ?? ''),
-        projectName: String(r?.projectName ?? ''),
-        number: Number(r?.number ?? 0),
-        statusKey: String(r?.statusKey ?? ''),
-        statusLabel: strOrNull(r?.statusLabel),
-        body: String(r?.body ?? ''),
-        selector: strOrNull(r?.selector),
-        route: strOrNull(r?.route),
-        pageUrl: strOrNull(r?.pageUrl),
-        sourcePath: strOrNull(r?.sourcePath),
-        commitSha: strOrNull(r?.commitSha),
-        commitUrl: strOrNull(r?.commitUrl),
-      }))
+    ? raw.referencedComments.map((r: any): ReferencedComment => {
+        const projectKey = String(r?.projectKey ?? '');
+        const number = Number(r?.number ?? 0);
+        const s = saved?.references?.[referenceKey(projectKey, number)];
+        return {
+          token: String(r?.token ?? ''),
+          projectKey,
+          projectName: String(r?.projectName ?? ''),
+          number,
+          statusKey: String(r?.statusKey ?? ''),
+          statusLabel: strOrNull(r?.statusLabel),
+          body: String(r?.body ?? ''),
+          selector: strOrNull(r?.selector),
+          route: strOrNull(r?.route),
+          pageUrl: strOrNull(r?.pageUrl),
+          sourcePath: strOrNull(r?.sourcePath),
+          commitSha: strOrNull(r?.commitSha),
+          commitUrl: strOrNull(r?.commitUrl),
+          screenshotUrl: strOrNull(r?.screenshotUrl),
+          screenshotPath: s?.screenshot?.path ?? strOrNull(r?.screenshotPath),
+          media: normalizeMedia(r?.media).map((m, i) => {
+            const sm = s?.media?.[i];
+            const path = sm?.path ?? (typeof r?.media?.[i]?.path === 'string' ? r.media[i].path : null);
+            return {
+              kind: m.kind,
+              ordinal: m.ordinal,
+              url: m.url,
+              contentType: m.contentType,
+              available: m.available,
+              path,
+              ...(sm?.error ? { error: sm.error } : {}),
+            };
+          }),
+        };
+      })
     : [];
 }
 
@@ -158,7 +179,7 @@ export function toAiCommentView(raw: any, page?: any, saved?: SavedCommentMedia 
       ? String(raw.body.value ?? '')
       : String(raw?.body ?? '');
 
-  const refComments = referencedCommentsOf(raw);
+  const refComments = referencedCommentsOf(raw, saved);
   const refProjects = referencedProjectsOf(raw);
 
   return {

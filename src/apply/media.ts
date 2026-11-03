@@ -286,7 +286,43 @@ export function mediaSourceOf(raw: any): MediaSource {
 /** Saves the files when `root` is a non-empty string; otherwise returns null (nothing saved, every path null). */
 export async function saveIfRooted(raw: any, opts: Omit<SaveMediaOptions, 'root'> & { root?: string }): Promise<SavedCommentMedia | null> {
   if (typeof opts.root !== 'string' || opts.root === '') return null;
-  return saveCommentMedia(mediaSourceOf(raw), { ...opts, root: opts.root });
+  const rooted = { ...opts, root: opts.root };
+  const saved = await saveCommentMedia(mediaSourceOf(raw), rooted);
+  const references = await saveReferences(raw, rooted);
+  return Object.keys(references).length > 0 ? { ...saved, references } : saved;
+}
+
+const SAFE_PROJECT_KEY = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/;
+
+/** Bug 2026-11-03: the key of a referenced comment in `SavedCommentMedia.references`. */
+export function referenceKey(projectKey: string, number: number): string {
+  return `${projectKey}#${number}`;
+}
+
+/**
+ * Saves each referenced comment's screenshot and files under `.pinsay/media/<its projectKey>/<number>/`.
+ * Skips an entry whose key or number could not be a folder name. Never throws for a download problem.
+ */
+async function saveReferences(raw: any, opts: SaveMediaOptions): Promise<Record<string, SavedCommentMedia>> {
+  const out: Record<string, SavedCommentMedia> = {};
+  const refs: any[] = Array.isArray(raw?.referencedComments) ? raw.referencedComments : [];
+  for (const r of refs) {
+    const projectKey = String(r?.projectKey ?? '');
+    const number = Number(r?.number);
+    if (!SAFE_PROJECT_KEY.test(projectKey) || !Number.isInteger(number) || number <= 0) continue;
+    const key = referenceKey(projectKey, number);
+    if (out[key]) continue;
+    out[key] = await saveCommentMedia(
+      {
+        number,
+        screenshotUrl: typeof r?.screenshotUrl === 'string' && r.screenshotUrl ? r.screenshotUrl : null,
+        media: normalizeMedia(r?.media),
+        replies: [],
+      },
+      { ...opts, projectKey },
+    );
+  }
+  return out;
 }
 
 /** The saved path of each step screenshot by ordinal. */
