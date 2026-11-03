@@ -26,7 +26,7 @@ test('figmaLines gives exactly the two lines of PLAN D7', () => {
   ]);
 });
 
-test('figmaSpecsText keeps newlines, strips other control chars, caps at 8000', () => {
+test('figmaSpecsText keeps newlines, strips other control chars, caps at 65536', () => {
   // keeps newlines, strips other control chars
   const specs = 'Line 1\r\nLine 2\x07with\x00bell\nLine 3';
   const out = figmaSpecsText({
@@ -37,14 +37,14 @@ test('figmaSpecsText keeps newlines, strips other control chars, caps at 8000', 
   });
   assert.equal(out, 'Frame: Card Title\nLine 1\nLine 2 with bell\nLine 3');
 
-  // caps at 8000
-  const longSpecs = 'x'.repeat(9000);
+  // caps at 65536
+  const longSpecs = 'x'.repeat(70000);
   const capped = figmaSpecsText({
     fileKey: 'ValidKey123',
     nodeId: '12:34',
     specs: longSpecs,
   });
-  assert.equal(capped.length, 8000);
+  assert.equal(capped.length, 65536);
 
   // empty when invalid
   assert.equal(figmaSpecsText(null), '');

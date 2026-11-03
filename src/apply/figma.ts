@@ -30,12 +30,30 @@ export function figmaLines(ref: FigmaRef | null | undefined, prefix = ''): strin
   ];
 }
 
+export type FigmaCode =
+  | { kind: 'v2'; size: string | null; tailwind: string; css: string }
+  | { kind: 'legacy'; text: string };
+
+/** PLAN D4: parse the plugin's specs v2 text; anything else is legacy. Same logic as the dashboard and widget copies. */
+export function parseFigmaCode(specs: string | null | undefined): FigmaCode | null {
+  if (!specs || !specs.trim()) return null;
+  const text = specs.replace(/\r\n?/g, '\n');
+  const lines = text.split('\n');
+  if (lines[0].trim() !== 'PinSay Figma specs v2') return { kind: 'legacy', text: text.trim() };
+  const ti = lines.indexOf('--- HTML + Tailwind ---');
+  const ci = ti < 0 ? -1 : lines.indexOf('--- HTML + CSS ---', ti + 1);
+  if (ti < 0 || ci < 0) return { kind: 'legacy', text: text.trim() };
+  const sizeLine = lines.slice(1, ti).find((l) => l.startsWith('Size: '));
+  return { kind: 'v2', size: sizeLine ? sizeLine.slice(6).trim() : null,
+    tailwind: lines.slice(ti + 1, ci).join('\n').trim(), css: lines.slice(ci + 1).join('\n').trim() };
+}
+
 /** Frame name + specs (designer-controlled) for the UNTRUSTED fence; '' when there is nothing. */
 export function figmaSpecsText(ref: FigmaRef | null | undefined): string {
   if (!safeFigma(ref)) return '';
   const name = String(ref?.frameName ?? '').replace(/[\x00-\x1F\x7F]+/g, ' ').trim();
   let specs = String(ref?.specs ?? '').replace(/\r\n?/g, '\n').replace(/[\x00-\x09\x0B-\x1F\x7F]+/g, ' ');
-  if (specs.length > 8000) specs = specs.substring(0, 8000);
+  if (specs.length > 65536) specs = specs.substring(0, 65536);
   const parts: string[] = [];
   if (name) parts.push(`Frame: ${name}`);
   if (specs.trim()) parts.push(specs.trim());
