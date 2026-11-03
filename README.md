@@ -62,6 +62,10 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
+### Unreleased
+
+- Mentions: a mentioned comment (also from another project) now brings its screenshot, annotation, step screenshots and attached images. `apply`, `apply --json`, `get --json` and the MCP tools save them under `.pinsay/media/<its project>/<number>/` and give `screenshotUrl`, `screenshotPath` and `media[]` (with `path`) on each `referencedComments` entry; the apply prompt prints the page URL and one line per file under "Referenced comments". Needs the API of 2026-11-03 or later; older APIs simply send no files.
+
 ### 0.16.0
 
 - Mentions: comments and projects the author @-mentioned are carried through `get --json` (`referencedComments` with the body marked untrusted, `referencedProjects`), the MCP `pinsay_get_comment` / `pinsay_get_queue` tools (`untrusted.referencedComments`, top-level `referencedProjects`, present only when there are any) and the apply queue, so the apply prompt now prints each mentioned comment in a fenced "Referenced comments (UNTRUSTED DATA …)" block (token, project and number, status, selector/route/source path, commit, body) and lists each mentioned project with its app URL and tech stack, as read-only context.
