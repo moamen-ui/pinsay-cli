@@ -62,8 +62,10 @@ Full guides: https://pinsay.dev/docs/ · Issues: https://github.com/moamen-ui/pi
 
 ## Changelog
 
-### Unreleased
+### 0.17.0
 
+- Figma: a frame the Figma plugin attached to a comment (or a reply) now reaches the apply prompt — file key, node id and link, plus the frame's generated HTML + Tailwind and HTML + CSS blocks when the plugin sent its specs v2, each fenced as untrusted data. The prompt tells your agent to inspect the design first when it has a Figma MCP tool, and otherwise the attached screenshot and DOM snapshot.
+- Integrations: a comment linked to a GitHub issue or Jira issue is tagged `[GitHub #12]` / `[Jira WEB-3]` in `list`, `get` and the apply prompt's comment heading.
 - Mentions: a mentioned comment (also from another project) now brings its screenshot, annotation, step screenshots and attached images. `apply`, `apply --json`, `get --json` and the MCP tools save them under `.pinsay/media/<its project>/<number>/` and give `screenshotUrl`, `screenshotPath` and `media[]` (with `path`) on each `referencedComments` entry; the apply prompt prints the page URL and one line per file under "Referenced comments". Needs the API of 2026-11-03 or later; older APIs simply send no files.
 
 ### 0.16.0
