@@ -197,7 +197,7 @@ export function formatHideWarnings(r: HideResult): string[] {
     const lines: string[] = [];
     if (r.status === 'failed') {
         lines.push(`⚠ Could not update ${r.file ?? '.git/info/exclude'} (${r.error}), so PinSay's files may show in git status.`);
-        lines.push('  Fix: check that file\'s permissions. Then run "npx pinsay-cli update".');
+        lines.push('  Fix: check that file\'s permissions. Then run "npx @pinsay/cli update".');
     }
     if (r.tracked.length > 0) {
         lines.push(`⚠ Git already tracks these PinSay files, so they can't be hidden: ${r.tracked.join(', ')}`);
