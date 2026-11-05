@@ -1,0 +1,34 @@
+{
+  "name": "pinsay-cli",
+  "version": "0.18.0",
+  "description": "pinsay-cli is now @pinsay/cli. This package only runs @pinsay/cli; install @pinsay/cli instead.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Moamen",
+  "homepage": "https://pinsay.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/moamen-ui/pinsay-cli.git",
+    "directory": "legacy-alias"
+  },
+  "bin": {
+    "pinsay-cli": "bin/pinsay-cli.js"
+  },
+  "exports": {
+    ".": "./bin/pinsay-cli.js",
+    "./vite": "./vite.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "bin",
+    "vite.js",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@pinsay/cli": "^1.0.0"
+  }
+}
