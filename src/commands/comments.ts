@@ -52,7 +52,7 @@ export async function getClient(
 
   if (!token && !apiKey) {
     console.error(
-      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx pinsay-cli login`.',
+      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx @pinsay/cli login`.',
     );
     process.exit(3);
   }
@@ -76,7 +76,7 @@ function exitOnUnresolvedProject(
   flag?: string,
 ): never {
   if (resolved.reason === 'none') {
-    console.error('No project configured. Run `npx pinsay-cli init` or pass --project.');
+    console.error('No project configured. Run `npx @pinsay/cli init` or pass --project.');
   } else if (resolved.reason === 'not-found') {
     console.error(`Unknown project "${flag}". Configured: ${resolved.keys.join(', ')}`);
   } else {
@@ -188,7 +188,7 @@ export async function getCommand(
   positionals: string[] = [],
 ): Promise<void> {
   if (Object.keys(parsed).some((key) => /^--id(=|$)/.test(`--${key}`))) {
-    console.error("--id was removed: pass the comment's number, e.g. pinsay-cli get 12 (internal ids are not accepted).");
+    console.error("--id was removed: pass the comment's number, e.g. npx @pinsay/cli get 12 (internal ids are not accepted).");
     process.exit(2);
   }
   const { server, token, project, root } = await getClient(cwd, parsed, { requireProject: true });
@@ -248,7 +248,7 @@ export async function getCommand(
     // it had — which is the one fact that turns a dead end into a grep.
     console.log(
       `⚠ comment #${view.number}: source hash ${resolvedHuman.hash} is not in the current manifest — ` +
-        `${resolvedHuman.hint} (renamed or moved since; run \`npx pinsay-cli map --from-source\` after a rename)`,
+        `${resolvedHuman.hint} (renamed or moved since; run \`npx @pinsay/cli map --from-source\` after a rename)`,
     );
   }
   const vTag = visitorTag(view.authorKind, view.isBugReport);

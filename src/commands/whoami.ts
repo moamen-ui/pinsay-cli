@@ -16,7 +16,7 @@ export async function whoamiCommand(cwd: string, options: Record<string, string 
       console.log(JSON.stringify({ ok: false, server, source: null }));
     } else {
       console.error(`No API key found for ${server} (checked PINSAY_API_KEY and this repo's .pinsay/credentials.env).`);
-      console.error('Run `npx pinsay-cli login` to sign in.');
+      console.error('Run `npx @pinsay/cli login` to sign in.');
     }
     process.exit(3);
   }

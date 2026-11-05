@@ -39,8 +39,8 @@ export async function checkAndNotifyUpdates(
   if (meta.latestCliVersion && compareSemver(BUILD_CLI_VERSION, meta.latestCliVersion) < 0) {
     result.cliUpdateAvailable = true;
     console.error(
-      `${yellow(`💡 Update available for pinsay-cli: ${BUILD_CLI_VERSION} → ${meta.latestCliVersion}`)}\n` +
-      `${yellow("   Run 'npx -y pinsay@latest' to update.")}\n`,
+      `${yellow(`💡 Update available for @pinsay/cli: ${BUILD_CLI_VERSION} → ${meta.latestCliVersion}`)}\n` +
+      `${yellow("   Run 'npx -y @pinsay/cli@latest' to update.")}\n`,
     );
   }
 
@@ -67,7 +67,7 @@ export async function checkAndNotifyUpdates(
         result.skillsUpdateAvailable = true;
         console.error(
           `${yellow('💡 Local AI skills are out of date with the server.')}\n` +
-          `${yellow("   Run 'npx pinsay-cli update' to refresh your prompt skills.")}\n`,
+          `${yellow("   Run 'npx @pinsay/cli update' to refresh your prompt skills.")}\n`,
         );
       }
     } catch {

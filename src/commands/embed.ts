@@ -51,7 +51,7 @@ export async function embedCommand(cwd: string, options: Record<string, string |
     }
 
     if (!project) {
-        exitWithError(2, 'No project in this folder yet. Run: npx pinsay-cli init --embed', json);
+        exitWithError(2, 'No project in this folder yet. Run: npx @pinsay/cli init --embed', json);
     }
 
     const plan = await planEmbed(root, {
@@ -113,7 +113,7 @@ export async function embedCommand(cwd: string, options: Record<string, string |
         const nextStep = `Next: in ${tool}, run /pinsay-init to add the widget.`;
         const skillFile = SKILL_FILES[config.aiTool ?? 'other']?.[0];
         const missing = !skillFile || !existsSync(join(root, skillFile));
-        if (!json && missing) console.log('Run npx pinsay-cli update first to install the skills.');
+        if (!json && missing) console.log('Run npx @pinsay/cli update first to install the skills.');
         finish(nextStep, { files: [], nextStep });
         closePrompts();
         process.exit(0);

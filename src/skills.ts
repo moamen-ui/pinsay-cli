@@ -47,11 +47,11 @@ function toWarning(tool: string, path: string, server: string, err: unknown): Sk
             tool,
             path,
             message: `could not download the skill files from ${server} (${err.reason}).`,
-            hint: 'Check your connection. Then run "npx pinsay-cli update".',
+            hint: 'Check your connection. Then run "npx @pinsay/cli update".',
         };
     }
     const msg = err instanceof Error ? err.message : String(err);
-    return { tool, path, message: `could not install it (${msg}).`, hint: 'Run "npx pinsay-cli update" to try again.' };
+    return { tool, path, message: `could not install it (${msg}).`, hint: 'Run "npx @pinsay/cli update" to try again.' };
 }
 
 /**

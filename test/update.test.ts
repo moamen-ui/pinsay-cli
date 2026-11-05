@@ -253,7 +253,7 @@ test('update leaves an old .pinsay/pinsay.sh untouched and notes it is no longer
     const lines = log.mock.calls.map((c) => String(c.arguments[0]));
     const notes = lines.filter((l) => l.includes('no longer used'));
     assert.equal(notes.length, 1, `expected exactly one note, got: ${lines.join(' | ')}`);
-    assert.match(notes[0], /npx pinsay-cli remove/);
+    assert.match(notes[0], /npx @pinsay\/cli remove/);
   } finally {
     await fs.rm(dir, { recursive: true, force: true });
     await stub.close();
@@ -310,7 +310,7 @@ test('update hints login when the repo has no key of its own', async (t) => {
       const lines: string[] = [];
       t.mock.method(console, 'log', (...a: unknown[]) => { lines.push(a.join(' ')); });
       await updateCommand(dir, { server: stub.url });
-      assert.ok(lines.includes('This repo has no key of its own yet. Sign in for it: npx pinsay-cli login'));
+      assert.ok(lines.includes('This repo has no key of its own yet. Sign in for it: npx @pinsay/cli login'));
     } finally {
       await stub.close();
     }

@@ -148,7 +148,7 @@ test('configured repo + repo key + stub queue returning 3 items: status overview
       assert.ok(human.stdout.includes('key from this repo'), human.stdout);
       assert.ok(human.stdout.includes('Project     My App (my-app)'), human.stdout);
       assert.ok(human.stdout.includes('3 comments to apply'), human.stdout);
-      assert.ok(human.stdout.includes('npx pinsay-cli apply'), human.stdout);
+      assert.ok(human.stdout.includes('npx @pinsay/cli apply'), human.stdout);
 
       // 2. Machine stdout status --json
       const jsonRes = await run(['status', '--json'], dir, env);
@@ -184,7 +184,7 @@ test('status overview: no key -> exit 3 with login hint', async () => {
     const r = await run(['status'], dir, env);
     assert.strictEqual(r.code, 3);
     assert.ok(r.stderr.includes('Not signed in'), r.stderr);
-    assert.ok(r.stderr.includes('npx pinsay-cli login'), r.stderr);
+    assert.ok(r.stderr.includes('npx @pinsay/cli login'), r.stderr);
   });
 });
 
@@ -206,7 +206,7 @@ test('status overview: rejected key (stub 401) -> exit 3 no longer works', async
       const r = await run(['status'], dir, env);
       assert.strictEqual(r.code, 3);
       assert.ok(r.stderr.includes('no longer works'), r.stderr);
-      assert.ok(r.stderr.includes('npx pinsay-cli login'), r.stderr);
+      assert.ok(r.stderr.includes('npx @pinsay/cli login'), r.stderr);
     });
   });
 });

@@ -43,7 +43,7 @@ test('a full signed-in plan renders the B4 example', () => {
     '  Project   My App (my-app)',
     '  Account   Jane Doe · key saved in this repo (.pinsay/credentials.env, hidden from git)',
     "  Widget    Chrome extension, no changes to your app's code",
-    '            To put it in your code instead: npx pinsay-cli embed',
+    '            To put it in your code instead: npx @pinsay/cli embed',
     '  Skills    claude-code → .claude/skills/pinsay-init, .claude/skills/pinsay-feedback',
     '  Files     .pinsay/config.json, .pinsay/stack.json, .pinsay/credentials.env,',
     '            .git/info/exclude',

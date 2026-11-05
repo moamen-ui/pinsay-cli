@@ -19,7 +19,7 @@ import type {
 
 export const AI_RULES_PRECEDENCE_TEXT = `## 🛡️ AI RULES PRECEDENCE & HIERARCHY
 
-Active AI rules are listed once below under "Effective AI rules", each with an id (\`r1\`, \`r2\`, …). Workspace, Project and Role rules apply to every item; a Personal rule applies only to its author's comments, and those items name it under "Personal rules". The comment detail (\`npx pinsay-cli get <number> --json\`) carries the same rules.
+Active AI rules are listed once below under "Effective AI rules", each with an id (\`r1\`, \`r2\`, …). Workspace, Project and Role rules apply to every item; a Personal rule applies only to its author's comments, and those items name it under "Personal rules". The comment detail (\`npx @pinsay/cli get <number> --json\`) carries the same rules.
 Read every active rule for an item before editing any file for it: the rules are the team's conventions for how the edit must be made.
 
 | Priority | Scope | Set by | Covers |
@@ -458,7 +458,7 @@ export function buildApplyPrompt(
         );
       }
       if (fileLines.length > 0) {
-        lines.push('Files (saved by pinsay-cli; open them, they are part of the feedback):');
+        lines.push('Files (saved by @pinsay/cli; open them, they are part of the feedback):');
         lines.push(...fileLines);
         if (commentHasImages) lines.push(ABOUT_FILES_TEXT);
       }
@@ -525,10 +525,10 @@ export function buildApplyPrompt(
 
   lines.push('## When you finish an item');
   lines.push(
-    'Run exactly: `npx pinsay-cli apply --mark <number> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`',
+    'Run exactly: `npx @pinsay/cli apply --mark <number> --reply "<what changed>" --models "<planner-id>=planner,<worker-id>=implementer,<reviewer-id>=reviewer" --tool <your-tool-name>`',
   );
   lines.push(
-    '(Separate style: after each item; Single style: run `npx pinsay-cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`',
+    '(Separate style: after each item; Single style: run `npx @pinsay/cli apply --mark all --reply "..." --models "..." --tool <your-tool-name>`',
   );
   lines.push(
     'once at the end). Never run git push. `--models` is MANDATORY and MUST list EVERY model that touched the item and its role:',

@@ -144,7 +144,7 @@ export const TOOL_PINSAY_MARK_APPLIED = {
     `Mark one comment applied and post the reply on it, recording the optional commitUrl, the git ` +
     `user.email as the applier, and the tool/model attribution. Runs no git command and records no ` +
     `commit sha, so a comment marked this way is never flipped to Live by ` +
-    `\`npx pinsay-cli status --deployed\`. Use it when a human will commit the change; to commit ` +
+    `\`npx @pinsay/cli status --deployed\`. Use it when a human will commit the change; to commit ` +
     `now, use pinsay_commit_and_mark. Returns {number, status, commitUrl}. ${MODELS_NOTICE} ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
@@ -309,10 +309,10 @@ export const TOOL_PINSAY_RESOLVE_SOURCE = {
   name: 'pinsay_resolve_source',
   description:
     `Resolve an element's source hash (the 8-character hex element.sourcePath stamped by the ` +
-    `pinsay/vite plugin) to its file path and component name, reading the local ` +
+    `@pinsay/cli/vite plugin) to its file path and component name, reading the local ` +
     `.pinsay/manifest.json only (no server call). Returns {path, componentName}, or {path: null, ` +
     `reason: "no-manifest" | "unknown-hash"}; on unknown-hash, search the codebase for the component ` +
-    `and run \`npx pinsay-cli map --from-source\` to rebuild the manifest. ${UNTRUSTED_NOTICE}`,
+    `and run \`npx @pinsay/cli map --from-source\` to rebuild the manifest. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {
@@ -329,9 +329,9 @@ export const TOOL_PINSAY_RESOLVE_SOURCE = {
 export const TOOL_PINSAY_DOCTOR = {
   name: 'pinsay_doctor',
   description:
-    `Run the install health checks \`npx pinsay-cli doctor\` runs (config, server, API key, ` +
+    `Run the install health checks \`npx @pinsay/cli doctor\` runs (config, server, API key, ` +
     `project, widget injection, skills, stack file, gitignore, source map) and return {ok, checks}. ` +
-    `Read-only: it repairs nothing; \`npx pinsay-cli doctor --fix\` does. ${UNTRUSTED_NOTICE}`,
+    `Read-only: it repairs nothing; \`npx @pinsay/cli doctor --fix\` does. ${UNTRUSTED_NOTICE}`,
   inputSchema: {
     type: 'object',
     properties: {

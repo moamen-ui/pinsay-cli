@@ -18,14 +18,14 @@ export async function overviewCommand(
 
   const { key, source } = await resolveApiKey(root, server);
   if (!key) {
-    exitWithError(3, `Not signed in ${sym.arrow} npx pinsay-cli login`, json);
+    exitWithError(3, `Not signed in ${sym.arrow} npx @pinsay/cli login`, json);
   }
 
   const token = await resolveToken(server, root, key);
   if (!token) {
     exitWithError(
       3,
-      'Your saved key no longer works (expired or revoked). Sign in again: npx pinsay-cli login',
+      'Your saved key no longer works (expired or revoked). Sign in again: npx @pinsay/cli login',
       json,
     );
   }
@@ -93,7 +93,7 @@ export async function overviewCommand(
   console.log(`  Signed in   ${who} ${sym.dot} ${sourceDesc}`);
 
   if (projectsWithPending.length === 0) {
-    console.log(`  Project     none in this folder ${sym.arrow} npx pinsay-cli init`);
+    console.log(`  Project     none in this folder ${sym.arrow} npx @pinsay/cli init`);
   } else if (projectsWithPending.length === 1) {
     const p = projectsWithPending[0];
     console.log(`  Project     ${p.name} (${p.key})`);
@@ -101,7 +101,7 @@ export async function overviewCommand(
       console.log('  Pending     nothing to apply');
     } else {
       const label = p.pending === 1 ? 'comment' : 'comments';
-      console.log(`  Pending     ${p.pending} ${label} to apply ${sym.arrow} npx pinsay-cli apply`);
+      console.log(`  Pending     ${p.pending} ${label} to apply ${sym.arrow} npx @pinsay/cli apply`);
     }
   } else {
     for (let i = 0; i < projectsWithPending.length; i++) {
@@ -118,7 +118,7 @@ export async function overviewCommand(
       } else {
         const label = p.pending === 1 ? 'comment' : 'comments';
         console.log(
-          `  Pending     ${p.key}: ${p.pending} ${label} to apply ${sym.arrow} npx pinsay-cli apply --project ${p.key}`,
+          `  Pending     ${p.key}: ${p.pending} ${label} to apply ${sym.arrow} npx @pinsay/cli apply --project ${p.key}`,
         );
       }
     }

@@ -50,7 +50,7 @@ export interface ResolvedRepoPath {
 
 const MAX_HOPS = 8;
 const STUB_MAX_BYTES = 1024;
-const THEN_UPDATE = 'Then run "npx pinsay-cli update".';
+const THEN_UPDATE = 'Then run "npx @pinsay/cli update".';
 
 function toSlash(p: string): string {
     return p.split(sep).join('/');
@@ -143,7 +143,7 @@ function outsideRepo(blocker: string, target: string): RepoPathError {
         'link-outside-repo',
         blocker,
         `${blocker} points to ${target}, outside this repository. PinSay only writes inside the repository and left it unchanged.`,
-        `Fix or remove the link, or choose another folder with "npx pinsay-cli init --skills-dir <folder>". ${THEN_UPDATE}`,
+        `Fix or remove the link, or choose another folder with "npx @pinsay/cli init --skills-dir <folder>". ${THEN_UPDATE}`,
     );
 }
 

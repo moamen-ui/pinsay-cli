@@ -146,7 +146,7 @@ export async function applyCommand(
       process.exit(2);
     }
     if (resolved.reason === 'none') {
-      console.error('No project configured. Run `npx pinsay-cli init` or pass --project.');
+      console.error('No project configured. Run `npx @pinsay/cli init` or pass --project.');
       process.exit(2);
     }
     // ambiguous: `--mark all` and a comment number cannot guess which project to act in, but the
@@ -169,7 +169,7 @@ export async function applyCommand(
 
   if (!token && !apiKey) {
     console.error(
-      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx pinsay-cli login`.',
+      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx @pinsay/cli login`.',
     );
     process.exit(3);
   }
@@ -399,7 +399,7 @@ async function applyAllProjects(
   const apiKey = explicitKey || (await readApiKey(root, server));
   if (!token && !apiKey) {
     console.error(
-      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx pinsay-cli login`.',
+      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx @pinsay/cli login`.',
     );
     process.exit(3);
   }

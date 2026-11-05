@@ -35,7 +35,7 @@ export async function mcpCommand(
   // Requirement: Fails fast with a single stderr line and exit 3 if no key
   if (!apiKey) {
     console.error(
-      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx pinsay-cli login`.',
+      'Missing API key. Set PINSAY_API_KEY, add .pinsay/credentials.env, or run `npx @pinsay/cli login`.',
     );
     process.exit(3);
   }

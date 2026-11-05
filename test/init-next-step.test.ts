@@ -46,7 +46,7 @@ test('renderNext puts a URL on its own line, indented 6 spaces', () => {
   assert.deepEqual(renderNext(text), [
     'Next: install the PinSay Chrome extension, open your app and click the PinSay icon:',
     '      https://pinsay.dev/extension',
-    'Check any time: npx pinsay-cli status',
+    'Check any time: npx @pinsay/cli status',
   ]);
   assert.equal(renderNext('Next: start your app and click the PinSay button.')[0], 'Next: start your app and click the PinSay button.');
 });
@@ -89,6 +89,6 @@ test('renderNext prints the extra store lines dim, before the status hint', () =
     'Next: install the PinSay Chrome extension, open your app and click the PinSay icon:',
     '      https://chromewebstore.google.com/detail/x',
     '      Also for Firefox: https://addons.mozilla.org/firefox/addon/x',
-    'Check any time: npx pinsay-cli status',
+    'Check any time: npx @pinsay/cli status',
   ]);
 });

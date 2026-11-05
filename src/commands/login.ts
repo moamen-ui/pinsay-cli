@@ -71,7 +71,7 @@ export async function loginCommand(cwd: string, options: Record<string, string |
     // The device flow never reads stdin, so `--no-browser` lets it run without a TTY (the link is printed).
     const outcome = await runDeviceLogin(server, { noBrowser: options['no-browser'] === true });
     if (!outcome.ok) {
-      exitWithError(3, outcome.reason === 'denied' ? 'Sign-in was denied.' : 'The sign-in code expired. Run npx pinsay-cli login again.', json);
+      exitWithError(3, outcome.reason === 'denied' ? 'Sign-in was denied.' : 'The sign-in code expired. Run npx @pinsay/cli login again.', json);
     }
     key = outcome.result.apiKey;
     displayName = outcome.result.displayName;

@@ -35,7 +35,7 @@ test('every command --help: at most 25 lines, at most 80 columns, 2-3 examples',
     assert.notEqual(header, -1, `${command}: no Examples section`);
     // Each example starts on its own line at the two-space indent; a wrapped description hangs
     // deeper, so counting these lines counts the examples themselves (2-3 per command).
-    const examples = lines.slice(header + 1).filter((l) => /^ {2}npx pinsay-cli /.test(l));
+    const examples = lines.slice(header + 1).filter((l) => /^ {2}npx @pinsay\/cli /.test(l));
     assert.ok(
       examples.length >= 2 && examples.length <= 3,
       `${command}: ${examples.length} examples (want 2-3):\n${stdout}`,

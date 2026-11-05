@@ -13,6 +13,7 @@ import { exitWithError } from '../errors.js';
 import { isInteractive } from '../ui/interactive.js';
 import { confirm, closePrompts } from '../prompt.js';
 import { dim, green, sym } from '../ui/style.js';
+import { hasPinsayViteImport } from '../lib/vite-import.js';
 
 export type Removal = {
     kind: 'path' | 'exclude-block' | 'html-block' | 'env-lines';
@@ -122,7 +123,7 @@ export async function collectRemovals(
         for (const name of VITE_CONFIGS) {
             const rel = appDir === '.' ? name : `${appDir}/${name}`;
             const content = await readIfExists(join(root, rel));
-            if (content !== null && content.includes('pinsay/vite')) byHand.push(rel);
+            if (content !== null && hasPinsayViteImport(content)) byHand.push(rel);
         }
     }
 
@@ -182,7 +183,7 @@ export async function removeCommand(cwd: string, options: Record<string, string 
         }
         if (byHand.length > 0) {
             console.log('Remove by hand:');
-            for (const f of byHand) console.log(`  ${f} ${dim('(pinsay/vite plugin line)')}`);
+            for (const f of byHand) console.log(`  ${f} ${dim('(@pinsay/cli/vite plugin line)')}`);
         }
         if (tracked.length > 0) {
             console.log(dim('Git tracks some of these; the deletion will show in git status.'));

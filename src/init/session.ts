@@ -141,7 +141,7 @@ async function obtainSession(server: string, root: string, opts: SignInOptions):
     } catch (err) {
       if (!(err instanceof InvalidKeyError)) throw err;
       if (!opts.interactive) {
-        exitWithError(3, `${SAVED_KEY_REJECTED} Sign in again: npx pinsay-cli login`, opts.json);
+        exitWithError(3, `${SAVED_KEY_REJECTED} Sign in again: npx @pinsay/cli login`, opts.json);
       }
       console.error(`${SAVED_KEY_REJECTED} Sign in again in your browser.`);
     }
@@ -155,7 +155,7 @@ async function obtainSession(server: string, root: string, opts: SignInOptions):
       3,
       outcome.reason === 'denied'
         ? 'Sign-in was denied.'
-        : 'The sign-in code expired. Run npx pinsay-cli init again.',
+        : 'The sign-in code expired. Run npx @pinsay/cli init again.',
       opts.json,
     );
   }
@@ -165,6 +165,6 @@ async function obtainSession(server: string, root: string, opts: SignInOptions):
     return { key, token, me, origin: 'browser' };
   } catch (err) {
     if (!(err instanceof InvalidKeyError)) throw err;
-    exitWithError(3, 'The key from the browser sign-in was not accepted. Run npx pinsay-cli init again.', opts.json);
+    exitWithError(3, 'The key from the browser sign-in was not accepted. Run npx @pinsay/cli init again.', opts.json);
   }
 }

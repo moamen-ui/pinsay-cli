@@ -12,6 +12,7 @@ import { stackFileRelPath } from './stack/stackfile.js';
 import { resolveApiKey, sourceLabel } from './credentials.js';
 import { excludeBlockStatus, trackedPinsayFiles } from './lib/git-exclude.js';
 import { resolveServer } from './server.js';
+import { hasPinsayViteImport } from './lib/vite-import.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -50,10 +51,10 @@ export type MetaResponse = {
  * run. doctor carried the hint; init, apply and mcp each said only that the version was wrong.
  */
 export function tooOldMessage(cliVersion: string, min: string): string {
-  return `CLI ${cliVersion} is older than the server requires (${min}). Upgrade with: npx -y pinsay@latest`;
+  return `CLI ${cliVersion} is older than the server requires (${min}). Upgrade with: npx -y @pinsay/cli@latest`;
 }
 
-export const UPGRADE_HINT = 'Run `npx -y pinsay@latest doctor`';
+export const UPGRADE_HINT = 'Run `npx -y @pinsay/cli@latest doctor`';
 
 export function compareSemver(a: string, b: string): number {
   const parse = (v: string) => {
@@ -122,7 +123,7 @@ export async function runInitChecks(
         id: 'config',
         status: 'error',
         message: 'No .pinsay/config.json',
-        hint: 'Run `npx -y pinsay-cli init`',
+        hint: 'Run `npx -y @pinsay/cli init`',
       });
       return checks;
     }
@@ -133,7 +134,7 @@ export async function runInitChecks(
       id: 'config',
       status: 'error',
       message: 'No .pinsay/config.json',
-      hint: 'Run `npx -y pinsay-cli init`',
+      hint: 'Run `npx -y @pinsay/cli init`',
     });
     // Everything below needs a server; there is nothing further to say.
     return checks;
@@ -211,7 +212,7 @@ export async function runInitChecks(
       id: 'key',
       status: 'error',
       message: 'No API key found (env var or this repo)',
-      hint: 'Run `npx pinsay-cli login`',
+      hint: 'Run `npx @pinsay/cli login`',
     });
   } else if (!serverReachable) {
     checks.push({ id: 'key', status: 'warn', message: 'Server unreachable — key not verified' });
@@ -350,7 +351,7 @@ export async function runInitChecks(
             id: 'stale',
             status: 'warn',
             message: `${stale.length} file${stale.length === 1 ? '' : 's'} behind the server (${meta.skillVersion}): ${stale.join(', ')}`,
-            hint: 'Run `npx -y pinsay-cli update`',
+            hint: 'Run `npx -y @pinsay/cli update`',
           },
     );
   }
@@ -375,7 +376,7 @@ async function sourceMapCheck(cwd: string, prefix = ''): Promise<CheckResult> {
   const configured = await (async () => {
     for (const name of ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts']) {
       const body = await fs.readFile(join(cwd, name), 'utf8').catch(() => '');
-      if (body.includes('pinsay/vite')) return true;
+      if (hasPinsayViteImport(body)) return true;
     }
     return false;
   })();
@@ -487,7 +488,7 @@ async function skillsCheck(cwd: string, config: PinSayConfig): Promise<CheckResu
     : {
         id: 'skills',
         status: 'warn',
-        message: 'Skills not installed — run `npx pinsay-cli update`',
+        message: 'Skills not installed — run `npx @pinsay/cli update`',
         hint: `Missing: ${missing.join(', ')}`,
         fixable: true,
       };
@@ -537,7 +538,7 @@ async function gitignoreChecks(cwd: string): Promise<CheckResult[]> {
   results.push(
     block === 'ok'
       ? { id: 'gitignore', status: 'ok', message: 'PinSay files hidden from git (.git/info/exclude)' }
-      : { id: 'gitignore', status: 'warn', message: "PinSay's files are not hidden from git yet", hint: 'Run `npx pinsay-cli doctor --fix`', fixable: true },
+      : { id: 'gitignore', status: 'warn', message: "PinSay's files are not hidden from git yet", hint: 'Run `npx @pinsay/cli doctor --fix`', fixable: true },
   );
 
   return results;

@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
+import { VITE_PLUGIN_IMPORT, hasPinsayViteImport } from '../lib/vite-import.js';
 
 /** Config filenames Vite honours, in the order Vite itself resolves them. */
 const VITE_CONFIGS = ['vite.config.ts', 'vite.config.js', 'vite.config.mjs', 'vite.config.mts'];
@@ -36,7 +37,7 @@ export async function injectSourceMap(cwd: string): Promise<SourceMapResult> {
     const files: string[] = [];
 
     // Already wired: say so and change nothing. Re-running init must not append a second plugin.
-    const alreadyPresent = original.includes('pinsay/vite');
+    const alreadyPresent = hasPinsayViteImport(original);
     let next = original;
 
     if (!alreadyPresent) {
@@ -46,7 +47,7 @@ export async function injectSourceMap(cwd: string): Promise<SourceMapResult> {
                 ok: false,
                 reason:
                     `could not find a \`plugins: [\` array in ${configName}. Add it by hand:\n` +
-                    `  import pinsaySource from 'pinsay/vite';\n` +
+                    `  import pinsaySource from '${VITE_PLUGIN_IMPORT}';\n` +
                     `  plugins: [pinsaySource({ enabled: process.env.VITE_PINSAY_SOURCE === 'true' })]`,
             };
         }
@@ -67,7 +68,7 @@ export async function injectSourceMap(cwd: string): Promise<SourceMapResult> {
 
         // Import goes above the first existing import, or at the very top when there are none.
         const firstImport = next.search(/^import\s/m);
-        const importLine = `import pinsaySource from 'pinsay/vite';\n`;
+        const importLine = `import pinsaySource from '${VITE_PLUGIN_IMPORT}';\n`;
         next = firstImport === -1 ? importLine + next : next.slice(0, firstImport) + importLine + next.slice(firstImport);
 
         await fs.writeFile(configPath, next, 'utf8');

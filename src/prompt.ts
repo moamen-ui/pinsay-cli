@@ -26,8 +26,8 @@ function assertInteractive(): void {
         red('This command is interactive, but stdin is not a terminal.') + '\n' +
         'Piped input, CI, and some editor-embedded shells have no TTY, so there is no way to ask you anything.\n\n' +
         'Either run it in a real terminal, or pass every answer as a flag:\n' +
-        '  npx -y pinsay-cli init --key pnsy_... --project <key> --yes\n\n' +
-        "Run 'npx -y pinsay-cli init --help' for the full list of flags."
+        '  npx -y @pinsay/cli init --key pnsy_... --project <key> --yes\n\n' +
+        "Run 'npx -y @pinsay/cli init --help' for the full list of flags."
     );
     process.exit(2);
 }

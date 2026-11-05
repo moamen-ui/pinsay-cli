@@ -37,5 +37,5 @@ export function otherStoreLines(c: NextCase): string[] {
 export function renderNext(text: string, extra: string[] = []): string[] {
   const m = /^(.*?) ?(?:→|->) (https?:\/\/\S+)$/.exec(text);
   const head = m ? [accent(`${m[1]}:`), accent(`      ${m[2]}`)] : [accent(text)];
-  return [...head, ...extra.map((line) => dim(`      ${line}`)), dim('Check any time: npx pinsay-cli status')];
+  return [...head, ...extra.map((line) => dim(`      ${line}`)), dim('Check any time: npx @pinsay/cli status')];
 }

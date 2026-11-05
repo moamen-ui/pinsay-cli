@@ -71,7 +71,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     const removedKeys = await removeMachineKeyFiles();
     for (const f of removedKeys) console.log(`removed machine-wide key ${f}`);
     if (removedKeys.length > 0 && !(await resolveApiKey(cwd)).key) {
-      console.log('This repo has no key of its own yet. Sign in for it: npx pinsay-cli login');
+      console.log('This repo has no key of its own yet. Sign in for it: npx @pinsay/cli login');
     }
   }
 
@@ -79,7 +79,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
   const server = (options.server || resolveServer()).replace(/\/$/, '');
 
   if (!config.project && !isMultiProject(config)) {
-    console.error('No .pinsay/config.json here — run `npx -y pinsay-cli init` first.');
+    console.error('No .pinsay/config.json here — run `npx -y @pinsay/cli init` first.');
     return 1;
   }
 
@@ -137,7 +137,7 @@ export async function updateCommand(cwd: string, options: UpdateOptions): Promis
     if (!config.aiTool) {
       // No tool recorded at all (a config written before `aiTool` existed, and never re-run
       // through `init`): there is nothing to tell `installSkills` to install FOR.
-      console.error('No AI tool configured — run `npx -y pinsay-cli init` to record one, then `update` again.');
+      console.error('No AI tool configured — run `npx -y @pinsay/cli init` to record one, then `update` again.');
     } else {
       try {
         const r = await installSkills(server, config.aiTool, cwd, config.skillsDir);

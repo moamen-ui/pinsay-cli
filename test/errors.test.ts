@@ -35,7 +35,7 @@ test('describeError maps ProjectNotFoundError to exit 3 with the workspace name'
     assert.strictEqual(withWs.code, 3);
     assert.strictEqual(
         withWs.message,
-        'Project "demo" not found in workspace PinSay. Sign in with an account in the project\'s workspace (npx pinsay-cli login), or fix the key in .pinsay/config.json.',
+        'Project "demo" not found in workspace PinSay. Sign in with an account in the project\'s workspace (npx @pinsay/cli login), or fix the key in .pinsay/config.json.',
     );
 
     const noWs = describeError(new ProjectNotFoundError('demo'));

@@ -24,7 +24,7 @@ test('checkAndNotifyUpdates: notifies when CLI is behind latestCliVersion', asyn
 
     assert.equal(res.cliUpdateAvailable, true);
     assert.equal(res.skillsUpdateAvailable, false);
-    assert.match(errOutput.join(''), /Update available for pinsay-cli/);
+    assert.match(errOutput.join(''), /Update available for @pinsay\/cli/);
   } finally {
     process.stderr.write = originalStderrWrite;
   }

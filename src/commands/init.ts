@@ -511,7 +511,7 @@ export async function initCommand(cwd: string, options: Record<string, string | 
                     tool: t,
                     path: '(all skill files)',
                     message: `could not install the skills (${err?.message ?? err}).`,
-                    hint: 'Run "npx pinsay-cli update" to try again.',
+                    hint: 'Run "npx @pinsay/cli update" to try again.',
                 });
             }
         }
@@ -1122,7 +1122,7 @@ async function handleMultiJoin(args: {
             skillWarnings.push(...r.warnings);
             hide.push(...r.hide);
         } catch (err: any) {
-            skillWarnings.push({ tool, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
+            skillWarnings.push({ tool, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx @pinsay/cli update" to try again.' });
         }
     }
     progress.step('Hiding PinSay files from git');
@@ -1328,7 +1328,7 @@ async function handleMultiProjectSetup(args: {
                 skillWarnings.push(...r.warnings);
                 hide.push(...r.hide);
             } catch (err: any) {
-                skillWarnings.push({ tool: t, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx pinsay-cli update" to try again.' });
+                skillWarnings.push({ tool: t, path: '(all skill files)', message: `could not install the skills (${err?.message ?? err}).`, hint: 'Run "npx @pinsay/cli update" to try again.' });
             }
         }
     }
@@ -1435,7 +1435,7 @@ async function handleMultiProjectSetup(args: {
                 console.log(
                     `${yellow('Heads up:')} automatic widget injection isn't supported for ${dir} yet — ` +
                     `no index.html found (checked index.html, src/index.html, public/index.html). ` +
-                    `The project is still registered; run \`npx pinsay-cli init --path ${dir} --project ${r.key} --html <path>\` ` +
+                    `The project is still registered; run \`npx @pinsay/cli init --path ${dir} --project ${r.key} --html <path>\` ` +
                     `once you know the file, or mount the widget by hand.`,
                 );
             }

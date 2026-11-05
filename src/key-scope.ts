@@ -1,7 +1,7 @@
 /** Since 0.10.0 the API key is saved in the repo only (`.pinsay/credentials.env`); there is no machine-wide key. */
 export const GLOBAL_KEY_REMOVED =
   '--global is no longer supported: the API key is saved in this repo only (.pinsay/credentials.env). ' +
-  'Run npx pinsay-cli update to delete a machine-wide key an older version saved.';
+  'Run npx @pinsay/cli update to delete a machine-wide key an older version saved.';
 
 /**
  * Checks the old key-location flags. `--global` / `--scope global` → `{ error: GLOBAL_KEY_REMOVED }`;

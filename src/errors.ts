@@ -8,7 +8,7 @@ export function projectNotFoundMessage(project: string, workspace?: string): str
     const where = workspace ? `workspace ${workspace}` : 'this workspace';
     return (
         `Project "${project}" not found in ${where}. Sign in with an account in the project's workspace ` +
-        '(npx pinsay-cli login), or fix the key in .pinsay/config.json.'
+        '(npx @pinsay/cli login), or fix the key in .pinsay/config.json.'
     );
 }
 
@@ -64,11 +64,11 @@ export function describeError(err: unknown, server?: string): { code: number; me
     if (err instanceof ApiError) {
         if (err.code === 429) return { code: 4, message: rateLimitMessage(err.retryAfter, err.message) };
         if (err.code >= 500) return { code: 4, message: `${hostOf(server)} is having trouble right now (HTTP ${err.code}). Try again in a minute.` };
-        if (err.code === 401) return { code: 3, message: 'Your saved key no longer works (expired or revoked). Sign in again: npx pinsay-cli login' };
+        if (err.code === 401) return { code: 3, message: 'Your saved key no longer works (expired or revoked). Sign in again: npx @pinsay/cli login' };
         if (err.code === 403) return { code: 3, message: "Your account isn't allowed to do this. A workspace admin can." };
         if (err.code === 423) return { code: 2, message: 'This workspace is paused. Ask its admin to resume it in the dashboard.' };
     }
-    return { code: 1, message: `Something went wrong in pinsay-cli. Run again with PINSAY_DEBUG=1 and report it: ${ISSUES_URL}` };
+    return { code: 1, message: `Something went wrong in @pinsay/cli. Run again with PINSAY_DEBUG=1 and report it: ${ISSUES_URL}` };
 }
 
 /** Prints the error the user-friendly way and exits. `json` → the error object on stdout instead. */

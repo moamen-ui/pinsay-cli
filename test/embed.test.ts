@@ -84,7 +84,7 @@ test('embed without a project exits 2; with --project it needs no key and record
     const empty = tmp();
     const r = embed(empty, []);
     assert.strictEqual(r.code, 2);
-    assert.ok(r.err.includes('Run: npx pinsay-cli init --embed'));
+    assert.ok(r.err.includes('Run: npx @pinsay/cli init --embed'));
 
     const dir = tmp();
     write(dir, 'index.html', '<html><head></head><body></body></html>\n');

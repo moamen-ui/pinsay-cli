@@ -206,7 +206,7 @@ test('no key anywhere (env or repo) hints `login`', async () => {
 
     const key = checks.find((c) => c.id === 'key');
     assert.equal(key?.status, 'error');
-    assert.match(key?.hint ?? '', /pinsay-cli login/);
+    assert.match(key?.hint ?? '', /@pinsay\/cli login/);
   } finally {
     if (prevConfigDir === undefined) delete process.env.PINSAY_CONFIG_DIR;
     else process.env.PINSAY_CONFIG_DIR = prevConfigDir;

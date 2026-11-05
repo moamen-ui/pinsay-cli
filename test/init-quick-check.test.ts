@@ -24,7 +24,7 @@ test('all checks passing collapses to one line', () => {
 test('a warning is one line plus its dim fix, and ok checks never appear', () => {
   const checks: CheckResult[] = [
     ok('server'),
-    { id: 'skills', status: 'warn', message: 'skills are out of date', hint: 'Run "npx pinsay-cli update".' },
+    { id: 'skills', status: 'warn', message: 'skills are out of date', hint: 'Run "npx @pinsay/cli update".' },
   ];
-  assert.deepEqual(quickCheckLines(checks), ['⚠ skills are out of date', '  Fix: Run "npx pinsay-cli update".']);
+  assert.deepEqual(quickCheckLines(checks), ['⚠ skills are out of date', '  Fix: Run "npx @pinsay/cli update".']);
 });

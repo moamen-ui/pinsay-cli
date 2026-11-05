@@ -73,7 +73,7 @@ function widgetLines(plan: InitPlan): string[] {
     case 'extension':
       return [
         `${label('Widget')}Chrome extension, no changes to your app's code`,
-        `${INDENT}${dim('To put it in your code instead: npx pinsay-cli embed')}`,
+        `${INDENT}${dim('To put it in your code instead: npx @pinsay/cli embed')}`,
       ];
     case 'embed':
       return [`${label('Widget')}Embedded in your code: ${widget.files.join(', ')}`];
